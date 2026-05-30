@@ -1,0 +1,6 @@
+@Quraaa.API_HostAddress = http://localhost:5153
+
+GET {{Quraaa.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

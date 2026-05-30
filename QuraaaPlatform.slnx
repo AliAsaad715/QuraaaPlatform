@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Quraaa.API/Quraaa.API.csproj" />
+  <Project Path="Quraaa.Application/Quraaa.Application.csproj" />
+  <Project Path="Quraaa.Domain/Quraaa.Domain.csproj" />
+  <Project Path="Quraaa.Infrastructure/Quraaa.Infrastructure.csproj" />
+  <Project Path="Quraaa.Persistence/Quraaa.Persistence.csproj" />
+</Solution>
