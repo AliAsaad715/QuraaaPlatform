@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Quraaa.Application\Quraaa.Application.csproj" />
+  </ItemGroup>
+
 </Project>
