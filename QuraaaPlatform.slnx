@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/.github/" />
+  <Folder Name="/.github/workflows/">
+    <File Path="check-branch-name.yml" />
+  </Folder>
   <Project Path="Quraaa.API/Quraaa.API.csproj" />
   <Project Path="Quraaa.Application/Quraaa.Application.csproj" />
   <Project Path="Quraaa.Domain/Quraaa.Domain.csproj" />
