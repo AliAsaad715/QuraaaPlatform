@@ -7,12 +7,14 @@ on:
 jobs:
   check-name:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Validate branch name
         run: |
           BRANCH_NAME="${{ github.head_ref }}"
           CONVENTIONAL_REGEX="^(feature|fix|refactor)/[0-9]+-.+$"
-          PATCH_REGEX="^[A-Za-z0-9._-]+-patch-[0-9]+$"
+          PATCH_REGEX="^[A-Za-z0-9-]+-patch-[0-9]+$"
           
           if [[ ! $BRANCH_NAME =~ $CONVENTIONAL_REGEX && ! $BRANCH_NAME =~ $PATCH_REGEX ]]; then
             echo "❌ Error: Invalid branch name '$BRANCH_NAME'."
