@@ -11,11 +11,12 @@ jobs:
       - name: Validate branch name
         run: |
           BRANCH_NAME="${{ github.head_ref }}"
-          REGEX="^(feature|fix|refactor)/[0-9]+-.+$"
+          CONVENTIONAL_REGEX="^(feature|fix|refactor)/[0-9]+-.+$"
+          PATCH_REGEX="^[A-Za-z0-9._-]+-patch-[0-9]+$"
           
-          if [[ ! $BRANCH_NAME =~ $REGEX ]]; then
+          if [[ ! $BRANCH_NAME =~ $CONVENTIONAL_REGEX && ! $BRANCH_NAME =~ $PATCH_REGEX ]]; then
             echo "❌ Error: Invalid branch name '$BRANCH_NAME'."
-            echo "Branch name must follow the pattern: feature/123-description, fix/123-description, or refactor/123-description"
+            echo "Branch name must follow one of the patterns: feature/123-description, fix/123-description, refactor/123-description, or <name>-patch-<number>"
             exit 1
           else
             echo "✅ Branch name '$BRANCH_NAME' is valid!"
