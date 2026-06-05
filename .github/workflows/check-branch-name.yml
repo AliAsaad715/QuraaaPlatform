@@ -1,0 +1,25 @@
+name: Check Branch Name
+
+on:
+  pull_request:
+    types: [opened, edited, synchronized]
+
+jobs:
+  check-name:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate branch name
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          CONVENTIONAL_REGEX="^(feature|fix|refactor)/[0-9]+-.+$"
+          PATCH_REGEX="^[A-Za-z0-9-]+-patch-[0-9]+$"
+          
+          if [[ ! $BRANCH_NAME =~ $CONVENTIONAL_REGEX && ! $BRANCH_NAME =~ $PATCH_REGEX ]]; then
+            echo "❌ Error: Invalid branch name '$BRANCH_NAME'."
+            echo "Branch name must follow one of the patterns: feature/123-description, fix/123-description, refactor/123-description, or <name>-patch-<number>"
+            exit 1
+          else
+            echo "✅ Branch name '$BRANCH_NAME' is valid!"
+          fi
