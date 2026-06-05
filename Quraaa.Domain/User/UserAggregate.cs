@@ -1,5 +1,6 @@
 ﻿using Quraaa.Domain.Shared.Entities;
 using Quraaa.Domain.User.Enums;
+using Quraaa.Domain.User.ValueObjects;
 
 namespace Quraaa.Domain.User
 {
@@ -15,6 +16,8 @@ namespace Quraaa.Domain.User
         public string? ProfileImageUrl { get; private set; }
         public DateTime? LastLoginDate { get; private set; }
         public DateTime? PreviousLoginDate { get; private set; }
+        public PaymentMethodInfo? PaymentMethod { private set; get; }
+
 
         private readonly List<string> _interests = new();
         public IReadOnlyCollection<string> Interests => _interests.AsReadOnly();
@@ -33,15 +36,20 @@ namespace Quraaa.Domain.User
             DateOfBirth = dateOfBirth;
         }
 
-        public void AddInterest(string categoryName)
+        public void LinkPaymentMethod(string customerId, string brand, string lastFour)
         {
-            if (string.IsNullOrWhiteSpace(categoryName)) return;
+            PaymentMethod = new PaymentMethodInfo(customerId, brand, lastFour);
+        }
 
-            string normalized = categoryName.Trim().ToLower();
-            if (!_interests.Contains(normalized))
+        public void AddInterest(string interestCode)
+        {
+            var verifiedInterest = Interest.FromCode(interestCode);
+
+            if (verifiedInterest != null && !_interests.Contains(verifiedInterest.Code))
             {
-                _interests.Add(normalized);
+                _interests.Add(verifiedInterest.Code);
             }
+
         }
     }
 }
