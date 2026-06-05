@@ -1,13 +1,19 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Quraaa.Application.Features.Authentication.Interfaces;
+using Quraaa.Persistence.Repositories;
+using Quraaa.Persistence.Services;
 
 namespace Quraaa.Persistence.Extensions
 {
     public static class PersistenceDependencyInjectionHandler
     {
-        public static IServiceCollection AddPersistenceDependencies(this IServiceCollection services)
+        public static IServiceCollection AddPersistenceDependencies(this IServiceCollection services, IConfiguration configuration)
         {
             var assembly = typeof(PersistenceDependencyInjectionHandler).Assembly;
 
+            services.AddScoped<IUserRepository, UserRepository>();
+            services.AddScoped<IIdentityService, IdentityService>();
 
             return services;
         }
