@@ -1,4 +1,4 @@
-using Quraaa.API.Extenstions;
+using Quraaa.API.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 

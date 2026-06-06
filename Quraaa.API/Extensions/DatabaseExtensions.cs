@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Quraaa.Persistence.Data;
 
-namespace Quraaa.API.Extenstions
+namespace Quraaa.API.Extensions
 {
     public static class DatabaseExtensions
     {
