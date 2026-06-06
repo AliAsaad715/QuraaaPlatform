@@ -1,8 +1,11 @@
-﻿namespace Quraaa.Application.Features.Authentication.Interfaces
+﻿using Quraaa.Application.Features.Authentication.Common;
+
+namespace Quraaa.Application.Features.Authentication.Interfaces
 {
     public interface IIdentityService
     {
         Task<bool> IsPhoneNumberUniqueAsync(string phoneNumber);
-        Task<string> CreateUserIdentityAsync(Guid id, string phoneNumber, string password);
+        Task<IdentityResultDto> CreateUserIdentityAsync(Guid id, string phoneNumber, string password);
+        Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber);
     }
 }

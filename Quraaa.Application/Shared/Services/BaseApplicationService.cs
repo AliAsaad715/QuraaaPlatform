@@ -202,6 +202,11 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogWarning(ex, "Domain rule violation in Query");
                 return Result.DomainError(ex.Message);
             }
+            catch (ApplicationBusinessException ex)
+            {
+                Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
+                return Result.DomainError(ex.Message);
+            }
             catch (UnauthorizedAccessException)
             {
                 Logger.LogWarning("Security violation by User {User}", SafeGetCurrentUserIdForLog());
