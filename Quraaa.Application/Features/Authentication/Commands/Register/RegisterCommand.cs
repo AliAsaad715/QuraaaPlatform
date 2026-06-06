@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using Quraaa.Application.Features.Authentication.Common;
+using Quraaa.Application.Shared.Results;
 using Quraaa.Domain.User.Enums;
 
 namespace Quraaa.Application.Features.Authentication.Commands.Register
@@ -12,5 +13,5 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
         Gender Gender,
         DateOnly DateOfBirth,
         List<string> Interests
-    ) : IRequest<AuthResponse>;
+    ) : IRequest<AppResult<AuthResponse>>;
 }

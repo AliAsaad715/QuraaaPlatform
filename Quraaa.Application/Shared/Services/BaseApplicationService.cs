@@ -1,6 +1,7 @@
 ﻿using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Domain.Shared.Exceptions;
 
@@ -62,6 +63,11 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogWarning(ex, "Domain rule violation in {RequestType}", typeof(TRequest).Name);
                 return Result.DomainError(ex.Message);
             }
+            catch (ApplicationBusinessException ex)
+            {
+                Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
+                return Result.DomainError(ex.Message);
+            }
             catch (UnauthorizedAccessException)
             {
                 Logger.LogWarning("Security violation by User {User}", SafeGetCurrentUserIdForLog());
@@ -116,6 +122,11 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogWarning(ex, "Domain rule violation in {RequestType}", typeof(TRequest).Name);
                 return Result.DomainError(ex.Message);
             }
+            catch (ApplicationBusinessException ex)
+            {
+                Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
+                return Result.DomainError(ex.Message);
+            }
             catch (UnauthorizedAccessException)
             {
                 Logger.LogWarning("Security violation by User {User}", SafeGetCurrentUserIdForLog());
@@ -149,6 +160,11 @@ namespace Quraaa.Application.Shared.Services
             catch (DomainException ex)
             {
                 Logger.LogWarning(ex, "Domain rule violation in Query");
+                return Result.DomainError(ex.Message);
+            }
+            catch (ApplicationBusinessException ex)
+            {
+                Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
                 return Result.DomainError(ex.Message);
             }
             catch (UnauthorizedAccessException)
