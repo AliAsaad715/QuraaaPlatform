@@ -1,9 +1,6 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.OpenApi;
+﻿using Microsoft.OpenApi;
 
-namespace Quraaa.API.Extenstions
+namespace Quraaa.API.Extensions
 {
     public static class SwaggerExtensions
     {

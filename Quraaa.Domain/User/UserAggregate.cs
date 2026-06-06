@@ -1,4 +1,5 @@
 ﻿using Quraaa.Domain.Shared.Entities;
+using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Domain.User.Enums;
 using Quraaa.Domain.User.ValueObjects;
 
@@ -45,11 +46,15 @@ namespace Quraaa.Domain.User
         {
             var verifiedInterest = Interest.FromCode(interestCode);
 
-            if (verifiedInterest != null && !_interests.Contains(verifiedInterest.Code))
+            if (verifiedInterest == null)
+            {
+                throw new DomainException($"The interest code '{interestCode}' is invalid and not registered in the domain constants.");
+            }
+
+            if (!_interests.Contains(verifiedInterest.Code))
             {
                 _interests.Add(verifiedInterest.Code);
             }
-
         }
     }
 }

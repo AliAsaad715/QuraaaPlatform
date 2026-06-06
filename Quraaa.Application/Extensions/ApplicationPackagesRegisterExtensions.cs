@@ -1,14 +1,23 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using FluentValidation;
+using IdentityServer.Helpers;
+using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 
 namespace Quraaa.Application.Extensions
 {
     public static class ApplicationPackagesRegisterExtensions
     {
-        public static IServiceCollection AddApplicationDepenedncies(this IServiceCollection services)
+        public static IServiceCollection AddApplicationDependencies(this IServiceCollection services)
         {
             var assembly = typeof(ApplicationPackagesRegisterExtensions).Assembly;
 
-            return services;            
+            services.AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());
+            services.AddMediatR(cfg => {
+                cfg.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
+            });
+
+            services.AddScoped<IPhoneService, PhoneService>();
+            return services;
         }
     }
 }
