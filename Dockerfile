@@ -18,9 +18,8 @@ RUN dotnet restore "Quraaa.API/Quraaa.API.csproj"
 # c) Copy the remaining source code files into the container
 COPY . .
 
-# d) Navigate to the API project folder and build it in Release mode
+# d) Navigate to the API project folder for the publish stage
 WORKDIR "/src/Quraaa.API"
-RUN dotnet build "Quraaa.API.csproj" -c Release -o /app/build
 
 # =========================================================
 # Stage 2: Publish Stage
