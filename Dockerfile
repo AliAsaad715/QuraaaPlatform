@@ -27,7 +27,7 @@ RUN dotnet build "Quraaa.API.csproj" -c Release -o /app/build
 # Compile and publish the application binaries into a clean directory
 # =========================================================
 FROM build AS publish
-RUN dotnet publish "Quraaa.API.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "Quraaa.API.csproj" -c Release -o /app/publish --no-restore /p:UseAppHost=false
 
 # =========================================================
 # Stage 3: Final Runtime Stage
