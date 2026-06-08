@@ -22,6 +22,7 @@ namespace Quraaa.Persistence.Migrations
                     HeaderImage = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     Email = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
                     UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ApprovalStatus = table.Column<int>(type: "int", nullable: false, defaultValue: 1),
                     CreationTime = table.Column<DateTime>(type: "datetime2", nullable: false),
                     LastModificationTime = table.Column<DateTime>(type: "datetime2", nullable: true),
                     LastModifiedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: true),

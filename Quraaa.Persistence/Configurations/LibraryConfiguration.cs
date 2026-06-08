@@ -38,6 +38,9 @@ namespace Quraaa.Persistence.Configurations
             builder.Property(l => l.UserId)
                    .IsRequired();
 
+            builder.Property(l => l.ApprovalStatus)
+                   .IsRequired();
+
             builder.HasOne<UserAggregate>()
                    .WithMany()
                    .HasForeignKey(l => l.UserId)

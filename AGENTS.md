@@ -14,7 +14,7 @@ Current implemented business capability:
 - Library registration through `POST /api/Library/register`.
 - User security identity is stored through ASP.NET Core Identity.
 - User profile/business data is stored as a domain aggregate in `UsersProfiles`.
-- Library data is stored as a domain aggregate in `Libraries` and linked to a user profile by `UserId`.
+- Library data is stored as a domain aggregate in `Libraries`, linked to a user profile by `UserId`, and created with approval status `Pending`.
 - Registration returns JWT access and refresh tokens.
 
 Core technologies:
@@ -272,6 +272,8 @@ userId: guid
 
 The image fields are uploaded files. `LibraryController` stores them under `wwwroot/uploads/libraries` with generated file names, then sends the stored paths to the application command. The database stores the path strings, for example `/uploads/libraries/<generated-name>.jpg`.
 
+The request does not accept approval status. New libraries are always created as `Pending`; future admin logic should transition them to `Approved` or `Rejected`.
+
 Validation rules:
 
 - `LibraryName`: required, max 100 characters.
@@ -496,6 +498,7 @@ LibraryImage nvarchar(500) not null
 HeaderImage nvarchar(500) not null
 Email nvarchar(256) not null
 UserId uniqueidentifier not null FK to UsersProfiles.Id
+ApprovalStatus int not null
 CreationTime datetime2 not null
 LastModificationTime datetime2 null
 LastModifiedBy uniqueidentifier null
@@ -787,6 +790,8 @@ When working in this repository:
 
 These are known incomplete or risky areas based on the current code:
 
+- Add admin review endpoints to approve/reject pending libraries.
+- Ensure public library listing/search endpoints only expose approved libraries.
 - Add login, refresh-token, and logout/revoke-token flows.
 - Configure JWT bearer authentication middleware options.
 - Add tests for registration validation and the registration handler.

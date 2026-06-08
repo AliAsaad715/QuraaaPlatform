@@ -1,4 +1,5 @@
 using Quraaa.Domain.Shared.Entities;
+using Quraaa.Domain.Library.Enums;
 
 namespace Quraaa.Domain.Library
 {
@@ -10,6 +11,7 @@ namespace Quraaa.Domain.Library
         public string HeaderImage { get; private set; } = null!;
         public string Email { get; private set; } = null!;
         public Guid UserId { get; private set; }
+        public LibraryApprovalStatus ApprovalStatus { get; private set; }
 
         private LibraryAggregate() { }
 
@@ -29,6 +31,7 @@ namespace Quraaa.Domain.Library
             HeaderImage = headerImage;
             Email = email;
             UserId = userId;
+            ApprovalStatus = LibraryApprovalStatus.Pending;
         }
     }
 }

@@ -160,6 +160,9 @@ namespace Quraaa.Persistence.Migrations
                     b.Property<DateTime>("CreationTime")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("ApprovalStatus")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("DeleationTime")
                         .HasColumnType("timestamp with time zone");
 

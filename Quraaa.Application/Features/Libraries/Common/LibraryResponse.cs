@@ -1,3 +1,5 @@
+using Quraaa.Domain.Library.Enums;
+
 namespace Quraaa.Application.Features.Libraries.Common
 {
     public record LibraryResponse(
@@ -7,6 +9,7 @@ namespace Quraaa.Application.Features.Libraries.Common
         string LibraryImage,
         string HeaderImage,
         string Email,
-        Guid UserId
+        Guid UserId,
+        LibraryApprovalStatus ApprovalStatus
     );
 }

@@ -50,7 +50,8 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                     library.LibraryImage,
                     library.HeaderImage,
                     library.Email,
-                    library.UserId
+                    library.UserId,
+                    library.ApprovalStatus
                 );
             }, "Library registered successfully");
         }
