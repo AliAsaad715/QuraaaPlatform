@@ -42,7 +42,7 @@ namespace Quraaa.Persistence.Configurations
                     v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions)null!) ?? new List<string>()
                 )
                 .HasColumnName("Interests")
-                .HasColumnType("nvarchar(max)");
+                .HasMaxLength(500);
 
             builder.Metadata
                 .FindProperty(nameof(UserAggregate.Interests))?

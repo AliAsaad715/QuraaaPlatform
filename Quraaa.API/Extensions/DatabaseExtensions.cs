@@ -10,7 +10,7 @@ namespace Quraaa.API.Extensions
             var connectionString = configuration.GetConnectionString("DefaultConnection");
 
             services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseSqlServer(connectionString));
+                options.UseNpgsql(connectionString));
 
             // Register Identity services with custom options
             services.AddIdentityCore<ApplicationUser>(options =>
