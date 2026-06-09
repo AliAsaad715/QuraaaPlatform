@@ -1,9 +1,26 @@
 using FluentValidation;
+using Quraaa.Application.Shared.Files;
 
 namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
 {
     public class RegisterLibraryCommandValidator : AbstractValidator<RegisterLibraryCommand>
     {
+        private const long MaxImageSizeInBytes = 5 * 1024 * 1024;
+
+        private static readonly HashSet<string> AllowedImageContentTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+        };
+
+        private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".jpg",
+            ".jpeg",
+            ".png",
+        };
+
         public RegisterLibraryCommandValidator()
         {
             RuleFor(x => x.LibraryName)
@@ -15,12 +32,20 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                 .MaximumLength(250).WithMessage("Location must not exceed 250 characters.");
 
             RuleFor(x => x.LibraryImage)
-                .NotEmpty().WithMessage("Library image is required.")
-                .MaximumLength(500).WithMessage("Library image must not exceed 500 characters.");
+                .Cascade(CascadeMode.Stop)
+                .NotNull().WithMessage("LibraryImage is required.")
+                .Must(file => file!.Length > 0).WithMessage("LibraryImage is required.")
+                .Must(file => file!.Length <= MaxImageSizeInBytes).WithMessage("LibraryImage must not exceed 5 MB.")
+                .Must(HasAllowedImageExtension).WithMessage("LibraryImage must be a JPG, PNG image.")
+                .Must(HasAllowedImageContentType).WithMessage("LibraryImage content type is not supported.");
 
             RuleFor(x => x.HeaderImage)
-                .NotEmpty().WithMessage("Header image is required.")
-                .MaximumLength(500).WithMessage("Header image must not exceed 500 characters.");
+                .Cascade(CascadeMode.Stop)
+                .NotNull().WithMessage("HeaderImage is required.")
+                .Must(file => file!.Length > 0).WithMessage("HeaderImage is required.")
+                .Must(file => file!.Length <= MaxImageSizeInBytes).WithMessage("HeaderImage must not exceed 5 MB.")
+                .Must(HasAllowedImageExtension).WithMessage("HeaderImage must be a JPG, PNG image.")
+                .Must(HasAllowedImageContentType).WithMessage("HeaderImage content type is not supported.");
 
             RuleFor(x => x.Email)
                 .NotEmpty().WithMessage("Email is required.")
@@ -29,6 +54,22 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
 
             RuleFor(x => x.UserId)
                 .NotEmpty().WithMessage("User id is required.");
+        }
+
+        private static bool HasAllowedImageExtension(IUploadedFile? file)
+        {
+            if (file == null)
+            {
+                return false;
+            }
+
+            var extension = Path.GetExtension(file.FileName);
+            return !string.IsNullOrWhiteSpace(extension) && AllowedImageExtensions.Contains(extension);
+        }
+
+        private static bool HasAllowedImageContentType(IUploadedFile? file)
+        {
+            return file != null && AllowedImageContentTypes.Contains(file.ContentType);
         }
     }
 }

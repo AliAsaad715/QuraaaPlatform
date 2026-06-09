@@ -7,6 +7,5 @@ namespace Quraaa.API.Requests.Libraries
         public IFormFile? LibraryImage { get; set; }
         public IFormFile? HeaderImage { get; set; }
         public string Email { get; set; } = string.Empty;
-        public Guid UserId { get; set; }
     }
 }

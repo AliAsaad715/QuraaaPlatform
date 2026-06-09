@@ -16,6 +16,7 @@ Current implemented business capability:
 - User profile/business data is stored as a domain aggregate in `UsersProfiles`.
 - Library data is stored as a domain aggregate in `Libraries`, linked to a user profile by `UserId`, and created with approval status `Pending`.
 - Registration returns JWT access and refresh tokens.
+- Library registration is JWT-protected and derives the library owner `UserId` from the access token.
 
 Core technologies:
 
@@ -241,11 +242,15 @@ Files:
 
 ```text
 Quraaa.API/Controllers/LibraryController.cs
+Quraaa.API/Requests/Files/FormFileUploadedFile.cs
+Quraaa.API/Services/LibraryImageStorageService.cs
 Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommand.cs
 Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommandValidator.cs
 Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommandHandler.cs
 Quraaa.Application/Features/Libraries/Common/LibraryResponse.cs
+Quraaa.Application/Features/Libraries/Interfaces/ILibraryImageStorageService.cs
 Quraaa.Application/Features/Libraries/Interfaces/ILibraryRepository.cs
+Quraaa.Application/Shared/Files/IUploadedFile.cs
 Quraaa.Persistence/Repositories/LibraryRepository.cs
 Quraaa.Persistence/Configurations/LibraryConfiguration.cs
 Quraaa.Domain/Library/LibraryAggregate.cs
@@ -255,6 +260,12 @@ Route:
 
 ```text
 POST /api/Library/register
+```
+
+Authentication:
+
+```text
+Authorization: Bearer <access-token>
 ```
 
 Request body:
@@ -267,10 +278,11 @@ location: Baghdad
 libraryImage: uploaded image file
 headerImage: uploaded image file
 email: library@example.com
-userId: guid
 ```
 
-The image fields are uploaded files. `LibraryController` stores them under `wwwroot/uploads/libraries` with generated file names, then sends the stored paths to the application command. The database stores the path strings, for example `/uploads/libraries/<generated-name>.jpg`.
+The request no longer accepts `userId`. `LibraryController` reads the user id from JWT claims (`ClaimTypes.NameIdentifier`, `nameid`, or `sub`) and sends that value to the application command.
+
+The image fields are uploaded files. `LibraryController` wraps ASP.NET `IFormFile` values in the application-level `IUploadedFile` abstraction. `RegisterLibraryCommandValidator` validates the uploaded files before storage. After validation succeeds, `RegisterLibraryCommandHandler` stores them through `ILibraryImageStorageService`; the API implementation writes files under `wwwroot/uploads/libraries` with generated file names. The database stores the path strings, for example `/uploads/libraries/<generated-name>.jpg`.
 
 The request does not accept approval status. New libraries are always created as `Pending`; future admin logic should transition them to `Approved` or `Rejected`.
 
@@ -281,23 +293,28 @@ Validation rules:
 - `LibraryImage`: required uploaded file, JPG/PNG, max 5 MB.
 - `HeaderImage`: required uploaded file, JPG/PNG, max 5 MB.
 - `Email`: required, valid email format, max 256 characters.
-- `UserId`: required.
+- `UserId`: required on the command, sourced from the authenticated JWT rather than the form body.
 
 Flow:
 
 ```text
 HTTP POST /api/Library/register
   -> LibraryController.Register(form request)
-  -> LibraryController validates uploaded images
-  -> LibraryController stores images in wwwroot/uploads/libraries
-  -> LibraryController creates RegisterLibraryCommand with stored image paths
+  -> [Authorize] validates JWT bearer token
+  -> LibraryController extracts UserId from token claims
+  -> LibraryController wraps form files as IUploadedFile
+  -> LibraryController creates RegisterLibraryCommand with uploaded files and token UserId
   -> Mediator.Send(command)
   -> RegisterLibraryCommandHandler.Handle(...)
   -> BaseApplicationService validates RegisterLibraryCommand
-  -> IUserRepository.GetUserByIdAsync(userId) verifies the user profile exists
+  -> RegisterLibraryCommandValidator validates image presence, size, extension, and content type
+  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
+  -> handler throws NotFoundException if the user profile is null
+  -> ILibraryImageStorageService.SaveAsync(...) stores images in wwwroot/uploads/libraries
   -> new LibraryAggregate(...)
   -> ILibraryRepository.AddLibraryAsync(library)
   -> ILibraryRepository.SaveChangesAsync()
+  -> handler deletes stored image files if persistence fails
   -> LibraryResponse
 ```
 
@@ -572,7 +589,7 @@ ILibraryRepository -> LibraryRepository
 IIdentityService -> IdentityService
 ```
 
-`UserRepository` implements add, lookup by ID, lookup by phone number, and save changes. Lookup methods throw `NotFoundException` when no active user profile is found.
+`UserRepository` implements add, lookup by ID, lookup by phone number, and save changes. Lookup methods return `null` when no active user profile is found. Handlers that require a user profile should check for `null` and throw `NotFoundException` themselves so application behavior is explicit at the use-case boundary.
 
 `LibraryRepository` implements add and save changes for `LibraryAggregate`.
 
@@ -633,6 +650,11 @@ API-level composition:
 ```text
 Quraaa.API/Extensions/ServiceCollectionExtensions.cs
 ```
+
+Currently registers API-owned application integrations:
+
+- JWT bearer authentication and authorization using `JWT_SECRET_KEY`, `JWT_ISSUER`, and `JWT_AUDIENCE`.
+- `ILibraryImageStorageService -> LibraryImageStorageService`.
 
 Application registrations:
 
@@ -784,7 +806,7 @@ When working in this repository:
 - If changing schema, update EF configuration and create/check migrations.
 - If changing API behavior, update controller response metadata where appropriate.
 - If adding a handler, ensure its validator and DI dependencies are registered through the existing assembly scanning or DI extension methods.
-- If adding JWT-protected endpoints, verify authentication configuration is actually wired; the package exists, but bearer authentication options are not currently configured in visible code.
+- If adding JWT-protected endpoints, use `[Authorize]` and the configured JWT bearer authentication in `Quraaa.API/Extensions/ServiceCollectionExtensions.cs`.
 
 ## Current High-Value TODOs
 
@@ -793,7 +815,6 @@ These are known incomplete or risky areas based on the current code:
 - Add admin review endpoints to approve/reject pending libraries.
 - Ensure public library listing/search endpoints only expose approved libraries.
 - Add login, refresh-token, and logout/revoke-token flows.
-- Configure JWT bearer authentication middleware options.
 - Add tests for registration validation and the registration handler.
 - Decide whether `PasswordHash` should be duplicated in `UsersProfiles`; Identity already stores it in `AspNetUsers`.
 - Align `ApplicationDbContextModelSnapshot.cs` with the current model if EF tooling reports drift.

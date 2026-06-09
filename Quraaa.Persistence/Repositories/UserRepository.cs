@@ -1,6 +1,5 @@
 ﻿using Quraaa.Application.Features.Authentication.Interfaces;
 using Microsoft.EntityFrameworkCore;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Domain.User;
 using Quraaa.Persistence.Data;
 
@@ -20,20 +19,16 @@ namespace Quraaa.Persistence.Repositories
             await _context.UsersProfiles.AddAsync(user);
         }
 
-        public async Task<UserAggregate> GetUserByIdAsync(Guid id)
+        public async Task<UserAggregate?> GetUserByIdAsync(Guid id)
         {
-            var user = await _context.UsersProfiles
+            return await _context.UsersProfiles
                 .FirstOrDefaultAsync(u => u.Id == id && !u.IsDeleted);
-
-            return user ?? throw new NotFoundException("User was not found.");
         }
 
-        public async Task<UserAggregate> GetUserByPhoneNumberAsync(string phoneNumber)
+        public async Task<UserAggregate?> GetUserByPhoneNumberAsync(string phoneNumber)
         {
-            var user = await _context.UsersProfiles
+            return await _context.UsersProfiles
                 .FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber && !u.IsDeleted);
-
-            return user ?? throw new NotFoundException("User was not found.");
         }
 
         public async Task SaveChangesAsync()
