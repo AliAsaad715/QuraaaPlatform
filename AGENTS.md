@@ -11,17 +11,19 @@ For a more beginner-friendly walkthrough, also read `PROJECT_GUIDE.md`.
 Current implemented business capability:
 
 - User registration through `POST /api/Auth/register`.
+- Authenticated password reset through `POST /api/Auth/reset-password`.
 - Library registration through `POST /api/Library/register`.
 - User security identity is stored through ASP.NET Core Identity.
 - User profile/business data is stored as a domain aggregate in `UsersProfiles`.
 - Library data is stored as a domain aggregate in `Libraries`, linked to a user profile by `UserId`, and created with approval status `Pending`.
 - Registration returns JWT access and refresh tokens.
+- Password reset is JWT-protected and derives the user `UserId` from the access token.
 - Library registration is JWT-protected and derives the library owner `UserId` from the access token.
 
 Core technologies:
 
 - ASP.NET Core Web API
-- Entity Framework Core with SQL Server
+- Entity Framework Core with PostgreSQL through Npgsql
 - ASP.NET Core Identity with `Guid` keys
 - MediatR for commands/handlers
 - FluentValidation for request validation
@@ -109,7 +111,7 @@ Layer responsibilities:
 - `Quraaa.Infrastructure`: future external provider implementations such as email, SMS, payments, files, search, third-party APIs.
 - `Quraaa.API`: HTTP controllers, startup, middleware, Swagger, environment configuration.
 
-Do not put HTTP, EF Core, SQL Server, Identity, Swagger, or external provider SDK logic in `Quraaa.Domain`.
+Do not put HTTP, EF Core, PostgreSQL/Npgsql, Identity, Swagger, or external provider SDK logic in `Quraaa.Domain`.
 
 ## Runtime Entry Point
 
@@ -154,10 +156,10 @@ Docker runtime:
 
 ## Configuration
 
-`Quraaa.API/appsettings.Development.json` contains the local SQL Server connection string:
+`Quraaa.API/appsettings.Development.json` contains the local PostgreSQL connection string:
 
 ```text
-ConnectionStrings:DefaultConnection = Server=.;Database=QuraaaDb;Trusted_Connection=True;TrustServerCertificate=True;
+ConnectionStrings:DefaultConnection = Host=localhost;Database=QuraaaDb;Username=postgres;Password=<local password>
 ```
 
 JWT/token generation reads these configuration keys, usually from `.env` or environment variables:
@@ -180,10 +182,11 @@ All controllers inherit the base route from `ApiClientController`:
 [ApiController]
 ```
 
-Current endpoint:
+Current endpoints:
 
 ```text
 POST /api/Auth/register
+POST /api/Auth/reset-password
 POST /api/Library/register
 ```
 
@@ -214,7 +217,7 @@ Request body maps directly to `RegisterCommand`:
 2 = Female
 ```
 
-Successful response is `AuthResponse`:
+Successful registration response is `AuthResponse`:
 
 ```json
 {
@@ -222,6 +225,23 @@ Successful response is `AuthResponse`:
   "accessToken": "jwt",
   "refreshToken": "secure-random-base64",
   "accessTokenExpiration": "utc-date-time"
+}
+```
+
+Password reset request body maps to `ResetPasswordRequest`; the controller creates `ResetPasswordCommand` after reading `UserId` from the authenticated JWT:
+
+```json
+{
+  "oldPassword": "oldPass123",
+  "newPassword": "newPass123"
+}
+```
+
+Successful password reset response comes from `HandleResult(AppResult)`:
+
+```json
+{
+  "message": "Operation successful."
 }
 ```
 
@@ -376,6 +396,73 @@ Important registration details:
 - `Interests`: required and not empty.
 - Each interest code must exist in `Interest.FromCode`.
 
+## Password Reset Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/AuthController.cs
+Quraaa.API/Requests/Authentication/ResetPasswordRequest.cs
+Quraaa.Application/Features/Authentication/Commands/ResetPassword/ResetPasswordCommand.cs
+Quraaa.Application/Features/Authentication/Commands/ResetPassword/ResetPasswordCommandValidator.cs
+Quraaa.Application/Features/Authentication/Commands/ResetPassword/ResetPasswordCommandHandler.cs
+Quraaa.Application/Features/Authentication/Interfaces/IIdentityService.cs
+Quraaa.Persistence/Services/IdentityService.cs
+Quraaa.Persistence/Repositories/UserRepository.cs
+Quraaa.Domain/User/UserAggregate.cs
+```
+
+Route:
+
+```text
+POST /api/Auth/reset-password
+```
+
+Authentication:
+
+```text
+Authorization: Bearer <access-token>
+```
+
+Request body maps to `ResetPasswordRequest`:
+
+```json
+{
+  "oldPassword": "oldPass123",
+  "newPassword": "newPass123"
+}
+```
+
+The request does not accept `userId`. `AuthController` reads the user id from JWT claims (`ClaimTypes.NameIdentifier`, `nameid`, or `sub`) and sends that value to the application command.
+
+Validation rules:
+
+- `UserId`: required on the command, sourced from the authenticated JWT rather than the request body.
+- `OldPassword`: required string, min 8 characters, max 64 characters.
+- `NewPassword`: required string, min 8 characters, max 64 characters, must be different from `OldPassword`.
+
+Flow:
+
+```text
+HTTP POST /api/Auth/reset-password
+  -> AuthController.ResetPassword(body request)
+  -> [Authorize] validates JWT bearer token
+  -> AuthController extracts UserId from token claims
+  -> AuthController creates ResetPasswordCommand with token UserId and request passwords
+  -> Mediator.Send(command)
+  -> ResetPasswordCommandHandler.Handle(...)
+  -> BaseApplicationService validates ResetPasswordCommand
+  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
+  -> handler throws NotFoundException if the user profile is null
+  -> IIdentityService.ChangePasswordAsync(userId, oldPassword, newPassword)
+  -> IdentityService uses UserManager.ChangePasswordAsync to verify the old password and update the Identity password hash
+  -> handler converts Identity failures to ApplicationBusinessException
+  -> handler checks the updated hash was returned
+  -> UserAggregate.UpdatePasswordHash(updatedHash, userId)
+  -> IUserRepository.SaveChangesAsync()
+  -> AppResult success
+```
+
 ## Domain Model
 
 Main aggregate:
@@ -412,6 +499,7 @@ DomainEvents: IReadOnlyCollection<IDomainEvents>
 Business behavior:
 
 - `AddInterest(string interestCode)` validates against domain interest constants and deduplicates by normalized code.
+- `UpdatePasswordHash(string passwordHash, Guid modifiedBy)` updates the profile copy of the Identity password hash and audit metadata after a successful Identity password change.
 - `LinkPaymentMethod(string customerId, string brand, string lastFour)` creates `PaymentMethodInfo`.
 - `Delete(Guid deletedBy)` marks the aggregate as soft-deleted.
 - `UpdateAudit(Guid modifiedBy)` updates last modified metadata.
@@ -508,20 +596,20 @@ Libraries
 Library columns:
 
 ```text
-Id uniqueidentifier not null primary key
-LibraryName nvarchar(100) not null
-Location nvarchar(250) not null
-LibraryImage nvarchar(500) not null
-HeaderImage nvarchar(500) not null
-Email nvarchar(256) not null
-UserId uniqueidentifier not null FK to UsersProfiles.Id
-ApprovalStatus int not null
-CreationTime datetime2 not null
-LastModificationTime datetime2 null
-LastModifiedBy uniqueidentifier null
-IsDeleted bit not null
-DeleationTime datetime2 null
-DeletedBy uniqueidentifier null
+Id uuid not null primary key
+LibraryName character varying(100) not null
+Location character varying(250) not null
+LibraryImage character varying(500) not null
+HeaderImage character varying(500) not null
+Email character varying(256) not null
+UserId uuid not null FK to UsersProfiles.Id
+ApprovalStatus integer not null
+CreationTime timestamp with time zone not null
+LastModificationTime timestamp with time zone null
+LastModifiedBy uuid null
+IsDeleted boolean not null
+DeleationTime timestamp with time zone null
+DeletedBy uuid null
 ```
 
 Important mapping:
@@ -534,41 +622,40 @@ Important mapping:
 - `PhoneNumber` max length 20 and required.
 - `DateOfBirth` is required.
 - `Gender` and `Role` are stored as integers.
-- `Interests` is serialized to `nvarchar(max)` JSON.
+- `Interests` is serialized to JSON text in a `character varying(500)` column.
 - `PaymentMethodInfo` is owned by `UserAggregate` and stored in the same `UsersProfiles` table.
 
 Custom profile columns from current migrations/mapping:
 
 ```text
-Id uniqueidentifier not null primary key / FK to AspNetUsers.Id
-FirstName nvarchar(50) not null
-LastName nvarchar(50) not null
-PhoneNumber nvarchar(20) not null
-PasswordHash nvarchar(max) not null
-Gender int not null
-Role int not null
+Id uuid not null primary key / FK to AspNetUsers.Id
+FirstName character varying(50) not null
+LastName character varying(50) not null
+PhoneNumber character varying(20) not null
+PasswordHash text not null
+Gender integer not null
+Role integer not null
 DateOfBirth date not null
-ProfileImageUrl nvarchar(max) null
-LastLoginDate datetime2 null
-PreviousLoginDate datetime2 null
-Interests nvarchar(max) not null
-PaymentCustomerId nvarchar(100) null
-PaymentCardBrand nvarchar(20) null
-PaymentLastFourDigits nvarchar(4) null
-CreationTime datetime2 not null
-LastModificationTime datetime2 null
-LastModifiedBy uniqueidentifier null
-IsDeleted bit not null
-DeleationTime datetime2 null
-DeletedBy uniqueidentifier null
+ProfileImageUrl text null
+LastLoginDate timestamp with time zone null
+PreviousLoginDate timestamp with time zone null
+Interests character varying(500) not null
+PaymentCustomerId character varying(100) null
+PaymentCardBrand character varying(20) null
+PaymentLastFourDigits character varying(4) null
+CreationTime timestamp with time zone not null
+LastModificationTime timestamp with time zone null
+LastModifiedBy uuid null
+IsDeleted boolean not null
+DeleationTime timestamp with time zone null
+DeletedBy uuid null
 ```
 
 Current migrations:
 
 ```text
-20260605074709_InitialCreate
-20260606080342_AddSomeColumnsForUser
-20260608003607_AddLibraries
+20260608185002_InitialPostgresCreate
+20260608221526_AddLibraries
 ```
 
 Watch item: `ApplicationDbContextModelSnapshot.cs` should normally reflect the latest model. If migrations behave unexpectedly, inspect and regenerate the snapshot through normal EF tooling.
@@ -598,10 +685,13 @@ IIdentityService -> IdentityService
 ```text
 IsPhoneNumberUniqueAsync(string phoneNumber)
 CreateUserIdentityAsync(Guid id, string phoneNumber, string password)
+ChangePasswordAsync(Guid userId, string oldPassword, string newPassword)
 GenerateAuthTokensAsync(Guid userId, string phoneNumber)
 ```
 
 Phone uniqueness uses `UserManager.FindByNameAsync(phoneNumber)`, so it checks the Identity username, not `UsersProfiles.PhoneNumber` directly.
+
+Password changes use `UserManager.ChangePasswordAsync`, so the old password check and configured ASP.NET Identity password rules are enforced by Identity. After a successful change, the handler updates `UsersProfiles.PasswordHash` through `UserAggregate.UpdatePasswordHash(...)`.
 
 ## Application Result Pattern
 
@@ -682,7 +772,7 @@ Quraaa.API/Extensions/DatabaseExtensions.cs
 
 Currently:
 
-- adds `ApplicationDbContext` with SQL Server
+- adds `ApplicationDbContext` with PostgreSQL through `UseNpgsql`
 - adds Identity Core for `ApplicationUser`
 - sets `RequireUniqueEmail = false`
 - allows standard username characters
@@ -801,7 +891,7 @@ When working in this repository:
 - Keep the existing layered architecture.
 - Prefer existing patterns: MediatR handlers, FluentValidation validators, `AppResult<T>`, repository/service interfaces.
 - Do not edit `bin` or `obj`.
-- Do not introduce domain dependencies on API, EF Core, Identity, SQL Server, or provider SDKs.
+- Do not introduce domain dependencies on API, EF Core, Identity, PostgreSQL/Npgsql, or provider SDKs.
 - Do not add unrelated refactors while implementing a feature.
 - If changing schema, update EF configuration and create/check migrations.
 - If changing API behavior, update controller response metadata where appropriate.
