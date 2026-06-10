@@ -1,4 +1,5 @@
 ﻿using Quraaa.Application.Features.Authentication.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.User;
 using Quraaa.Persistence.Data;
 
@@ -18,14 +19,16 @@ namespace Quraaa.Persistence.Repositories
             await _context.UsersProfiles.AddAsync(user);
         }
 
-        public Task<UserAggregate> GetUserByIdAsync(Guid id)
+        public async Task<UserAggregate?> GetUserByIdAsync(Guid id)
         {
-            throw new NotImplementedException();
+            return await _context.UsersProfiles
+                .FirstOrDefaultAsync(u => u.Id == id && !u.IsDeleted);
         }
 
-        public Task<UserAggregate> GetUserByPhoneNumberAsync(string phoneNumber)
+        public async Task<UserAggregate?> GetUserByPhoneNumberAsync(string phoneNumber)
         {
-            throw new NotImplementedException();
+            return await _context.UsersProfiles
+                .FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber && !u.IsDeleted);
         }
 
         public async Task SaveChangesAsync()

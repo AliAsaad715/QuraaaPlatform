@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Quraaa.Domain.Library;
 using Quraaa.Domain.User;
 using System.Reflection;
 
@@ -13,6 +14,7 @@ namespace Quraaa.Persistence.Data
         }
 
         public DbSet<UserAggregate> UsersProfiles { get; set; }
+        public DbSet<LibraryAggregate> Libraries { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
