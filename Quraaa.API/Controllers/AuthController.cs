@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Quraaa.Application.Features.Authentication.Commands.Login;
 using Quraaa.API.Requests.Authentication;
 using Quraaa.Application.Features.Authentication.Commands.Register;
 using Quraaa.Application.Features.Authentication.Commands.ResetPassword;
@@ -14,6 +15,15 @@ namespace Quraaa.API.Controllers
         [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Register([FromBody] RegisterCommand command)
+        {
+            var result = await Mediator.Send(command);
+            return HandleResult(result);
+        }
+
+        [HttpPost("login")]
+        [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> Login([FromBody] LoginCommand command)
         {
             var result = await Mediator.Send(command);
             return HandleResult(result);

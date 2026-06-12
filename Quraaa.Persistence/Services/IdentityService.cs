@@ -14,11 +14,13 @@ namespace Quraaa.Persistence.Services
     public class IdentityService : IIdentityService
     {
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly RoleManager<IdentityRole<Guid>> _roleManager;
         private readonly IConfiguration _configuration;
 
-        public IdentityService(UserManager<ApplicationUser> userManager, IConfiguration configuration)
+        public IdentityService(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole<Guid>> roleManager, IConfiguration configuration)
         {
             _userManager = userManager;
+            _roleManager = roleManager;
             _configuration = configuration;
         }
 
@@ -28,7 +30,7 @@ namespace Quraaa.Persistence.Services
             return user == null;
         }
 
-        public async Task<IdentityResultDto> CreateUserIdentityAsync(Guid id, string phoneNumber, string password)
+        public async Task<IdentityResultDto> CreateUserIdentityAsync(Guid id, string phoneNumber, string password, string role)
         {
             var identityUser = new ApplicationUser
             {
@@ -46,6 +48,12 @@ namespace Quraaa.Persistence.Services
                 var errorDescriptions = result.Errors.Select(e => e.Description);
                 return IdentityResultDto.Failure(errorDescriptions);
             }
+
+            if (!await _roleManager.RoleExistsAsync(role))
+            {
+                await _roleManager.CreateAsync(new IdentityRole<Guid> { Name = role });
+            }
+            await _userManager.AddToRoleAsync(identityUser, role);
 
             return IdentityResultDto.Success(identityUser.PasswordHash!);
         }
@@ -77,6 +85,7 @@ namespace Quraaa.Persistence.Services
             var issuer = _configuration["JWT_ISSUER"];
             var audience = _configuration["JWT_AUDIENCE"];
             var durationInMinutes = double.Parse(_configuration["JWT_DURATION_IN_MINUTES"] ?? "60");
+            var userRoles = await _userManager.GetRolesAsync(user);
 
             var authClaims = new List<Claim>
             {
@@ -84,6 +93,11 @@ namespace Quraaa.Persistence.Services
                 new Claim(ClaimTypes.MobilePhone, user.PhoneNumber ?? string.Empty),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
+
+            foreach (var role in userRoles)
+            {
+                authClaims.Add(new Claim(ClaimTypes.Role, role));
+            }
 
             var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
 
@@ -105,11 +119,21 @@ namespace Quraaa.Persistence.Services
             await _userManager.UpdateAsync(user);
 
             return new AuthResponse(
-                user.Id,
                 accessToken,
                 refreshToken,
                 token.ValidTo
             );
+        }
+
+        public async Task<AuthResponse?> CheckPasswordAndGenerateTokensAsync(string phoneNumber, string password)
+        {
+            var user = await _userManager.FindByNameAsync(phoneNumber);
+            if (user == null) return null;
+
+            var isPasswordValid = await _userManager.CheckPasswordAsync(user, password);
+            if (!isPasswordValid) return null;
+
+            return await GenerateAuthTokensAsync(user.Id, phoneNumber);
         }
 
         private string GenerateSecureRefreshToken()
