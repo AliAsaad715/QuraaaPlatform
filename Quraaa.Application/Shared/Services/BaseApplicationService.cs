@@ -10,7 +10,7 @@ namespace Quraaa.Application.Shared.Services
     public abstract class BaseApplicationService<TService>
     {
         protected readonly ILogger<TService> Logger;
-        private readonly IServiceProvider _serviceProvider; // <--- NEW
+        private readonly IServiceProvider _serviceProvider;
 
         protected BaseApplicationService(ILogger<TService> logger, IServiceProvider serviceProvider)
         {
@@ -66,7 +66,7 @@ namespace Quraaa.Application.Shared.Services
             catch (ApplicationBusinessException ex)
             {
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
-                return Result.DomainError(ex.Message);
+                return Result.ValidationFailed("Auth", ex.Message);
             }
             catch (UnauthorizedAccessException)
             {
@@ -125,7 +125,7 @@ namespace Quraaa.Application.Shared.Services
             catch (ApplicationBusinessException ex)
             {
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
-                return Result.DomainError(ex.Message);
+                return Result.ValidationFailed("Auth", ex.Message);
             }
             catch (UnauthorizedAccessException)
             {
@@ -165,7 +165,7 @@ namespace Quraaa.Application.Shared.Services
             catch (ApplicationBusinessException ex)
             {
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
-                return Result.DomainError(ex.Message);
+                return Result.ValidationFailed("Auth", ex.Message);
             }
             catch (UnauthorizedAccessException)
             {
@@ -205,7 +205,7 @@ namespace Quraaa.Application.Shared.Services
             catch (ApplicationBusinessException ex)
             {
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
-                return Result.DomainError(ex.Message);
+                return Result.ValidationFailed("Auth", ex.Message);
             }
             catch (UnauthorizedAccessException)
             {

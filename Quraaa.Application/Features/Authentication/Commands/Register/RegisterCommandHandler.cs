@@ -40,8 +40,8 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
                 }
 
                 var id = Guid.NewGuid();
-
-                var identityResult = await _identityService.CreateUserIdentityAsync(id, request.PhoneNumber, request.Password);
+                var roleName = Role.User.ToString();
+                var identityResult = await _identityService.CreateUserIdentityAsync(id, request.PhoneNumber, request.Password, roleName);
                 if (!identityResult.Succeeded)
                 {
                     var allErrors = string.Join(" | ", identityResult.Errors);

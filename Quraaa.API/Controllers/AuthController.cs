@@ -1,5 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Quraaa.Application.Features.Authentication.Commands.Register;
+using Quraaa.Application.Features.Authentication.Commands.Login;
 using Quraaa.Application.Features.Authentication.Common;
 
 namespace Quraaa.API.Controllers
@@ -10,6 +10,13 @@ namespace Quraaa.API.Controllers
         [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Register([FromBody] RegisterCommand command)
+        {
+            var result = await Mediator.Send(command);
+            return HandleResult(result);
+        }
+
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginCommand command)
         {
             var result = await Mediator.Send(command);
             return HandleResult(result);
