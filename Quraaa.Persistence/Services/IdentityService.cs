@@ -58,6 +58,24 @@ namespace Quraaa.Persistence.Services
             return IdentityResultDto.Success(identityUser.PasswordHash!);
         }
 
+        public async Task<IdentityResultDto> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user == null)
+            {
+                return IdentityResultDto.Failure(new[] { "User security identity was not found." });
+            }
+
+            var result = await _userManager.ChangePasswordAsync(user, oldPassword, newPassword);
+            if (!result.Succeeded)
+            {
+                var errorDescriptions = result.Errors.Select(e => e.Description);
+                return IdentityResultDto.Failure(errorDescriptions);
+            }
+
+            return IdentityResultDto.Success(user.PasswordHash!);
+        }
+
         public async Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber)
         {
             var user = await _userManager.FindByIdAsync(userId.ToString());
@@ -101,7 +119,6 @@ namespace Quraaa.Persistence.Services
             await _userManager.UpdateAsync(user);
 
             return new AuthResponse(
-                user.Id,
                 accessToken,
                 refreshToken,
                 token.ValidTo

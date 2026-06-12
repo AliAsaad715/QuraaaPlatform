@@ -56,5 +56,11 @@ namespace Quraaa.Domain.User
                 _interests.Add(verifiedInterest.Code);
             }
         }
+
+        public void UpdatePasswordHash(string passwordHash, Guid modifiedBy)
+        {
+            PasswordHash = passwordHash;
+            UpdateAudit(modifiedBy);
+        }
     }
 }
