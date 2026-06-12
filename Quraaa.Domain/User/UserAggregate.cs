@@ -62,5 +62,32 @@ namespace Quraaa.Domain.User
             PasswordHash = passwordHash;
             UpdateAudit(modifiedBy);
         }
+
+        public void UpdateProfile(
+            string firstName,
+            string lastName,
+            Gender gender,
+            DateOnly dateOfBirth,
+            string? profileImageUrl,
+            IEnumerable<string> interests,
+            Guid modifiedBy)
+        {
+            var verifiedInterestCodes = interests
+                .Select(code => Interest.FromCode(code)?.Code
+                    ?? throw new DomainException($"The interest code '{code}' is invalid and not registered in the domain constants."))
+                .Distinct()
+                .ToList();
+
+            FirstName = firstName;
+            LastName = lastName;
+            Gender = gender;
+            DateOfBirth = dateOfBirth;
+            ProfileImageUrl = string.IsNullOrWhiteSpace(profileImageUrl) ? null : profileImageUrl;
+
+            _interests.Clear();
+            _interests.AddRange(verifiedInterestCodes);
+
+            UpdateAudit(modifiedBy);
+        }
     }
 }
