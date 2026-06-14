@@ -1,6 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Quraaa.Application.Features.Authentication.Interfaces;
-using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.User;
 using Quraaa.Persistence.Data;
 

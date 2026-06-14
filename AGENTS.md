@@ -12,12 +12,15 @@ Current implemented business capability:
 
 - User registration through `POST /api/Auth/register`.
 - Authenticated password reset through `POST /api/Auth/reset-password`.
+- Authenticated profile retrieval through `GET /api/Profile/me`.
+- Authenticated profile update through `PUT /api/Profile/me`.
 - Library registration through `POST /api/Library/register`.
 - User security identity is stored through ASP.NET Core Identity.
 - User profile/business data is stored as a domain aggregate in `UsersProfiles`.
 - Library data is stored as a domain aggregate in `Libraries`, linked to a user profile by `UserId`, and created with approval status `Pending`.
 - Registration returns JWT access and refresh tokens.
 - Password reset is JWT-protected and derives the user `UserId` from the access token.
+- Profile retrieval/update is JWT-protected and derives the user `UserId` from the access token.
 - Library registration is JWT-protected and derives the library owner `UserId` from the access token.
 
 Core technologies:
@@ -187,6 +190,8 @@ Current endpoints:
 ```text
 POST /api/Auth/register
 POST /api/Auth/reset-password
+GET /api/Profile/me
+PUT /api/Profile/me
 POST /api/Library/register
 ```
 
@@ -242,6 +247,19 @@ Successful password reset response comes from `HandleResult(AppResult)`:
 ```json
 {
   "message": "Operation successful."
+}
+```
+
+Profile update request body maps to `UpdateProfileRequest`; the controller creates `UpdateProfileCommand` after reading `UserId` from the authenticated JWT:
+
+```json
+{
+  "firstName": "Ali",
+  "lastName": "Hassan",
+  "gender": 1,
+  "dateOfBirth": "2000-01-01",
+  "profileImageUrl": "/uploads/profiles/user.jpg",
+  "interests": ["science", "history"]
 }
 ```
 
@@ -463,6 +481,122 @@ HTTP POST /api/Auth/reset-password
   -> AppResult success
 ```
 
+## Profile Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/ProfileController.cs
+Quraaa.API/Requests/Profiles/UpdateProfileRequest.cs
+Quraaa.Application/Features/Profiles/Common/ProfileResponse.cs
+Quraaa.Application/Features/Profiles/Queries/GetMyProfile/GetMyProfileQuery.cs
+Quraaa.Application/Features/Profiles/Queries/GetMyProfile/GetMyProfileQueryValidator.cs
+Quraaa.Application/Features/Profiles/Queries/GetMyProfile/GetMyProfileQueryHandler.cs
+Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommand.cs
+Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommandValidator.cs
+Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommandHandler.cs
+Quraaa.Application/Features/Authentication/Interfaces/IUserRepository.cs
+Quraaa.Persistence/Repositories/UserRepository.cs
+Quraaa.Domain/User/UserAggregate.cs
+```
+
+Routes:
+
+```text
+GET /api/Profile/me
+PUT /api/Profile/me
+```
+
+Authentication:
+
+```text
+Authorization: Bearer <access-token>
+```
+
+`GET /api/Profile/me` has no request body. `ProfileController` reads the user id from JWT claims (`ClaimTypes.NameIdentifier`, `nameid`, or `sub`) and sends `GetMyProfileQuery`.
+
+`PUT /api/Profile/me` request body maps to `UpdateProfileRequest`:
+
+```json
+{
+  "firstName": "Ali",
+  "lastName": "Hassan",
+  "gender": 1,
+  "dateOfBirth": "2000-01-01",
+  "profileImageUrl": "/uploads/profiles/user.jpg",
+  "interests": ["science", "history"]
+}
+```
+
+The update request does not accept `userId`, `phoneNumber`, `password`, `passwordHash`, or `role`. User identity comes from the JWT. Phone and password changes require separate Identity-aware flows.
+
+Successful profile responses use `ProfileResponse` and do not expose `PasswordHash`:
+
+```json
+{
+  "userId": "guid",
+  "firstName": "Ali",
+  "lastName": "Hassan",
+  "phoneNumber": "+9647XXXXXXXXX",
+  "gender": 1,
+  "role": 1,
+  "dateOfBirth": "2000-01-01",
+  "profileImageUrl": "/uploads/profiles/user.jpg",
+  "interests": ["science", "history"],
+  "lastLoginDate": null,
+  "previousLoginDate": null,
+  "creationTime": "utc-date-time",
+  "lastModificationTime": "utc-date-time"
+}
+```
+
+Validation rules:
+
+- `UserId`: required on the command/query, sourced from the authenticated JWT rather than the request body.
+- `FirstName`: required, max 50 characters.
+- `LastName`: required, max 50 characters.
+- `Gender`: must be a valid enum value.
+- `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
+- `ProfileImageUrl`: optional, max 500 characters.
+- `Interests`: required and not empty.
+- Each interest code must exist in `Interest.FromCode`.
+
+Read flow:
+
+```text
+HTTP GET /api/Profile/me
+  -> ProfileController.GetMyProfile()
+  -> [Authorize] validates JWT bearer token
+  -> ProfileController extracts UserId from token claims
+  -> ProfileController creates GetMyProfileQuery with token UserId
+  -> Mediator.Send(query)
+  -> GetMyProfileQueryHandler.Handle(...)
+  -> BaseApplicationService validates GetMyProfileQuery
+  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
+  -> handler throws NotFoundException if the user profile is null
+  -> ProfileResponse.FromUser(user)
+  -> ProfileResponse
+```
+
+Update flow:
+
+```text
+HTTP PUT /api/Profile/me
+  -> ProfileController.UpdateMyProfile(body request)
+  -> [Authorize] validates JWT bearer token
+  -> ProfileController extracts UserId from token claims
+  -> ProfileController creates UpdateProfileCommand with token UserId and editable fields
+  -> Mediator.Send(command)
+  -> UpdateProfileCommandHandler.Handle(...)
+  -> BaseApplicationService validates UpdateProfileCommand
+  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
+  -> handler throws NotFoundException if the user profile is null
+  -> UserAggregate.UpdateProfile(...)
+  -> IUserRepository.SaveChangesAsync()
+  -> ProfileResponse.FromUser(user)
+  -> ProfileResponse
+```
+
 ## Domain Model
 
 Main aggregate:
@@ -499,6 +633,7 @@ DomainEvents: IReadOnlyCollection<IDomainEvents>
 Business behavior:
 
 - `AddInterest(string interestCode)` validates against domain interest constants and deduplicates by normalized code.
+- `UpdateProfile(...)` updates editable profile fields, replaces interests with validated domain interest codes, and updates audit metadata.
 - `UpdatePasswordHash(string passwordHash, Guid modifiedBy)` updates the profile copy of the Identity password hash and audit metadata after a successful Identity password change.
 - `LinkPaymentMethod(string customerId, string brand, string lastFour)` creates `PaymentMethodInfo`.
 - `Delete(Guid deletedBy)` marks the aggregate as soft-deleted.

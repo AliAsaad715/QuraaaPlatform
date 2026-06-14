@@ -13,6 +13,7 @@
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 PROJECT_GUIDE.md
+Quraaa.API/storage/firebase/*.json
 
 # Mono auto generated files
 mono_crash.*
