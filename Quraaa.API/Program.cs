@@ -9,6 +9,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
 
+CreateFirebaseCredentialsFile(builder.Environment.ContentRootPath);
+
 builder.Services.AddControllers();
 builder.Services.AddDatabaseConfiguration(builder.Configuration);
 builder.Services.AddApplicationServices(builder.Configuration);
@@ -36,3 +38,31 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+static void CreateFirebaseCredentialsFile(string contentRootPath)
+{
+    var firebaseJson = Environment.GetEnvironmentVariable("FIREBASE_CREDENTIALS_JSON");
+
+    if (string.IsNullOrWhiteSpace(firebaseJson))
+    {
+        return;
+    }
+
+    try
+    {
+        using var jsonDoc = System.Text.Json.JsonDocument.Parse(firebaseJson);
+    }
+    catch (Exception ex)
+    {
+        throw new InvalidOperationException("Invalid FIREBASE_CREDENTIALS_JSON in environment variables.", ex);
+    }
+
+    var firebaseDir = Path.Combine(contentRootPath, "storage", "firebase");
+    var firebasePath = Path.Combine(firebaseDir, "quraa.json");
+
+    Directory.CreateDirectory(firebaseDir);
+    File.WriteAllText(firebasePath, firebaseJson);
+
+    Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", firebasePath);
+    Environment.SetEnvironmentVariable("FIREBASE_CREDENTIALS", firebasePath);
+}
