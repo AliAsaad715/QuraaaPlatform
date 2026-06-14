@@ -26,7 +26,8 @@ namespace Quraaa.Infrastructure.Extensions
 
         private static GoogleCredential CreateCredential(IConfiguration configuration)
         {
-            var credentialPath = configuration["Firebase:CredentialsPath"];
+            var credentialPath = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS")
+                ?? configuration["Firebase:CredentialsPath"];
 
             if (!string.IsNullOrWhiteSpace(credentialPath))
             {
