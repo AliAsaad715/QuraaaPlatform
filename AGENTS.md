@@ -15,6 +15,8 @@ Current implemented business capability:
 - Authenticated profile retrieval through `GET /api/Profile/me`.
 - Authenticated profile update through `PUT /api/Profile/me`.
 - Library registration through `POST /api/Library/register`.
+- Standalone OTP send through `POST /api/Otp/send`.
+- Standalone OTP verification through `POST /api/Otp/verify`.
 - User security identity is stored through ASP.NET Core Identity.
 - User profile/business data is stored as a domain aggregate in `UsersProfiles`.
 - Library data is stored as a domain aggregate in `Libraries`, linked to a user profile by `UserId`, and created with approval status `Pending`.
@@ -22,6 +24,7 @@ Current implemented business capability:
 - Password reset is JWT-protected and derives the user `UserId` from the access token.
 - Profile retrieval/update is JWT-protected and derives the user `UserId` from the access token.
 - Library registration is JWT-protected and derives the library owner `UserId` from the access token.
+- OTP is currently standalone test infrastructure. It is not yet enforced by registration, login, password reset, or any other business flow.
 
 Core technologies:
 
@@ -32,6 +35,8 @@ Core technologies:
 - FluentValidation for request validation
 - OneOf for application result unions
 - libphonenumber-csharp for international phone validation/formatting
+- Firebase Admin SDK for dispatching OTP requests to a secondary Android SMS gateway app through FCM
+- `IDistributedCache`, with Redis support for production OTP cache and in-memory cache for local/development fallback
 - DotNetEnv plus environment variables for runtime secrets/configuration
 - Swagger/OpenAPI UI in development
 
@@ -57,6 +62,7 @@ Quraaa.API/
 Quraaa.Application/
   Extensions/
   Features/Authentication/
+  Features/Otp/
   Shared/
 
 Quraaa.Domain/
@@ -72,7 +78,8 @@ Quraaa.Persistence/
   Services/
 
 Quraaa.Infrastructure/
-  currently minimal
+  Extensions/
+  Services/
 ```
 
 Ignore generated build output:
@@ -91,6 +98,7 @@ Project references currently encode this shape:
 ```text
 Quraaa.API -> Quraaa.Application
 Quraaa.API -> Quraaa.Persistence
+Quraaa.API -> Quraaa.Infrastructure
 Quraaa.Persistence -> Quraaa.Application
 Quraaa.Persistence -> Quraaa.Domain
 Quraaa.Application -> Quraaa.Domain
@@ -103,6 +111,7 @@ Keep this dependency direction:
 ```text
 API -> Application -> Domain
 API -> Persistence -> Application -> Domain
+API -> Infrastructure -> Application
 Infrastructure -> Application
 ```
 
@@ -125,10 +134,12 @@ Startup behavior:
 ```text
 DotNetEnv.Env.Load()
 builder.Configuration.AddEnvironmentVariables()
+CreateFirebaseCredentialsFile(builder.Environment.ContentRootPath)
 builder.Services.AddControllers()
 builder.Services.AddDatabaseConfiguration(...)
 builder.Services.AddApplicationServices(...)
 builder.Services.AddSwaggerConfiguration(...)
+builder.Services.AddInfrastructureDependencies(...)
 app.UseSwaggerDashboard() only in Development
 app.UseHttpsRedirection()
 app.UseAuthentication()
@@ -156,6 +167,7 @@ Docker runtime:
 - Uses `mcr.microsoft.com/dotnet/aspnet:10.0` for final runtime.
 - Exposes port `8080`.
 - Sets `ASPNETCORE_URLS=http://+:8080`.
+- Publishes with `/p:UseAppHost=false`; the API project also sets `<UseAppHost>false</UseAppHost>` so local builds do not need to rewrite `apphost.exe`.
 
 ## Configuration
 
@@ -176,6 +188,31 @@ JWT_DURATION_IN_MINUTES
 
 `JWT_SECRET_KEY` is required by `IdentityService.GenerateAuthTokensAsync`. If it is missing, token generation throws `InvalidOperationException`.
 
+Firebase Admin credential resolution:
+
+```text
+Firebase:CredentialsPath
+GOOGLE_APPLICATION_CREDENTIALS
+FIREBASE_CREDENTIALS_JSON
+```
+
+`Firebase:CredentialsPath` can point to a local Firebase service-account JSON file such as `storage/firebase/quraa.json`. Secret JSON files under `Quraaa.API/storage/firebase/*.json` are ignored by `.gitignore` and must not be committed.
+
+For hosted environments such as Heroku, `Program.cs` reads `FIREBASE_CREDENTIALS_JSON`, validates it as JSON, writes it to `storage/firebase/quraa.json` under the app content root, and sets `GOOGLE_APPLICATION_CREDENTIALS` plus `FIREBASE_CREDENTIALS` to that generated path before Infrastructure initializes Firebase.
+
+OTP cache configuration:
+
+```text
+REDIS_URL
+REDIS_TLS_URL
+Redis:ConnectionString
+ConnectionStrings:Redis
+Redis:InstanceName
+Otp:AllowInMemoryCacheInProduction
+```
+
+`InfrastructureDependencyInjectionHandler` uses Redis for `IDistributedCache` when a Redis URL/connection string is configured. It supports Heroku-style `redis://...` and `rediss://...` URLs. If Redis is missing, in-memory cache is allowed only in Development or when `Otp:AllowInMemoryCacheInProduction=true`. That flag is for temporary testing only; OTPs are lost on dyno/app restart and are not shared across multiple instances.
+
 ## HTTP API Surface
 
 All controllers inherit the base route from `ApiClientController`:
@@ -193,6 +230,8 @@ POST /api/Auth/reset-password
 GET /api/Profile/me
 PUT /api/Profile/me
 POST /api/Library/register
+POST /api/Otp/send
+POST /api/Otp/verify
 ```
 
 Controller:
@@ -273,6 +312,91 @@ Profile update request body maps to `UpdateProfileRequest`; the controller creat
 - special domain message `DUPLICATE_APPLICATION` -> `409 Conflict`
 
 There is no custom global exception middleware currently visible in the repository. Unhandled exceptions bubble to ASP.NET Core defaults.
+
+## OTP Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/OtpController.cs
+Quraaa.API/Requests/Otp/SendOtpRequest.cs
+Quraaa.API/Requests/Otp/VerifyOtpRequest.cs
+Quraaa.Application/Features/Otp/Commands/SendOtp/
+Quraaa.Application/Features/Otp/Commands/VerifyOtp/
+Quraaa.Application/Features/Otp/Interfaces/IFirebaseSmsGateway.cs
+Quraaa.Application/Features/Otp/Interfaces/IOtpCacheService.cs
+Quraaa.Infrastructure/Services/FirebaseSmsGateway.cs
+Quraaa.Infrastructure/Services/OtpCacheService.cs
+Quraaa.Infrastructure/Extensions/FirebaseExtensions.cs
+Quraaa.Infrastructure/Extensions/InfrastructureDependencyInjectionHandler.cs
+```
+
+Routes:
+
+```text
+POST /api/Otp/send
+POST /api/Otp/verify
+```
+
+Authentication:
+
+```text
+AllowAnonymous
+```
+
+`POST /api/Otp/send` request body:
+
+```json
+{
+  "phoneNumber": "+9647XXXXXXXXX",
+  "smsGatewayDeviceToken": "fcm-registration-token-from-secondary-android-sms-app"
+}
+```
+
+`smsGatewayDeviceToken` is the FCM registration token for the secondary Android app that has SMS permission. It is supplied per request and is not stored in `appsettings`.
+
+`POST /api/Otp/verify` request body:
+
+```json
+{
+  "phoneNumber": "+9647XXXXXXXXX",
+  "code": "123456"
+}
+```
+
+OTP behavior:
+
+- The API generates a 6-digit OTP with `RandomNumberGenerator`.
+- OTPs expire after 5 minutes.
+- Send requests are throttled for 60 seconds per normalized phone number and client IP.
+- Verification allows up to 5 failed attempts in a 5-minute window.
+- After too many invalid attempts, the OTP is cleared and verification is locked for 5 minutes.
+- Successful verification clears the OTP and failed-attempt state.
+- The OTP feature is standalone; it does not yet mark a user or phone number as verified and is not enforced by registration/login.
+
+Flow:
+
+```text
+HTTP POST /api/Otp/send
+  -> OtpController.SendOtp(body request)
+  -> SendOtpCommand(phoneNumber, smsGatewayDeviceToken, clientIp)
+  -> SendOtpCommandHandler.Handle(...)
+  -> BaseApplicationService validates SendOtpCommand
+  -> IPhoneService.FormatToE164(phone)
+  -> IOtpCacheService checks send and verification lockouts
+  -> handler generates OTP and stores it in IDistributedCache
+  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp, smsGatewayDeviceToken)
+  -> FirebaseSmsGateway sends an FCM data message to the requested device token
+
+HTTP POST /api/Otp/verify
+  -> OtpController.VerifyOtp(body request)
+  -> VerifyOtpCommand(phoneNumber, code, clientIp)
+  -> VerifyOtpCommandHandler.Handle(...)
+  -> BaseApplicationService validates VerifyOtpCommand
+  -> handler reads OTP from IDistributedCache
+  -> handler compares code using fixed-time comparison
+  -> success clears OTP state; invalid attempts update failed-attempt counters
+```
 
 ## Library Registration Flow
 
@@ -893,6 +1017,20 @@ Currently registers:
 - MediatR handlers from the application assembly.
 - `IPhoneService -> PhoneService`.
 
+Infrastructure registrations:
+
+```text
+Quraaa.Infrastructure/Extensions/InfrastructureDependencyInjectionHandler.cs
+```
+
+Currently:
+
+- initializes Firebase Admin through `FirebaseExtensions`
+- registers `IDistributedCache` as Redis when Redis config exists
+- registers `IDistributedCache` as in-memory only for development or explicit temporary production fallback
+- registers `IOtpCacheService -> OtpCacheService`
+- registers `IFirebaseSmsGateway -> FirebaseSmsGateway`
+
 Persistence registrations:
 
 ```text
@@ -921,7 +1059,7 @@ Known quirks to respect or fix intentionally:
 - `AggregateRoot.DeleationTime` is misspelled. The database column also uses `DeleationTime`. Renaming it requires a coordinated migration.
 - `ApplicationPackagesRegisterExtensions` creates an unused local `assembly` variable.
 - `RegisterCommand.cs` has no namespace declaration while related files do. This works only because consumers reference the global type. Adding a namespace is a breaking cleanup unless all references are updated.
-- `Quraaa.Infrastructure` currently has no meaningful implementation.
+- `Quraaa.Infrastructure` currently contains Firebase/OTP cache implementations. Keep future external provider SDK usage in Infrastructure rather than Domain.
 - `check-branch-name.yml` exists both at root and under `.github/workflows`; the GitHub workflow version is the active workflow.
 
 ## Common Change Patterns
@@ -982,6 +1120,12 @@ Build solution:
 dotnet build QuraaaPlatform.slnx
 ```
 
+Build API with an external artifacts directory when local `bin`/`obj` files are locked by Windows:
+
+```bash
+dotnet build Quraaa.API/Quraaa.API.csproj --artifacts-path <temp-artifacts-path>
+```
+
 Run API:
 
 ```bash
@@ -1018,6 +1162,16 @@ Run Docker image:
 docker run -p 8080:8080 quraaa-api
 ```
 
+Useful Heroku config keys for OTP/Firebase:
+
+```bash
+heroku config:set FIREBASE_CREDENTIALS_JSON='<service-account-json>' -a <app-name>
+heroku config:set REDIS_URL='<redis-or-rediss-url>' -a <app-name>
+heroku config:set Otp__AllowInMemoryCacheInProduction=true -a <app-name>
+```
+
+Use `Otp__AllowInMemoryCacheInProduction=true` only as a short-lived testing workaround when Redis is unavailable.
+
 ## Agent Editing Rules
 
 When working in this repository:
@@ -1040,6 +1194,8 @@ These are known incomplete or risky areas based on the current code:
 - Add admin review endpoints to approve/reject pending libraries.
 - Ensure public library listing/search endpoints only expose approved libraries.
 - Add login, refresh-token, and logout/revoke-token flows.
+- Integrate OTP verification into the intended business flow when product behavior is decided.
+- Replace temporary production in-memory OTP cache with Redis or PostgreSQL-backed OTP storage before real users rely on it.
 - Add tests for registration validation and the registration handler.
 - Decide whether `PasswordHash` should be duplicated in `UsersProfiles`; Identity already stores it in `AspNetUsers`.
 - Align `ApplicationDbContextModelSnapshot.cs` with the current model if EF tooling reports drift.
