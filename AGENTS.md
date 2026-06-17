@@ -17,6 +17,8 @@ Current implemented business capability:
 - Library registration through `POST /api/Library/register`.
 - Standalone OTP send through `POST /api/Otp/send`.
 - Standalone OTP verification through `POST /api/Otp/verify`.
+- Authenticated push notification dispatch through `POST /api/Notifications/send`.
+- Development/test push notification dispatch through `POST /api/Notifications/test`.
 - User security identity is stored through ASP.NET Core Identity.
 - User profile/business data is stored as a domain aggregate in `UsersProfiles`.
 - Library data is stored as a domain aggregate in `Libraries`, linked to a user profile by `UserId`, and created with approval status `Pending`.
@@ -211,6 +213,14 @@ Redis:InstanceName
 Otp:AllowInMemoryCacheInProduction
 ```
 
+OTP SMS gateway configuration:
+
+```text
+OTP_DEVICE_TOKEN
+```
+
+`OTP_DEVICE_TOKEN` is the FCM registration token for the secondary Android SMS gateway app that has SMS permission. It is server-side configuration and is no longer accepted in the `POST /api/Otp/send` request body.
+
 `InfrastructureDependencyInjectionHandler` uses Redis for `IDistributedCache` when a Redis URL/connection string is configured. It supports Heroku-style `redis://...` and `rediss://...` URLs. If Redis is missing, in-memory cache is allowed only in Development or when `Otp:AllowInMemoryCacheInProduction=true`. That flag is for temporary testing only; OTPs are lost on dyno/app restart and are not shared across multiple instances.
 
 ## HTTP API Surface
@@ -232,6 +242,8 @@ PUT /api/Profile/me
 POST /api/Library/register
 POST /api/Otp/send
 POST /api/Otp/verify
+POST /api/Notifications/send
+POST /api/Notifications/test
 ```
 
 Controller:
@@ -348,12 +360,11 @@ AllowAnonymous
 
 ```json
 {
-  "phoneNumber": "+9647XXXXXXXXX",
-  "smsGatewayDeviceToken": "fcm-registration-token-from-secondary-android-sms-app"
+  "phoneNumber": "+9647XXXXXXXXX"
 }
 ```
 
-`smsGatewayDeviceToken` is the FCM registration token for the secondary Android app that has SMS permission. It is supplied per request and is not stored in `appsettings`.
+`OtpController` reads the SMS gateway FCM token from `OTP_DEVICE_TOKEN` in configuration/environment variables.
 
 `POST /api/Otp/verify` request body:
 
@@ -379,6 +390,7 @@ Flow:
 ```text
 HTTP POST /api/Otp/send
   -> OtpController.SendOtp(body request)
+  -> OtpController reads smsGatewayDeviceToken from OTP_DEVICE_TOKEN
   -> SendOtpCommand(phoneNumber, smsGatewayDeviceToken, clientIp)
   -> SendOtpCommandHandler.Handle(...)
   -> BaseApplicationService validates SendOtpCommand
@@ -396,6 +408,80 @@ HTTP POST /api/Otp/verify
   -> handler reads OTP from IDistributedCache
   -> handler compares code using fixed-time comparison
   -> success clears OTP state; invalid attempts update failed-attempt counters
+```
+
+## Notifications Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/NotificationsController.cs
+Quraaa.API/Requests/Notifications/SendNotificationRequest.cs
+Quraaa.Application/Features/Notifications/Commands/SendNotification/
+Quraaa.Application/Features/Notifications/Common/NotificationSendResponse.cs
+Quraaa.Application/Features/Notifications/Interfaces/IFirebaseNotificationService.cs
+Quraaa.Infrastructure/Services/FirebaseNotificationService.cs
+```
+
+Route:
+
+```text
+POST /api/Notifications/send
+POST /api/Notifications/test
+```
+
+Authentication:
+
+```text
+POST /api/Notifications/send -> Authorization: Bearer <access-token>
+POST /api/Notifications/test -> AllowAnonymous when enabled
+```
+
+The test route is enabled automatically in Development. Outside Development, it is disabled unless `Notifications:AllowTestEndpoint=true` or `Notifications__AllowTestEndpoint=true` is configured.
+
+Request body:
+
+```json
+{
+  "deviceToken": "fcm-registration-token-from-client-app",
+  "title": "Welcome",
+  "body": "Your notification body",
+  "data": {
+    "type": "general"
+  }
+}
+```
+
+Successful response:
+
+```json
+{
+  "messageId": "firebase-message-id"
+}
+```
+
+Flow:
+
+```text
+HTTP POST /api/Notifications/send
+  -> NotificationsController.Send(body request)
+  -> [Authorize] validates JWT bearer token
+  -> NotificationsController extracts UserId from token claims
+  -> SendNotificationCommand(userId, deviceToken, title, body, data)
+  -> SendNotificationCommandHandler.Handle(...)
+  -> BaseApplicationService validates SendNotificationCommand
+  -> IUserRepository.GetUserByIdAsync(userId) confirms the authenticated profile exists
+  -> IFirebaseNotificationService.SendToDeviceAsync(...)
+  -> FirebaseNotificationService sends an FCM notification message to the requested device token
+
+HTTP POST /api/Notifications/test
+  -> NotificationsController.SendTest(body request)
+  -> route is allowed only in Development or when Notifications:AllowTestEndpoint=true
+  -> SendTestNotificationCommand(deviceToken, optional title, optional body, optional data)
+  -> SendTestNotificationCommandHandler.Handle(...)
+  -> BaseApplicationService validates SendTestNotificationCommand
+  -> IFirebaseNotificationService.SendToDeviceAsync(...)
+  -> FirebaseNotificationService sends an FCM notification message to the requested device token
 ```
 
 ## Library Registration Flow
@@ -443,6 +529,8 @@ email: library@example.com
 ```
 
 The request no longer accepts `userId`. `LibraryController` reads the user id from JWT claims (`ClaimTypes.NameIdentifier`, `nameid`, or `sub`) and sends that value to the application command.
+
+The successful `LibraryResponse` does not expose `UserId`; ownership stays internal and token-derived.
 
 The image fields are uploaded files. `LibraryController` wraps ASP.NET `IFormFile` values in the application-level `IUploadedFile` abstraction. `RegisterLibraryCommandValidator` validates the uploaded files before storage. After validation succeeds, `RegisterLibraryCommandHandler` stores them through `ILibraryImageStorageService`; the API implementation writes files under `wwwroot/uploads/libraries` with generated file names. The database stores the path strings, for example `/uploads/libraries/<generated-name>.jpg`.
 
@@ -1030,6 +1118,16 @@ Currently:
 - registers `IDistributedCache` as in-memory only for development or explicit temporary production fallback
 - registers `IOtpCacheService -> OtpCacheService`
 - registers `IFirebaseSmsGateway -> FirebaseSmsGateway`
+- registers `IFirebaseNotificationService -> FirebaseNotificationService`
+
+Notification test endpoint configuration:
+
+```text
+Notifications:AllowTestEndpoint
+Notifications__AllowTestEndpoint
+```
+
+`Quraaa.API/appsettings.Development.json` enables the test endpoint for local development. `Quraaa.API/appsettings.json` disables it by default for non-development environments.
 
 Persistence registrations:
 
@@ -1166,6 +1264,7 @@ Useful Heroku config keys for OTP/Firebase:
 
 ```bash
 heroku config:set FIREBASE_CREDENTIALS_JSON='<service-account-json>' -a <app-name>
+heroku config:set OTP_DEVICE_TOKEN='<sms-gateway-fcm-registration-token>' -a <app-name>
 heroku config:set REDIS_URL='<redis-or-rediss-url>' -a <app-name>
 heroku config:set Otp__AllowInMemoryCacheInProduction=true -a <app-name>
 ```
