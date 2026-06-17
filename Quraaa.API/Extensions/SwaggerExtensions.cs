@@ -19,12 +19,23 @@ namespace Quraaa.API.Extensions
                 // Add custom metadata to the generated OpenAPI document
                 options.AddDocumentTransformer((document, context, ct) =>
                 {
+                    var serverUrl = config["Swagger:ServerUrl"];
+
                     document.Info = new OpenApiInfo
                     {
                         Title = "Quraaa API",
                         Version = "v1",
                         Description = "Swagger documentation for Quraaa API"
                     };
+
+                    if (!string.IsNullOrWhiteSpace(serverUrl))
+                    {
+                        document.Servers = new List<OpenApiServer>
+                        {
+                            new() { Url = serverUrl.TrimEnd('/') }
+                        };
+                    }
+
                     return Task.CompletedTask;
                 });
             });
