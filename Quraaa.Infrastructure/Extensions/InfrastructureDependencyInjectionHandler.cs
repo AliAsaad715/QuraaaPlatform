@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Otp.Interfaces;
 using Quraaa.Infrastructure.Services;
 using StackExchange.Redis;
@@ -18,6 +19,7 @@ namespace Quraaa.Infrastructure.Extensions
 
             services.AddScoped<IOtpCacheService, OtpCacheService>();
             services.AddScoped<IFirebaseSmsGateway, FirebaseSmsGateway>();
+            services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
 
             return services;
         }

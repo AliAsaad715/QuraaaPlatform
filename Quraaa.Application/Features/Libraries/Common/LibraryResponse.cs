@@ -9,7 +9,6 @@ namespace Quraaa.Application.Features.Libraries.Common
         string LibraryImage,
         string HeaderImage,
         string Email,
-        Guid UserId,
         LibraryApprovalStatus ApprovalStatus
     );
 }

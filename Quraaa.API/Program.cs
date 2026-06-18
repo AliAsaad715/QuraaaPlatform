@@ -6,6 +6,12 @@ using Quraaa.Infrastructure.Extensions;
 
 DotNetEnv.Env.Load();
 
+var apiEnvPath = Path.Combine(Directory.GetCurrentDirectory(), "Quraaa.API", ".env");
+if (File.Exists(apiEnvPath))
+{
+    DotNetEnv.Env.Load(apiEnvPath);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
