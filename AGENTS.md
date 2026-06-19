@@ -23,7 +23,8 @@ Current implemented business capability:
 - Development/test push notification dispatch through `POST /api/Notifications/test`.
 - User security identity is stored through ASP.NET Core Identity.
 - User profile/business data is stored as a domain aggregate in `UsersProfiles`.
-- Library data is stored as a domain aggregate in `Libraries`, linked to a user profile by `UserId`, and created with approval status `Pending`.
+- Library data is stored as a domain aggregate in `Libraries`, linked to a user profile by scalar `UserId`, and created with approval status `Pending`.
+- Each user profile can own at most one library. This is enforced with a unique database index on `Libraries.UserId` plus an application-level duplicate check before library image storage and insert.
 - Registration returns JWT access and refresh tokens.
 - Password reset is JWT-protected and derives the user `UserId` from the access token.
 - Profile retrieval/update is JWT-protected and derives the user `UserId` from the access token.
@@ -128,6 +129,10 @@ Layer responsibilities:
 - `Quraaa.API`: HTTP controllers, startup, middleware, Swagger, environment configuration.
 
 Do not put HTTP, EF Core, PostgreSQL/Npgsql, Identity, Swagger, or external provider SDK logic in `Quraaa.Domain`.
+
+Do not model aggregate-to-aggregate relationships in EF Core mappings. Across aggregate boundaries, keep the domain model and EF configuration to scalar identity references such as `UserId`. If referential integrity is required between aggregate tables, enforce it as a database concern through migrations or database constraints, not through `HasOne<TAggregate>()`, navigation properties, or tracked aggregate relationships.
+
+The user-to-library ownership rule is one-to-one from user profile to library, but it must still follow the aggregate boundary rule: `LibraryAggregate` stores only scalar `UserId`; `LibraryConfiguration` uses a unique index on `UserId`; the migration may enforce the database FK manually; application code checks for an existing library before creating another one.
 
 ## Runtime Entry Point
 
@@ -536,6 +541,8 @@ The request no longer accepts `userId`. `LibraryController` reads the user id fr
 
 The successful `LibraryResponse` does not expose `UserId`; ownership stays internal and token-derived.
 
+Library ownership is one-to-one: one authenticated user profile can register at most one library. `RegisterLibraryCommandHandler` checks `ILibraryRepository.ExistsByUserIdAsync(userId)` before storing uploaded images. If a library already exists for that user, the handler returns an application business error.
+
 The image fields are uploaded files. `LibraryController` wraps ASP.NET `IFormFile` values in the application-level `IUploadedFile` abstraction. `RegisterLibraryCommandValidator` validates the uploaded files before storage. After validation succeeds, `RegisterLibraryCommandHandler` stores them through `ILibraryImageStorageService`; the API implementation writes files under `wwwroot/uploads/libraries` with generated file names. The database stores the path strings, for example `/uploads/libraries/<generated-name>.jpg`.
 
 The request does not accept approval status. New libraries are always created as `Pending`; future admin logic should transition them to `Approved` or `Rejected`.
@@ -564,6 +571,8 @@ HTTP POST /api/Library/register
   -> RegisterLibraryCommandValidator validates image presence, size, extension, and content type
   -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
   -> handler throws NotFoundException if the user profile is null
+  -> ILibraryRepository.ExistsByUserIdAsync(userId) confirms the user does not already own a library
+  -> handler throws ApplicationBusinessException if a library already exists for the user
   -> ILibraryImageStorageService.SaveAsync(...) stores images in wwwroot/uploads/libraries
   -> new LibraryAggregate(...)
   -> ILibraryRepository.AddLibraryAsync(library)
@@ -1054,7 +1063,7 @@ Location character varying(250) not null
 LibraryImage character varying(500) not null
 HeaderImage character varying(500) not null
 Email character varying(256) not null
-UserId uuid not null FK to UsersProfiles.Id
+UserId uuid not null FK to UsersProfiles.Id, unique owner reference
 ApprovalStatus integer not null
 CreationTime timestamp with time zone not null
 LastModificationTime timestamp with time zone null
@@ -1076,6 +1085,9 @@ Important mapping:
 - `Gender` and `Role` are stored as integers.
 - `Interests` is serialized to JSON text in a `character varying(500)` column.
 - `PaymentMethodInfo` is owned by `UserAggregate` and stored in the same `UsersProfiles` table.
+- `Libraries.UserId` is a scalar aggregate identity reference, not an EF aggregate navigation.
+- `Libraries.UserId` has a unique index (`IX_Libraries_UserId`) to enforce one library per user profile.
+- The `Libraries.UserId` foreign key to `UsersProfiles.Id` is a database constraint created in the migration, not an EF `HasOne<UserAggregate>()` relationship.
 
 Custom profile columns from current migrations/mapping:
 
@@ -1385,6 +1397,8 @@ When working in this repository:
 - Prefer existing patterns: MediatR handlers, FluentValidation validators, `AppResult<T>`, repository/service interfaces.
 - Do not edit `bin` or `obj`.
 - Do not introduce domain dependencies on API, EF Core, Identity, PostgreSQL/Npgsql, or provider SDKs.
+- Do not add EF Core relationships between separate aggregate roots. Use scalar IDs in aggregate mappings; put any cross-aggregate FK constraint in the database migration layer.
+- Preserve the one-library-per-user rule with the unique `Libraries.UserId` index and application duplicate check; do not implement it with EF navigation properties or `HasOne<UserAggregate>()`.
 - Do not add unrelated refactors while implementing a feature.
 - If changing schema, update EF configuration and create/check migrations.
 - If changing API behavior, update controller response metadata where appropriate.

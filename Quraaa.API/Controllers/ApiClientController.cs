@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Shared.Results;
 
 namespace Quraaa.API.Controllers
@@ -52,7 +53,14 @@ namespace Quraaa.API.Controllers
                 }),
 
                 // 400 Bad Request (Domain Logic)
-                domainError => string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
+                domainError => string.Equals(domainError.Message, LibraryErrorCodes.DuplicateLibraryForUser, StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = LibraryErrorCodes.DuplicateLibraryForUserMessage
+                    })
+                    : string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
                     ? Conflict(new
                     {
                         type = "Conflict",
@@ -101,7 +109,14 @@ namespace Quraaa.API.Controllers
                 }),
 
                 // 400 Bad Request (Domain Logic)
-                domainError => string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
+                domainError => string.Equals(domainError.Message, LibraryErrorCodes.DuplicateLibraryForUser, StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = LibraryErrorCodes.DuplicateLibraryForUserMessage
+                    })
+                    : string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
                     ? Conflict(new
                     {
                         type = "Conflict",
