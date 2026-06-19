@@ -12,6 +12,8 @@ Current implemented business capability:
 
 - User registration through `POST /api/Auth/register`.
 - Authenticated password reset through `POST /api/Auth/reset-password`.
+- Unauthenticated forgot-password OTP send through `POST /api/Auth/forgot-password`.
+- Unauthenticated forgot-password OTP verification and password reset through `POST /api/Auth/forgot-password/verify`.
 - Authenticated profile retrieval through `GET /api/Profile/me`.
 - Authenticated profile update through `PUT /api/Profile/me`.
 - Library registration through `POST /api/Library/register`.
@@ -237,6 +239,8 @@ Current endpoints:
 ```text
 POST /api/Auth/register
 POST /api/Auth/reset-password
+POST /api/Auth/forgot-password
+POST /api/Auth/forgot-password/verify
 GET /api/Profile/me
 PUT /api/Profile/me
 POST /api/Library/register
@@ -689,6 +693,107 @@ HTTP POST /api/Auth/reset-password
   -> handler converts Identity failures to ApplicationBusinessException
   -> handler checks the updated hash was returned
   -> UserAggregate.UpdatePasswordHash(updatedHash, userId)
+  -> IUserRepository.SaveChangesAsync()
+  -> AppResult success
+```
+
+## Forgot Password Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/AuthController.cs
+Quraaa.API/Requests/Authentication/ForgotPasswordRequest.cs
+Quraaa.API/Requests/Authentication/ResetForgotPasswordRequest.cs
+Quraaa.Application/Features/Authentication/Commands/ForgotPassword/ForgotPasswordCommand.cs
+Quraaa.Application/Features/Authentication/Commands/ForgotPassword/ForgotPasswordCommandValidator.cs
+Quraaa.Application/Features/Authentication/Commands/ForgotPassword/ForgotPasswordCommandHandler.cs
+Quraaa.Application/Features/Authentication/Commands/ResetForgotPassword/ResetForgotPasswordCommand.cs
+Quraaa.Application/Features/Authentication/Commands/ResetForgotPassword/ResetForgotPasswordCommandValidator.cs
+Quraaa.Application/Features/Authentication/Commands/ResetForgotPassword/ResetForgotPasswordCommandHandler.cs
+Quraaa.Application/Features/Authentication/Interfaces/IIdentityService.cs
+Quraaa.Application/Features/Authentication/Interfaces/IUserRepository.cs
+Quraaa.Application/Features/Otp/Interfaces/IFirebaseSmsGateway.cs
+Quraaa.Application/Features/Otp/Interfaces/IOtpCacheService.cs
+Quraaa.Persistence/Services/IdentityService.cs
+Quraaa.Persistence/Repositories/UserRepository.cs
+Quraaa.Domain/User/UserAggregate.cs
+```
+
+Routes:
+
+```text
+POST /api/Auth/forgot-password
+POST /api/Auth/forgot-password/verify
+```
+
+Authentication:
+
+```text
+AllowAnonymous
+```
+
+`POST /api/Auth/forgot-password` request body:
+
+```json
+{
+  "phoneNumber": "+9647XXXXXXXXX"
+}
+```
+
+`POST /api/Auth/forgot-password/verify` request body:
+
+```json
+{
+  "phoneNumber": "+9647XXXXXXXXX",
+  "otpCode": "123456",
+  "newPassword": "newPass123"
+}
+```
+
+Validation rules:
+
+- `PhoneNumber`: required, must start with `+`, must be valid according to libphonenumber.
+- `SmsGatewayDeviceToken`: required server-side configuration read from `OTP_DEVICE_TOKEN` by `AuthController`; not accepted in the request body.
+- `OtpCode`: required, exactly 6 digits.
+- `NewPassword`: required, min 8 characters, max 64 characters, must contain at least one digit.
+
+Flow:
+
+```text
+HTTP POST /api/Auth/forgot-password
+  -> AuthController.ForgotPassword(body request)
+  -> [AllowAnonymous]
+  -> AuthController reads smsGatewayDeviceToken from OTP_DEVICE_TOKEN
+  -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
+  -> ForgotPasswordCommand(phoneNumber, smsGatewayDeviceToken, clientIp)
+  -> ForgotPasswordCommandHandler.Handle(...)
+  -> BaseApplicationService validates ForgotPasswordCommand
+  -> IPhoneService.FormatToE164(phone)
+  -> IOtpCacheService checks send and verification lockouts
+  -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
+  -> if user is null, records the request lockout and returns generic success without sending an OTP to avoid leaking registration status
+  -> handler generates OTP and stores it in IDistributedCache
+  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp, smsGatewayDeviceToken)
+  -> FirebaseSmsGateway sends an FCM data message to the gateway device token
+
+HTTP POST /api/Auth/forgot-password/verify
+  -> AuthController.VerifyForgotPassword(body request)
+  -> [AllowAnonymous]
+  -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
+  -> ResetForgotPasswordCommand(phoneNumber, otpCode, newPassword, clientIp)
+  -> ResetForgotPasswordCommandHandler.Handle(...)
+  -> BaseApplicationService validates ResetForgotPasswordCommand
+  -> IPhoneService.FormatToE164(phone)
+  -> handler reads OTP from IDistributedCache and verifies with fixed-time comparison
+  -> failed attempts are tracked; 5 failures in 5 minutes trigger a 5-minute lockout
+  -> success clears OTP and verification state
+  -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
+  -> handler throws NotFoundException if the user profile is null
+  -> IIdentityService.ResetPasswordAsync(user.Id, newPassword)
+  -> IdentityService generates a reset token and calls UserManager.ResetPasswordAsync
+  -> handler throws ApplicationBusinessException on Identity errors
+  -> UserAggregate.UpdatePasswordHash(updatedHash, user.Id)
   -> IUserRepository.SaveChangesAsync()
   -> AppResult success
 ```

@@ -28,7 +28,6 @@ namespace Quraaa.Persistence.Repositories
         public async Task<UserAggregate?> GetUserByPhoneNumberAsync(string phoneNumber)
         {
             return await _context.UsersProfiles
-                        .AsNoTracking()
                         .FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber && !u.IsDeleted);
         }
 
