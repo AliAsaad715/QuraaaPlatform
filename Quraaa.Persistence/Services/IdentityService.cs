@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Quraaa.Application.Features.Authentication.Common;
@@ -74,6 +74,25 @@ namespace Quraaa.Persistence.Services
             }
 
             return IdentityResultDto.Success(user.PasswordHash!);
+        }
+
+        public async Task<(bool Succeeded, string? UpdatedPasswordHash, IEnumerable<string> Errors)> ResetPasswordAsync(Guid userId, string newPassword)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user == null)
+            {
+                return (false, null, new[] { "User not found" });
+            }
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await _userManager.ResetPasswordAsync(user, token, newPassword);
+            if (!result.Succeeded)
+            {
+                return (false, null, result.Errors.Select(e => e.Description));
+            }
+
+            var refreshedUser = await _userManager.FindByIdAsync(userId.ToString());
+            return (true, refreshedUser?.PasswordHash, Array.Empty<string>());
         }
 
         public async Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber)
