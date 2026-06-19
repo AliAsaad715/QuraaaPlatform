@@ -1,5 +1,5 @@
 ﻿using Quraaa.Domain.Shared.Entities;
-using Quraaa.Domain.Shared.Exceptions;
+using Quraaa.Domain.User.Entities;
 using Quraaa.Domain.User.Enums;
 using Quraaa.Domain.User.ValueObjects;
 
@@ -7,10 +7,10 @@ namespace Quraaa.Domain.User
 {
     public class UserAggregate : AggregateRoot
     {
-        public string FirstName { get; private set; }
-        public string LastName { get; private set; }
-        public string PhoneNumber { get; private set; }
-        public string PasswordHash { get; private set; }
+        public string FirstName { get; private set; } = null!;
+        public string LastName { get; private set; } = null!;
+        public string PhoneNumber { get; private set; } = null!;
+        public string PasswordHash { get; private set; } = null!;
         public Gender Gender { get; private set; }
         public Role Role { get; private set; }
         public DateOnly DateOfBirth { get; private set; }
@@ -19,9 +19,10 @@ namespace Quraaa.Domain.User
         public DateTime? PreviousLoginDate { get; private set; }
         public PaymentMethodInfo? PaymentMethod { private set; get; }
 
-
-        private readonly List<string> _interests = new();
-        public IReadOnlyCollection<string> Interests => _interests.AsReadOnly();
+        private readonly List<Interest> _interests = new();
+        public IReadOnlyCollection<Interest> Interests => _interests.AsReadOnly();
+        public IReadOnlyCollection<Guid> InterestedCategoryIds =>
+            _interests.Select(i => i.CategoryId).ToList().AsReadOnly();
 
         private UserAggregate() { }
 
@@ -42,19 +43,19 @@ namespace Quraaa.Domain.User
             PaymentMethod = new PaymentMethodInfo(customerId, brand, lastFour);
         }
 
-        public void AddInterest(string interestCode)
+        public void AddInterest(Guid categoryId)
         {
-            var verifiedInterest = Interest.FromCode(interestCode);
-
-            if (verifiedInterest == null)
+            if (_interests.Any(i => i.CategoryId == categoryId))
             {
-                throw new DomainException($"The interest code '{interestCode}' is invalid and not registered in the domain constants.");
+                return;
             }
 
-            if (!_interests.Contains(verifiedInterest.Code))
-            {
-                _interests.Add(verifiedInterest.Code);
-            }
+            _interests.Add(new Interest(Id, categoryId));
+        }
+
+        public void RemoveInterest(Guid categoryId)
+        {
+            _interests.RemoveAll(i => i.CategoryId == categoryId);
         }
 
         public void UpdatePasswordHash(string passwordHash, Guid modifiedBy)
@@ -69,15 +70,9 @@ namespace Quraaa.Domain.User
             Gender gender,
             DateOnly dateOfBirth,
             string? profileImageUrl,
-            IEnumerable<string> interests,
+            IEnumerable<Guid> categoryIds,
             Guid modifiedBy)
         {
-            var verifiedInterestCodes = interests
-                .Select(code => Interest.FromCode(code)?.Code
-                    ?? throw new DomainException($"The interest code '{code}' is invalid and not registered in the domain constants."))
-                .Distinct()
-                .ToList();
-
             FirstName = firstName;
             LastName = lastName;
             Gender = gender;
@@ -85,7 +80,7 @@ namespace Quraaa.Domain.User
             ProfileImageUrl = string.IsNullOrWhiteSpace(profileImageUrl) ? null : profileImageUrl;
 
             _interests.Clear();
-            _interests.AddRange(verifiedInterestCodes);
+            _interests.AddRange(categoryIds.Distinct().Select(id => new Interest(Id, id)));
 
             UpdateAudit(modifiedBy);
         }

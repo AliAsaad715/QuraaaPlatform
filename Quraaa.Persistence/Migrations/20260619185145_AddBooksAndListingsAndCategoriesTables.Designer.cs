@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Quraaa.Persistence.Data;
@@ -11,9 +12,11 @@ using Quraaa.Persistence.Data;
 namespace Quraaa.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260619185145_AddBooksAndListingsAndCategoriesTables")]
+    partial class AddBooksAndListingsAndCategoriesTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -409,6 +412,28 @@ namespace Quraaa.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Quraaa.Domain.User.Entities.Interest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Interest");
+                });
+
             modelBuilder.Entity("Quraaa.Domain.User.UserAggregate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -641,6 +666,15 @@ namespace Quraaa.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
+            modelBuilder.Entity("Quraaa.Domain.User.Entities.Interest", b =>
+                {
+                    b.HasOne("Quraaa.Domain.User.UserAggregate", null)
+                        .WithMany("Interests")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Quraaa.Domain.User.UserAggregate", b =>
                 {
                     b.HasOne("Quraaa.Persistence.Data.ApplicationUser", null)
@@ -648,41 +682,6 @@ namespace Quraaa.Persistence.Migrations
                         .HasForeignKey("Quraaa.Domain.User.UserAggregate", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.OwnsMany("Quraaa.Domain.User.Entities.Interest", "Interests", b1 =>
-                        {
-                            b1.Property<Guid>("Id")
-                                .HasColumnType("uuid");
-
-                            b1.Property<Guid>("CategoryId")
-                                .HasColumnType("uuid");
-
-                            b1.Property<DateTime>("CreatedAt")
-                                .HasColumnType("timestamp with time zone");
-
-                            b1.Property<Guid>("UserAggregateId")
-                                .HasColumnType("uuid");
-
-                            b1.Property<Guid>("UserId")
-                                .HasColumnType("uuid");
-
-                            b1.HasKey("Id");
-
-                            b1.HasIndex("CategoryId");
-
-                            b1.HasIndex("UserAggregateId");
-
-                            b1.ToTable("UserInterests", (string)null);
-
-                            b1.HasOne("Quraaa.Domain.Category.CategoryAggregate", null)
-                                .WithMany()
-                                .HasForeignKey("CategoryId")
-                                .OnDelete(DeleteBehavior.Restrict)
-                                .IsRequired();
-
-                            b1.WithOwner()
-                                .HasForeignKey("UserAggregateId");
-                        });
 
                     b.OwnsOne("Quraaa.Domain.User.ValueObjects.PaymentMethodInfo", "PaymentMethod", b1 =>
                         {
@@ -715,9 +714,12 @@ namespace Quraaa.Persistence.Migrations
                                 .HasForeignKey("UserAggregateId");
                         });
 
-                    b.Navigation("Interests");
-
                     b.Navigation("PaymentMethod");
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.User.UserAggregate", b =>
+                {
+                    b.Navigation("Interests");
                 });
 #pragma warning restore 612, 618
         }

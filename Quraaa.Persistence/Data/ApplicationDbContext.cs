@@ -1,9 +1,13 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Quraaa.Domain.Catalog;
+using Quraaa.Domain.Category;
 using Quraaa.Domain.Library;
+using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.User;
 using System.Reflection;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace Quraaa.Persistence.Data
 {
@@ -15,11 +19,15 @@ namespace Quraaa.Persistence.Data
 
         public DbSet<UserAggregate> UsersProfiles { get; set; }
         public DbSet<LibraryAggregate> Libraries { get; set; }
+        public DbSet<BookAggregate> Books { get; set; }
+        public DbSet<ListingAggregate> Listings { get; set; }
+        public DbSet<CategoryAggregate> Categories { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
             modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+            modelBuilder.Entity<CategoryAggregate>().HasQueryFilter(c => c.IsActive == true);
         }
     }
 }

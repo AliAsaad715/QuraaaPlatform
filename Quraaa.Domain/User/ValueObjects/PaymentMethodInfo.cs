@@ -4,9 +4,9 @@ namespace Quraaa.Domain.User.ValueObjects
 {
     public class PaymentMethodInfo : ValueObjectRoot
     {
-        public string GatewayCustomerId { get; init; }
-        public string CardBrand { get; init; }
-        public string LastFourDigits { get; init; }
+        public string GatewayCustomerId { get; init; } = null!;
+        public string CardBrand { get; init; } = null!;
+        public string LastFourDigits { get; init; } = null!;
 
         private PaymentMethodInfo() { }
 

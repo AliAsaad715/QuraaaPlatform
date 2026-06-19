@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Quraaa.Domain.Category;
 using Quraaa.Domain.User;
 using Quraaa.Persistence.Data;
 using System.Text.Json;
@@ -36,16 +37,23 @@ namespace Quraaa.Persistence.Configurations
             builder.Property(u => u.DateOfBirth)
                    .IsRequired();
 
-            builder.Property(u => u.Interests)
-                .HasConversion(
-                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null!),
-                    v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions)null!) ?? new List<string>()
-                )
-                .HasColumnName("Interests")
-                .HasMaxLength(500);
+            builder.OwnsMany(u => u.Interests, ib =>
+            {
+                ib.ToTable("UserInterests");
+
+                ib.HasKey(i => i.Id);
+                ib.Property(i => i.Id).ValueGeneratedNever();
+
+                ib.HasOne<CategoryAggregate>()
+                  .WithMany()
+                  .HasForeignKey(i => i.CategoryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+                ib.HasIndex(i => i.CategoryId);
+            });
 
             builder.Metadata
-                .FindProperty(nameof(UserAggregate.Interests))?
+                .FindNavigation(nameof(UserAggregate.Interests))?
                 .SetPropertyAccessMode(PropertyAccessMode.Field);
 
             builder.OwnsOne(u => u.PaymentMethod, pb =>
