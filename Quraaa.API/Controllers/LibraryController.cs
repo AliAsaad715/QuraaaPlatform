@@ -15,7 +15,7 @@ namespace Quraaa.API.Controllers
         [Authorize]
         [HttpPost("register")]
         [Consumes("multipart/form-data")]
-        [ProducesResponseType(typeof(UserLibraryResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(LibraryResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Register([FromForm] RegisterLibraryRequest request)

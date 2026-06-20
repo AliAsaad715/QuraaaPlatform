@@ -10,7 +10,7 @@ using Quraaa.Domain.Shared.Exceptions;
 
 namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
 {
-    public class RegisterLibraryCommandHandler : BaseApplicationService<RegisterLibraryCommandHandler>, IRequestHandler<RegisterLibraryCommand, AppResult<UserLibraryResponse>>
+    public class RegisterLibraryCommandHandler : BaseApplicationService<RegisterLibraryCommandHandler>, IRequestHandler<RegisterLibraryCommand, AppResult<LibraryResponse>>
     {
         private readonly ILibraryRepository _libraryRepository;
         private readonly IUserRepository _userRepository;
@@ -28,9 +28,9 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
             _libraryImageStorageService = libraryImageStorageService;
         }
 
-        public async Task<AppResult<UserLibraryResponse>> Handle(RegisterLibraryCommand request, CancellationToken cancellationToken)
+        public async Task<AppResult<LibraryResponse>> Handle(RegisterLibraryCommand request, CancellationToken cancellationToken)
         {
-            return await ExecuteAsync<RegisterLibraryCommand, UserLibraryResponse>(request, async () =>
+            return await ExecuteAsync<RegisterLibraryCommand, LibraryResponse>(request, async () =>
             {
                 var user = await _userRepository.GetUserByIdAsync(request.UserId);
                 if (user == null)
@@ -59,7 +59,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                     await _libraryRepository.AddLibraryAsync(library);
                     await _libraryRepository.SaveChangesAsync();
 
-                    return new UserLibraryResponse(
+                    return new LibraryResponse(
                         library.Id,
                         library.LibraryName,
                         library.Location,
