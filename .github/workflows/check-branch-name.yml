@@ -13,13 +13,13 @@ jobs:
       - name: Validate branch name
         run: |
           BRANCH_NAME="${{ github.head_ref }}"
-          CONVENTIONAL_REGEX="^(feature|fix|refactor)/[0-9]+-.+$"
+          CONVENTIONAL_REGEX="^(feature|fix|refactor)/([0-9]+-.+|[a-z0-9]+(-[a-z0-9]+)*)$"
           PATCH_REGEX="^[A-Za-z0-9-]+-patch-[0-9]+$"
           DESCRIPTIVE_REGEX="^[a-z0-9]+(-[a-z0-9]+)*$"
           
           if [[ ! $BRANCH_NAME =~ $CONVENTIONAL_REGEX && ! $BRANCH_NAME =~ $PATCH_REGEX && ! $BRANCH_NAME =~ $DESCRIPTIVE_REGEX ]]; then
             echo "❌ Error: Invalid branch name '$BRANCH_NAME'."
-            echo "Branch name must follow one of the patterns: feature/123-description, fix/123-description, refactor/123-description, <name>-patch-<number>, or a lowercase kebab-case name like register-library"
+            echo "Branch name must follow one of the patterns: feature/123-description, fix/123-description, refactor/123-description, feature/branch-name, <name>-patch-<number>, or a lowercase kebab-case name like register-library"
             exit 1
           else
             echo "✅ Branch name '$BRANCH_NAME' is valid!"
