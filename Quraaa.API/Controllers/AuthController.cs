@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Quraaa.Application.Features.Authentication.Commands.Login;
 using Quraaa.API.Requests.Authentication;
-using Quraaa.Application.Features.Authentication.Commands.Register;
 using Quraaa.Application.Features.Authentication.Commands.ResetPassword;
 using Quraaa.Application.Features.Authentication.Commands.ForgotPassword;
 using Quraaa.Application.Features.Authentication.Commands.ResetForgotPassword;

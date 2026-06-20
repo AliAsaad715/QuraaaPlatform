@@ -12,6 +12,6 @@ namespace Quraaa.Application.Features.Profiles.Commands.UpdateProfile
         Gender Gender,
         DateOnly DateOfBirth,
         string? ProfileImageUrl,
-        List<string> Interests
+        List<Guid> Interests
     ) : IRequest<AppResult<ProfileResponse>>;
 }

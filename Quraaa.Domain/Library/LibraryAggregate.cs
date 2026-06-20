@@ -1,5 +1,6 @@
 using Quraaa.Domain.Shared.Entities;
 using Quraaa.Domain.Library.Enums;
+using Quraaa.Domain.Shared.Exceptions;
 
 namespace Quraaa.Domain.Library
 {
@@ -32,6 +33,28 @@ namespace Quraaa.Domain.Library
             Email = email;
             UserId = userId;
             ApprovalStatus = LibraryApprovalStatus.Pending;
+        }
+
+        public void Approve(Guid modifiedBy)
+        {
+            if (ApprovalStatus != LibraryApprovalStatus.Pending)
+            {
+                throw new DomainException("Only pending libraries can be approved.");
+            }
+
+            ApprovalStatus = LibraryApprovalStatus.Approved;
+            UpdateAudit(modifiedBy);
+        }
+
+        public void Reject(Guid modifiedBy)
+        {
+            if (ApprovalStatus != LibraryApprovalStatus.Pending)
+            {
+                throw new DomainException("Only pending libraries can be rejected.");
+            }
+
+            ApprovalStatus = LibraryApprovalStatus.Rejected;
+            UpdateAudit(modifiedBy);
         }
     }
 }

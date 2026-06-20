@@ -1,13 +1,17 @@
 ﻿using FluentValidation;
 using PhoneNumbers;
-using Quraaa.Domain.User.ValueObjects;
+using Quraaa.Application.Features.Categories.Interfaces;
 
 namespace Quraaa.Application.Features.Authentication.Commands.Register
 {
     public class RegisterCommandValidator : AbstractValidator<RegisterCommand>
     {
-        public RegisterCommandValidator()
+        private readonly ICategoryRepository _categoryRepository;
+
+        public RegisterCommandValidator(ICategoryRepository categoryRepository)
         {
+            _categoryRepository = categoryRepository;
+
             // 1. Validate first name and last name
             RuleFor(x => x.FirstName)
                 .NotEmpty().WithMessage("First name is required.")
@@ -42,10 +46,10 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
             RuleFor(x => x.Interests)
                 .NotEmpty().WithMessage("You must select at least one interest.");
 
-            // 7. Validate interests to ensure codes sent from user are valid and exist in the system
-            RuleForEach(x => x.Interests)
-                .Must(code => Interest.FromCode(code) != null)
-                .WithMessage(code => $"Interest code provided is not supported in the system");
+            // 7. Validate interests exist in the system
+            RuleFor(x => x.Interests)
+                .MustAsync(BeValidCategoryIds)
+                .WithMessage("One or more interest IDs do not exist in the system.");
         }
 
         private bool BeAValidInternationalPhoneNumber(string phoneNumber)
@@ -78,6 +82,15 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
             var maxDate = today.AddYears(-5);
 
             return dateOfBirth > minDate && dateOfBirth <= maxDate;
+        }
+
+        private async Task<bool> BeValidCategoryIds(List<Guid> interests, CancellationToken cancellationToken)
+        {
+            if (interests == null || !interests.Any())
+                return true;
+
+            var existingCategories = await _categoryRepository.GetByIdsAsync(interests, cancellationToken);
+            return existingCategories.Count == interests.Count;
         }
     }
 }

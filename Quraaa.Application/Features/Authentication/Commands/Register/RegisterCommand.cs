@@ -10,5 +10,5 @@ public record RegisterCommand(
     string Password,
     Gender Gender,
     DateOnly DateOfBirth,
-    List<string> Interests
+    List<Guid> Interests
 ) : IRequest<AppResult<AuthResponse>>;
