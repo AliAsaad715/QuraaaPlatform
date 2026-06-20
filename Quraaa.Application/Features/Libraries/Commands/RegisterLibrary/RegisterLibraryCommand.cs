@@ -12,5 +12,5 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
         IUploadedFile? HeaderImage,
         string Email,
         Guid UserId
-    ) : IRequest<AppResult<LibraryResponse>>;
+    ) : IRequest<AppResult<UserLibraryResponse>>;
 }

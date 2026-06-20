@@ -32,11 +32,8 @@ namespace Quraaa.Application.Features.Categories.Queries.GetCategoryById
 
                 return new CategoryResponse(
                     category.Id,
-                    category.Code,
                     category.NameAr,
-                    category.NameEn,
-                    category.ParentCategoryId,
-                    category.IsActive
+                    category.NameEn
                 );
             }, "Category retrieved successfully");
         }

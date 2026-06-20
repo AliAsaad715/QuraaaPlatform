@@ -44,12 +44,18 @@ namespace Quraaa.Persistence.Configurations
                 ib.HasKey(i => i.Id);
                 ib.Property(i => i.Id).ValueGeneratedNever();
 
+                ib.WithOwner().HasForeignKey(i => i.UserId);
+
+                ib.Property(i => i.UserId).IsRequired();
+                ib.Property(i => i.CategoryId).IsRequired();
+                ib.Property(i => i.CreatedAt).IsRequired();
+
                 ib.HasOne<CategoryAggregate>()
                   .WithMany()
                   .HasForeignKey(i => i.CategoryId)
                   .OnDelete(DeleteBehavior.Restrict);
 
-                ib.HasIndex(i => i.CategoryId);
+                ib.HasIndex(i => new { i.UserId, i.CategoryId }).IsUnique();
             });
 
             builder.Metadata

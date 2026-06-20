@@ -1,8 +1,10 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.HttpOverrides;
+using System.Text.Json.Serialization;
 using Quraaa.API.Extensions;
-using Quraaa.Persistence.Data;
 using Quraaa.Infrastructure.Extensions;
+using Quraaa.Persistence.Data;
+using Quraaa.Persistence.Seed;
 
 DotNetEnv.Env.Load();
 
@@ -18,43 +20,41 @@ builder.Configuration.AddEnvironmentVariables();
 
 CreateFirebaseCredentialsFile(builder.Environment.ContentRootPath);
 
-builder.Services.AddControllers();
+// Add Controllers with JSON serialization options
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
+
 builder.Services.AddDatabaseConfiguration(builder.Configuration);
 builder.Services.AddApplicationServices(builder.Configuration);
-builder.Services.AddSwaggerConfiguration(builder.Configuration);
 builder.Services.AddInfrastructureDependencies(builder.Configuration, builder.Environment.IsDevelopment());
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders =
-        ForwardedHeaders.XForwardedFor |
-        ForwardedHeaders.XForwardedProto |
-        ForwardedHeaders.XForwardedHost;
-    options.ForwardLimit = 1;
-
-    options.KnownIPNetworks.Clear();
-    options.KnownProxies.Clear();
-});
+builder.Services.AddSwaggerConfiguration(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline
 app.UseForwardedHeaders();
-
 app.UseSwaggerDashboard();
-
 app.UseHttpsRedirection();
-
 app.UseStaticFiles();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
+// Seed the database with categories
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
+    await CategorySeeder.SeedAsync(db);
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+    var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<ApplicationUser>>();
+    await AdminSeeder.SeedAsync(db, userManager, roleManager, passwordHasher, builder.Configuration);
+    await UserSeeder.SeedAsync(db, userManager, roleManager, passwordHasher, builder.Configuration);
+    await LibrarySeeder.SeedAsync(db);
 }
 
 app.Run();

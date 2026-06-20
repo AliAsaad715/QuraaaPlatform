@@ -27,11 +27,8 @@ namespace Quraaa.Application.Features.Categories.Queries.GetAllCategories
                 var categoryResponses = categories
                     .Select(c => new CategoryResponse(
                         c.Id,
-                        c.Code,
                         c.NameAr,
-                        c.NameEn,
-                        c.ParentCategoryId,
-                        c.IsActive))
+                        c.NameEn))
                     .ToList();
 
                 return categoryResponses;

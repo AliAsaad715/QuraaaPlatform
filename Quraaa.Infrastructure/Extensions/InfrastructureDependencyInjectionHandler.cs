@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Otp.Interfaces;
 using Quraaa.Infrastructure.Services;
@@ -20,6 +21,11 @@ namespace Quraaa.Infrastructure.Extensions
             services.AddScoped<IOtpCacheService, OtpCacheService>();
             services.AddScoped<IFirebaseSmsGateway, FirebaseSmsGateway>();
             services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
+            //services.AddHttpClient<IBookMetadataService, GoogleBooksService>(client =>
+            //{
+            //    client.BaseAddress = new Uri(configuration["GoogleBooks__BaseUrl"] ?? "https://www.googleapis.com/");
+            //    client.Timeout = TimeSpan.FromSeconds(10);
+            //});
 
             return services;
         }

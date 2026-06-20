@@ -8,7 +8,7 @@ using Quraaa.Domain.Category;
 
 namespace Quraaa.Application.Features.Categories.Commands.CreateCategory
 {
-    public class CreateCategoryCommandHandler : BaseApplicationService<CreateCategoryCommandHandler>, IRequestHandler<CreateCategoryCommand, AppResult<CategoryResponse>>
+    public class CreateCategoryCommandHandler : BaseApplicationService<CreateCategoryCommandHandler>, IRequestHandler<CreateCategoryCommand, AppResult>
     {
         private readonly ICategoryRepository _categoryRepository;
 
@@ -20,9 +20,9 @@ namespace Quraaa.Application.Features.Categories.Commands.CreateCategory
             _categoryRepository = categoryRepository;
         }
 
-        public async Task<AppResult<CategoryResponse>> Handle(CreateCategoryCommand request, CancellationToken cancellationToken)
+        public async Task<AppResult> Handle(CreateCategoryCommand request, CancellationToken cancellationToken)
         {
-            return await ExecuteAsync<CreateCategoryCommand, CategoryResponse>(request, async () =>
+            return await ExecuteAsync(request, async () =>
             {
                 var category = new CategoryAggregate(
                     Guid.NewGuid(),
@@ -32,14 +32,6 @@ namespace Quraaa.Application.Features.Categories.Commands.CreateCategory
                     request.ParentCategoryId
                 );
                 await _categoryRepository.AddAsync(category, cancellationToken);
-                return new CategoryResponse(
-                    category.Id,
-                    category.Code,
-                    category.NameAr,
-                    category.NameEn,
-                    category.ParentCategoryId,
-                    category.IsActive
-                );
             }, "Category created successfully");
         }
     }

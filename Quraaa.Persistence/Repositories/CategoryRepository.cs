@@ -42,6 +42,13 @@ namespace Quraaa.Persistence.Repositories
         public async Task AddAsync(CategoryAggregate category, CancellationToken cancellationToken = default)
         {
             await _context.Categories.AddAsync(category, cancellationToken);
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task<bool> ExistsByCodeAsync(string code, CancellationToken cancellationToken = default)
+        {
+            var normalized = code.Trim().ToLower();
+            return await _context.Categories.AnyAsync(c => c.Code.ToLower() == normalized, cancellationToken);
         }
     }
 }

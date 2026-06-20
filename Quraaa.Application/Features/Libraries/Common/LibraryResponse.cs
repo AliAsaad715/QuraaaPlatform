@@ -2,7 +2,7 @@ using Quraaa.Domain.Library.Enums;
 
 namespace Quraaa.Application.Features.Libraries.Common
 {
-    public record LibraryResponse(
+    public record UserLibraryResponse(
         Guid Id,
         string LibraryName,
         string Location,
