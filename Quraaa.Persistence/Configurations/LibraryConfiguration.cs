@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Quraaa.Domain.Library;
+using Quraaa.Domain.User;
 
 namespace Quraaa.Persistence.Configurations
 {
@@ -39,6 +40,11 @@ namespace Quraaa.Persistence.Configurations
 
                      builder.Property(l => l.ApprovalStatus)
                             .IsRequired();
+
+                     builder.HasOne<UserAggregate>()
+                            .WithOne()
+                            .HasForeignKey<LibraryAggregate>(l => l.UserId)
+                            .OnDelete(DeleteBehavior.Restrict);
 
                      builder.HasIndex(l => l.UserId)
                             .IsUnique();
