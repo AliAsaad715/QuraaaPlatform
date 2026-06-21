@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
+using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Library;
@@ -38,6 +39,11 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                     throw new NotFoundException("User was not found.");
                 }
 
+                if (await _libraryRepository.ExistsByUserIdAsync(request.UserId))
+                {
+                    throw new DomainException(LibraryErrorCodes.DuplicateLibraryForUser);
+                }
+
                 string? libraryImagePath = null;
                 string? headerImagePath = null;
 
@@ -57,7 +63,15 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                     );
 
                     await _libraryRepository.AddLibraryAsync(library);
-                    await _libraryRepository.SaveChangesAsync();
+                    try
+                    {
+                        await _libraryRepository.SaveChangesAsync();
+                    }
+                    catch (ApplicationBusinessException ex)
+                        when (ex.Message == LibraryErrorCodes.DuplicateLibraryForUser)
+                    {
+                        throw new DomainException(LibraryErrorCodes.DuplicateLibraryForUser);
+                    }
 
                     return new LibraryResponse(
                         library.Id,

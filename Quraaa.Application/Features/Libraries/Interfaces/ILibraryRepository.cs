@@ -4,6 +4,7 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
 {
     public interface ILibraryRepository
     {
+        Task<bool> ExistsByUserIdAsync(Guid userId);
         Task AddLibraryAsync(LibraryAggregate library);
         Task<(IReadOnlyCollection<LibraryAggregate> Items, int TotalCount)> GetPagedAsync(
             int pageNumber,
