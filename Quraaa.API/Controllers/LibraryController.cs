@@ -4,6 +4,8 @@ using Quraaa.API.Requests.Files;
 using Quraaa.API.Requests.Libraries;
 using Quraaa.Application.Features.Libraries.Commands.RegisterLibrary;
 using Quraaa.Application.Features.Libraries.Common;
+using Quraaa.Application.Features.Libraries.Queries.GetLibraries;
+using Quraaa.Application.Shared.Results;
 using System.Security.Claims;
 
 namespace Quraaa.API.Controllers
@@ -38,6 +40,16 @@ namespace Quraaa.API.Controllers
             );
 
             var result = await Mediator.Send(command);
+            return HandleResult(result);
+        }
+
+        [Authorize(Roles = "User")]
+        [HttpGet]
+        [ProducesResponseType(typeof(PagedResult<PublicLibraryResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> GetLibraries([FromQuery] GetLibrariesQuery query)
+        {
+            var result = await Mediator.Send(query);
             return HandleResult(result);
         }
 

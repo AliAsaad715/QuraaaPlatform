@@ -9,6 +9,6 @@ namespace Quraaa.API.Requests.Profiles
         public Gender Gender { get; set; }
         public DateOnly DateOfBirth { get; set; }
         public string? ProfileImageUrl { get; set; }
-        public List<string> Interests { get; set; } = new();
+        public List<Guid> Interests { get; set; } = new();
     }
 }

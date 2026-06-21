@@ -6,6 +6,11 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
     {
         Task<bool> ExistsByUserIdAsync(Guid userId);
         Task AddLibraryAsync(LibraryAggregate library);
+        Task<(IReadOnlyCollection<LibraryAggregate> Items, int TotalCount)> GetPagedAsync(
+            int pageNumber,
+            int pageSize,
+            string? searchTerm,
+            CancellationToken cancellationToken = default);
         Task SaveChangesAsync();
     }
 }

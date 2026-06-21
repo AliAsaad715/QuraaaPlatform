@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Quraaa.Application.Features.Authentication.Interfaces;
+using Quraaa.Application.Features.Categories.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Persistence.Repositories;
 using Quraaa.Persistence.Services;
@@ -16,6 +17,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<ILibraryRepository, LibraryRepository>();
             services.AddScoped<IIdentityService, IdentityService>();
+            services.AddScoped<ICategoryRepository, CategoryRepository>();
 
             return services;
         }

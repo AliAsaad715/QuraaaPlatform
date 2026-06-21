@@ -1,12 +1,16 @@
 using FluentValidation;
-using Quraaa.Domain.User.ValueObjects;
+using Quraaa.Application.Features.Categories.Interfaces;
 
 namespace Quraaa.Application.Features.Profiles.Commands.UpdateProfile
 {
     public class UpdateProfileCommandValidator : AbstractValidator<UpdateProfileCommand>
     {
-        public UpdateProfileCommandValidator()
+        private readonly ICategoryRepository _categoryRepository;
+
+        public UpdateProfileCommandValidator(ICategoryRepository categoryRepository)
         {
+            _categoryRepository = categoryRepository;
+
             RuleFor(x => x.UserId)
                 .NotEmpty().WithMessage("User id is required.");
 
@@ -32,9 +36,10 @@ namespace Quraaa.Application.Features.Profiles.Commands.UpdateProfile
             RuleFor(x => x.Interests)
                 .NotEmpty().WithMessage("You must select at least one interest.");
 
-            RuleForEach(x => x.Interests)
-                .Must(code => Interest.FromCode(code) != null)
-                .WithMessage("Interest code provided is not supported in the system.");
+            // Validate interests exist in the system
+            RuleFor(x => x.Interests)
+                .MustAsync(BeValidCategoryIds)
+                .WithMessage("One or more interest IDs do not exist in the system.");
         }
 
         private bool BeAValidAge(DateOnly dateOfBirth)
@@ -44,6 +49,15 @@ namespace Quraaa.Application.Features.Profiles.Commands.UpdateProfile
             var maxDate = today.AddYears(-5);
 
             return dateOfBirth > minDate && dateOfBirth <= maxDate;
+        }
+
+        private async Task<bool> BeValidCategoryIds(List<Guid> interests, CancellationToken cancellationToken)
+        {
+            if (interests == null || !interests.Any())
+                return true;
+
+            var existingCategories = await _categoryRepository.GetByIdsAsync(interests, cancellationToken);
+            return existingCategories.Count == interests.Count;
         }
     }
 }
