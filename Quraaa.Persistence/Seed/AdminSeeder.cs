@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Quraaa.Domain.User;
 using Quraaa.Domain.User.Enums;
@@ -61,7 +61,7 @@ namespace Quraaa.Persistence.Seed
                 id,
                 firstName: "Quraaa",
                 lastName: "Admin",
-                phoneNumber: "+963987654321",
+                phoneNumber: phoneNumber,
                 passwordHash: passwordHash,
                 gender: Gender.Male,
                 role: Role.Admin,
