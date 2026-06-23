@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
+using Quraaa.Application.Features.Ebooks.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Persistence.Repositories;
 using Quraaa.Persistence.Services;
@@ -18,6 +19,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<ILibraryRepository, LibraryRepository>();
             services.AddScoped<IIdentityService, IdentityService>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
+            services.AddScoped<IEbookRepository, EbookRepository>();
 
             return services;
         }
