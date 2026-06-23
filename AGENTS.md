@@ -2,89 +2,189 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
-For a more beginner-friendly walkthrough, also read `PROJECT_GUIDE.md`.
+## Project Overview
 
-## Project Snapshot
+`QuraaaPlatform` is a layered ASP.NET Core Web API solution targeting **.NET 10.0**. It is the backend for a book marketplace / library platform. The architecture follows a Clean Architecture / vertical-slice hybrid with five projects.
 
-`QuraaaPlatform` is a layered ASP.NET Core Web API solution targeting `.NET 10.0`.
-
-Current implemented business capability:
+Current implemented business capabilities:
 
 - User registration through `POST /api/Auth/register`.
+- User login through `POST /api/Auth/login`.
 - Authenticated password reset through `POST /api/Auth/reset-password`.
 - Unauthenticated forgot-password OTP send through `POST /api/Auth/forgot-password`.
 - Unauthenticated forgot-password OTP verification and password reset through `POST /api/Auth/forgot-password/verify`.
 - Authenticated profile retrieval through `GET /api/Profile/me`.
 - Authenticated profile update through `PUT /api/Profile/me`.
 - Library registration through `POST /api/Library/register`.
+- Public library listing through `GET /api/Library`.
+- Category management through `GET /api/Categories`, `GET /api/Categories/{categoryId}`, and `POST /api/Categories` (admin-only).
 - Standalone OTP send through `POST /api/Otp/send`.
 - Standalone OTP verification through `POST /api/Otp/verify`.
 - Authenticated push notification dispatch through `POST /api/Notifications/send`.
 - Development/test push notification dispatch through `POST /api/Notifications/test`.
-- User security identity is stored through ASP.NET Core Identity.
-- User profile/business data is stored as a domain aggregate in `UsersProfiles`.
-- Library data is stored as a domain aggregate in `Libraries`, linked to a user profile by scalar `UserId`, and created with approval status `Pending`.
-- Each user profile can own at most one library. This is enforced with a unique database index on `Libraries.UserId` plus an application-level duplicate check before library image storage and insert.
-- Registration returns JWT access and refresh tokens.
-- Password reset is JWT-protected and derives the user `UserId` from the access token.
-- Profile retrieval/update is JWT-protected and derives the user `UserId` from the access token.
-- Library registration is JWT-protected and derives the library owner `UserId` from the access token.
-- OTP is currently standalone test infrastructure. It is not yet enforced by registration, login, password reset, or any other business flow.
+
+Domain aggregates already modeled but only partially exposed via HTTP:
+
+- `UserAggregate` — profile/business data for authenticated users.
+- `LibraryAggregate` — library profiles with pending/approved/rejected status.
+- `CategoryAggregate` — book interest categories, seeded at startup.
+- `BookAggregate` — catalog books.
+- `ListingAggregate` — marketplace listings for physical or digital books.
 
 Core technologies:
 
-- ASP.NET Core Web API
+- ASP.NET Core Web API (.NET 10.0)
 - Entity Framework Core with PostgreSQL through Npgsql
-- ASP.NET Core Identity with `Guid` keys
+- ASP.NET Core Identity with `Guid` keys and roles
 - MediatR for commands/handlers
 - FluentValidation for request validation
 - OneOf for application result unions
 - libphonenumber-csharp for international phone validation/formatting
-- Firebase Admin SDK for dispatching OTP requests to a secondary Android SMS gateway app through FCM
+- Firebase Admin SDK for FCM push notifications and OTP SMS gateway data messages
 - `IDistributedCache`, with Redis support for production OTP cache and in-memory cache for local/development fallback
 - DotNetEnv plus environment variables for runtime secrets/configuration
-- Swagger/OpenAPI UI in development
+- OpenAPI 3.0 / Swagger UI in development
 
 ## Repository Layout
 
 ```text
 QuraaaPlatform.slnx
 README.md
-PROJECT_GUIDE.md
 AGENTS.md
 Dockerfile
+Procfile
 check-branch-name.yml
 .github/workflows/check-branch-name.yml
 
 Quraaa.API/
   Program.cs
-  Controllers/
-  Extensions/
-  Properties/launchSettings.json
+  Quraaa.API.csproj
+  Quraaa.API.http
   appsettings.json
   appsettings.Development.json
+  Properties/launchSettings.json
+  Controllers/
+    ApiClientController.cs
+    AuthController.cs
+    CategoriesController.cs
+    LibraryController.cs
+    NotificationsController.cs
+    OtpController.cs
+    ProfileController.cs
+  DesignTime/
+    ApplicationDbContextFactory.cs
+  Extensions/
+    DatabaseExtensions.cs
+    ServiceCollectionExtensions.cs
+    SwaggerExtensions.cs
+  Requests/
+    Authentication/
+    Files/
+    Libraries/
+    Notifications/
+    Otp/
+    Profiles/
+  Services/
+    LibraryImageStorageService.cs
+  storage/firebase/       # Firebase service-account JSON files (ignored by git)
+  wwwroot/uploads/libraries/  # Uploaded library images
 
 Quraaa.Application/
+  Quraaa.Application.csproj
   Extensions/
-  Features/Authentication/
-  Features/Otp/
+    ApplicationPackagesRegisterExtensions.cs
+  Features/
+    Authentication/
+      Commands/Register/
+      Commands/Login/
+      Commands/ResetPassword/
+      Commands/ForgotPassword/
+      Commands/ResetForgotPassword/
+      Common/
+      Interfaces/
+      Helpers/
+    Categories/
+      Commands/CreateCategory/
+      Queries/GetAllCategories/
+      Queries/GetCategoryById/
+      Common/
+      Interfaces/
+    Libraries/
+      Commands/RegisterLibrary/
+      Commands/AddPhysicalBook/
+      Queries/GetLibraries/
+      Common/
+      Interfaces/
+    Notifications/
+      Commands/SendNotification/
+      Commands/SendTestNotification/
+      Common/
+      Interfaces/
+    Otp/
+      Commands/SendOtp/
+      Commands/VerifyOtp/
+      Interfaces/
+    Profiles/
+      Commands/UpdateProfile/
+      Queries/GetMyProfile/
+      Common/
   Shared/
+    Exceptions/
+    Files/
+    Results/
+    Services/
 
 Quraaa.Domain/
+  Quraaa.Domain.csproj
+  Catalog/
+    BookAggregate.cs
+  Category/
+    CategoryAggregate.cs
+  Library/
+    LibraryAggregate.cs
+    Enums/LibraryApprovalStatus.cs
+  Marketplace/
+    ListingAggregate.cs
+    Enums/BookCondition.cs
+    Enums/ListingFormat.cs
+    Enums/ListingStatus.cs
+    Enums/SellerType.cs
   Shared/
+    Entities/
+    Errors/
+    Exceptions/
   User/
+    UserAggregate.cs
+    Entities/Interest.cs
+    Enums/Gender.cs
+    Enums/Role.cs
+    ValueObjects/PaymentMethodInfo.cs
 
 Quraaa.Persistence/
+  Quraaa.Persistence.csproj
   Configurations/
   Data/
+    ApplicationDbContext.cs
+    ApplicationUser.cs
   Extensions/
+    PersistenceDependencyInjectionHandler.cs
   Migrations/
   Repositories/
+  Seed/
   Services/
 
 Quraaa.Infrastructure/
+  Quraaa.Infrastructure.csproj
   Extensions/
+    FirebaseExtensions.cs
+    InfrastructureDependencyInjectionHandler.cs
+  Models/
+    GoogleBookModels.cs
   Services/
+    FirebaseNotificationService.cs
+    FirebaseSmsGateway.cs
+    GoogleBooksService.cs
+    OtpCacheService.cs
 ```
 
 Ignore generated build output:
@@ -96,9 +196,36 @@ Ignore generated build output:
 
 Do not edit generated files under `bin` or `obj`. Treat EF migrations as generated source: create/update them through EF commands unless the user explicitly asks for a manual migration fix.
 
-## Layering And Dependency Rules
+## Technology Stack & Key Dependencies
 
-Project references currently encode this shape:
+Consolidated NuGet packages by project:
+
+| Package                                             | Version | Project(s)                                 |
+| --------------------------------------------------- | ------- | ------------------------------------------ |
+| `DotNetEnv`                                         | 3.2.0   | `Quraaa.API`                               |
+| `Microsoft.AspNetCore.Authentication.JwtBearer`     | 10.0.8  | `Quraaa.API`                               |
+| `Microsoft.AspNetCore.OpenApi`                      | 10.0.2  | `Quraaa.API`                               |
+| `Microsoft.EntityFrameworkCore.Design`              | 10.0.8  | `Quraaa.API`                               |
+| `Swashbuckle.AspNetCore`                            | 10.2.1  | `Quraaa.API`                               |
+| `FluentValidation.DependencyInjectionExtensions`    | 12.1.1  | `Quraaa.Application`                       |
+| `libphonenumber-csharp`                             | 9.0.32  | `Quraaa.Application`                       |
+| `MediatR`                                           | 14.1.0  | `Quraaa.Application`                       |
+| `Microsoft.AspNetCore.Identity.EntityFrameworkCore` | 10.0.8  | `Quraaa.Application`, `Quraaa.Persistence` |
+| `Microsoft.Extensions.DependencyInjection`          | 10.0.8  | `Quraaa.Application`, `Quraaa.Persistence` |
+| `Microsoft.Extensions.Logging`                      | 10.0.8  | `Quraaa.Application`                       |
+| `OneOf`                                             | 3.0.271 | `Quraaa.Application`                       |
+| `FirebaseAdmin`                                     | 3.5.0   | `Quraaa.Infrastructure`                    |
+| `Microsoft.Extensions.Caching.Abstractions`         | 10.0.9  | `Quraaa.Infrastructure`                    |
+| `Microsoft.Extensions.Caching.Memory`               | 10.0.8  | `Quraaa.Infrastructure`                    |
+| `Microsoft.Extensions.Caching.StackExchangeRedis`   | 10.0.8  | `Quraaa.Infrastructure`                    |
+| `Microsoft.EntityFrameworkCore.SqlServer`           | 10.0.8  | `Quraaa.Persistence`                       |
+| `Npgsql.EntityFrameworkCore.PostgreSQL`             | 10.0.2  | `Quraaa.Persistence`                       |
+
+All projects use `ImplicitUsings` and `Nullable` enabled.
+
+## Architecture & Layering Rules
+
+Project references encode this dependency direction:
 
 ```text
 Quraaa.API -> Quraaa.Application
@@ -111,49 +238,50 @@ Quraaa.Infrastructure -> Quraaa.Application
 Quraaa.Domain -> no project references
 ```
 
-Keep this dependency direction:
-
-```text
-API -> Application -> Domain
-API -> Persistence -> Application -> Domain
-API -> Infrastructure -> Application
-Infrastructure -> Application
-```
-
 Layer responsibilities:
 
-- `Quraaa.Domain`: entities, aggregates, value objects, enums, business invariants.
+- `Quraaa.Domain`: entities, aggregates, value objects, enums, business invariants. No HTTP, EF Core, PostgreSQL/Npgsql, Identity, Swagger, or external provider SDK logic belongs here.
 - `Quraaa.Application`: use cases, commands/queries, handlers, validators, interfaces, DTOs, result types.
 - `Quraaa.Persistence`: EF Core `DbContext`, table mapping, migrations, repositories, ASP.NET Identity implementation.
-- `Quraaa.Infrastructure`: future external provider implementations such as email, SMS, payments, files, search, third-party APIs.
+- `Quraaa.Infrastructure`: external provider implementations such as Firebase FCM, Redis caching, and future SMS/payments/files/search integrations.
 - `Quraaa.API`: HTTP controllers, startup, middleware, Swagger, environment configuration.
-
-Do not put HTTP, EF Core, PostgreSQL/Npgsql, Identity, Swagger, or external provider SDK logic in `Quraaa.Domain`.
 
 Do not model aggregate-to-aggregate relationships in EF Core mappings. Across aggregate boundaries, keep the domain model and EF configuration to scalar identity references such as `UserId`. If referential integrity is required between aggregate tables, enforce it as a database concern through migrations or database constraints, not through `HasOne<TAggregate>()`, navigation properties, or tracked aggregate relationships.
 
-The user-to-library ownership rule is one-to-one from user profile to library, but it must still follow the aggregate boundary rule: `LibraryAggregate` stores only scalar `UserId`; `LibraryConfiguration` uses a unique index on `UserId`; the migration may enforce the database FK manually; application code checks for an existing library before creating another one.
+The user-to-library ownership rule is one-to-one from user profile to library, but it still follows the aggregate boundary rule: `LibraryAggregate` stores only scalar `UserId`; `LibraryConfiguration` uses a unique index on `UserId`; the migration enforces the database unique index; application code checks for an existing library before creating another one.
 
-## Runtime Entry Point
+## Build, Run & Test Commands
 
-`Quraaa.API/Program.cs` is the web entry point.
+### Prerequisites
 
-Startup behavior:
+- .NET 10 SDK
+- PostgreSQL server (local or remote)
+- Redis (optional; in-memory cache is allowed in Development via configuration)
+- Firebase service-account credentials (for FCM features; optional for basic HTTP testing)
 
-```text
-DotNetEnv.Env.Load()
-builder.Configuration.AddEnvironmentVariables()
-CreateFirebaseCredentialsFile(builder.Environment.ContentRootPath)
-builder.Services.AddControllers()
-builder.Services.AddDatabaseConfiguration(...)
-builder.Services.AddApplicationServices(...)
-builder.Services.AddSwaggerConfiguration(...)
-builder.Services.AddInfrastructureDependencies(...)
-app.UseSwaggerDashboard() only in Development
-app.UseHttpsRedirection()
-app.UseAuthentication()
-app.UseAuthorization()
-app.MapControllers()
+### Restore packages
+
+```bash
+dotnet restore Quraaa.API/Quraaa.API.csproj
+```
+
+Or restore the solution:
+
+```bash
+dotnet restore QuraaaPlatform.slnx
+```
+
+### Build
+
+```bash
+dotnet build Quraaa.API/Quraaa.API.csproj
+```
+
+### Run locally
+
+```bash
+cd Quraaa.API
+dotnet run
 ```
 
 Development launch URLs:
@@ -163,76 +291,282 @@ http://localhost:5153
 https://localhost:7260
 ```
 
-Swagger/OpenAPI in development:
+Swagger UI in development:
 
 ```text
 /docs
 /openapi/v1.json
 ```
 
-Docker runtime:
+### Entity Framework migrations
 
-- Uses `mcr.microsoft.com/dotnet/sdk:10.0` for build/publish.
-- Uses `mcr.microsoft.com/dotnet/aspnet:10.0` for final runtime.
-- Exposes port `8080`.
-- Sets `ASPNETCORE_URLS=http://+:8080`.
-- Publishes with `/p:UseAppHost=false`; the API project also sets `<UseAppHost>false</UseAppHost>` so local builds do not need to rewrite `apphost.exe`.
+The design-time factory is at `Quraaa.API/DesignTime/ApplicationDbContextFactory.cs`. Run EF commands from the repository root or the `Quraaa.API` directory.
 
-## Configuration
+Add a migration:
 
-`Quraaa.API/appsettings.Development.json` contains the local PostgreSQL connection string:
-
-```text
-ConnectionStrings:DefaultConnection = Host=localhost;Database=QuraaaDb;Username=postgres;Password=<local password>
+```bash
+dotnet ef migrations add MigrationName --project Quraaa.Persistence --startup-project Quraaa.API
 ```
 
-JWT/token generation reads these configuration keys, usually from `.env` or environment variables:
+Update the database:
 
-```text
-JWT_SECRET_KEY
-JWT_ISSUER
-JWT_AUDIENCE
-JWT_DURATION_IN_MINUTES
+```bash
+dotnet ef database update --project Quraaa.Persistence --startup-project Quraaa.API
 ```
 
-`JWT_SECRET_KEY` is required by `IdentityService.GenerateAuthTokensAsync`. If it is missing, token generation throws `InvalidOperationException`.
+Remove the last migration:
 
-Firebase Admin credential resolution:
-
-```text
-Firebase:CredentialsPath
-GOOGLE_APPLICATION_CREDENTIALS
-FIREBASE_CREDENTIALS_JSON
+```bash
+dotnet ef migrations remove --project Quraaa.Persistence --startup-project Quraaa.API
 ```
 
-`Firebase:CredentialsPath` can point to a local Firebase service-account JSON file such as `storage/firebase/quraa.json`. Secret JSON files under `Quraaa.API/storage/firebase/*.json` are ignored by `.gitignore` and must not be committed.
+### Docker
 
-For hosted environments such as Heroku, `Program.cs` reads `FIREBASE_CREDENTIALS_JSON`, validates it as JSON, writes it to `storage/firebase/quraa.json` under the app content root, and sets `GOOGLE_APPLICATION_CREDENTIALS` plus `FIREBASE_CREDENTIALS` to that generated path before Infrastructure initializes Firebase.
+Build and run with Docker:
+
+```bash
+docker build -t quraaa-api .
+docker run -p 8080:8080 --env-file Quraaa.API/.env quraaa-api
+```
+
+The Dockerfile uses:
+
+- Build image: `mcr.microsoft.com/dotnet/sdk:10.0`
+- Runtime image: `mcr.microsoft.com/dotnet/aspnet:10.0`
+- Exposes port `8080`
+- Sets `ASPNETCORE_URLS=http://+:8080`
+- Publishes with `/p:UseAppHost=false`
+
+### Testing
+
+There are currently **no test projects** in the repository. No MSTest, NUnit, or xUnit references exist. Testing is manual via Swagger/UI or an HTTP client. Adding unit and integration tests is a high-value TODO.
+
+## Configuration & Secrets
+
+Configuration is layered in this order:
+
+1. `DotNetEnv.Env.Load()` at startup loads root `.env` and `Quraaa.API/.env` if present.
+2. `builder.Configuration.AddEnvironmentVariables()`
+3. `appsettings.json` and `appsettings.{Environment}.json`
+
+### Required / commonly used configuration keys
+
+| Concern       | Keys                                                                                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL    | `ConnectionStrings:DefaultConnection`                                                                                                         |
+| JWT           | `JWT_SECRET_KEY` (required), `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_DURATION_IN_MINUTES`                                                          |
+| Admin seed    | `ADMIN_PHONE_NUMBER`, `ADMIN_PASSWORD`                                                                                                        |
+| Firebase      | `Firebase:CredentialsPath`, `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_CREDENTIALS_JSON`                                                     |
+| OTP cache     | `REDIS_URL`, `REDIS_TLS_URL`, `Redis:ConnectionString`, `ConnectionStrings:Redis`, `Redis:InstanceName`, `Otp:AllowInMemoryCacheInProduction` |
+| OTP gateway   | `OTP_DEVICE_TOKEN`                                                                                                                            |
+| Notifications | `Notifications:AllowTestEndpoint` / `Notifications__AllowTestEndpoint`                                                                        |
+| Swagger       | `Swagger:ServerUrl`                                                                                                                           |
+
+`JWT_SECRET_KEY` is required by `IdentityService.GenerateAuthTokensAsync` and by `ServiceCollectionExtensions.AddJwtAuthentication`. If it is missing, the application throws `InvalidOperationException` at startup.
+
+Firebase Admin credential resolution order:
+
+1. `GOOGLE_APPLICATION_CREDENTIALS` environment variable
+2. `Firebase:CredentialsPath` config value
+3. Application default credentials
+
+Additionally, `Program.cs` supports `FIREBASE_CREDENTIALS_JSON`: it validates the value as JSON, writes it to `Quraaa.API/storage/firebase/quraa.json`, and sets `GOOGLE_APPLICATION_CREDENTIALS` plus `FIREBASE_CREDENTIALS` to that generated path before Infrastructure initializes Firebase.
 
 OTP cache configuration:
 
-```text
-REDIS_URL
-REDIS_TLS_URL
-Redis:ConnectionString
-ConnectionStrings:Redis
-Redis:InstanceName
-Otp:AllowInMemoryCacheInProduction
+- Redis is preferred when any of `ConnectionStrings:Redis`, `Redis:ConnectionString`, `REDIS_URL`, or `REDIS_TLS_URL` is configured.
+- Heroku-style `redis://...` and `rediss://...` URLs are supported.
+- If Redis is missing, in-memory cache is allowed only in Development or when `Otp:AllowInMemoryCacheInProduction=true`.
+- `Otp:AllowInMemoryCacheInProduction=true` is for temporary testing only; OTPs are lost on dyno/app restart and are not shared across multiple instances.
+
+`OTP_DEVICE_TOKEN` is the FCM registration token for the secondary Android SMS gateway app that has SMS permission. It is server-side configuration and is not accepted in the `POST /api/Otp/send` request body.
+
+Secrets handling:
+
+- `.env` is listed in `.gitignore` and must not be committed.
+- Firebase service-account JSON files under `Quraaa.API/storage/firebase/*.json` are `.gitignore`d and must not be committed.
+- `appsettings.Development.json` currently contains a plaintext local PostgreSQL password. Rotate it for shared environments.
+
+## Database & Migrations
+
+### DbContext
+
+`Quraaa.Persistence/Data/ApplicationDbContext.cs` inherits `IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>` and configures Npgsql PostgreSQL.
+
+DbSets:
+
+- `UsersProfiles` (`UserAggregate`)
+- `Libraries` (`LibraryAggregate`)
+- `Books` (`BookAggregate`)
+- `Listings` (`ListingAggregate`)
+- `Categories` (`CategoryAggregate`)
+
+It applies all `IEntityTypeConfiguration` classes from the Persistence assembly and adds a global query filter for active categories only:
+
+```csharp
+modelBuilder.Entity<CategoryAggregate>().HasQueryFilter(c => c.IsActive == true);
 ```
 
-OTP SMS gateway configuration:
+### Migrations
 
-```text
-OTP_DEVICE_TOKEN
+Located in `Quraaa.Persistence/Migrations/`:
+
+1. `20260608185002_InitialPostgresCreate`
+2. `20260608221526_AddLibraries`
+3. `20260619185145_AddBooksAndListingsAndCategoriesTables`
+4. `20260619195202_FixRelationBetwenInterestsAndCategroies`
+5. `20260619210624_EnforceOneLibraryPerUser`
+6. `20260620152744_DeleteColumnAndFixInterests`
+
+`Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
+
+### Seeders
+
+`Program.cs` runs the following seeders after migrating:
+
+- `CategorySeeder.SeedAsync` — seeds categories if none exist.
+- `AdminSeeder.SeedAsync` — creates an admin user from `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`.
+- `UserSeeder.SeedAsync` — seeds a default user and deterministic library-owner users.
+- `LibrarySeeder.SeedAsync` — seeds libraries linked to the owner users.
+
+## Code Style & Conventions
+
+### Solution organization
+
+- All projects target `net10.0` with `ImplicitUsings` and `Nullable` enabled.
+- Feature folders under `Quraaa.Application/Features/{Feature}/` follow a CQRS/MediatR pattern:
+  - `Commands/{CommandName}/{Command}Command.cs`
+  - `Commands/{CommandName}/{Command}CommandHandler.cs`
+  - `Commands/{CommandName}/{Command}CommandValidator.cs`
+  - `Queries/{QueryName}/{Query}Query.cs`
+  - `Queries/{QueryName}/{Query}QueryHandler.cs`
+  - `Queries/{QueryName}/{Query}QueryValidator.cs`
+  - `Common/` for response DTOs
+  - `Interfaces/` for repository/service abstractions
+
+### Domain conventions
+
+- `Entity` → `AuditableEntity` → `AggregateRoot`
+- Aggregates use private constructors for EF Core and public factories for application code.
+- Business-rule violations throw `DomainException`.
+- Value objects inherit `ValueObjectRoot`.
+- Enums are stored as integers in the database and serialized as strings in JSON via `JsonStringEnumConverter`.
+
+### Validation
+
+- Uses FluentValidation (`AbstractValidator<T>`).
+- Validators are auto-registered via `AddValidatorsFromAssembly`.
+- Handlers inherit `BaseApplicationService<T>` and call `ExecuteAsync(...)` to run validation automatically.
+
+### Result pattern
+
+`Quraaa.Application/Shared/Results/AppResult.cs` uses OneOf:
+
+```csharp
+public class AppResult : OneOfBase<Success, ValidationFailed, NotFound, Forbidden, DomainError>
+public class AppResult<TData> : OneOfBase<TData, ValidationFailed, NotFound, Forbidden, DomainError>
 ```
 
-`OTP_DEVICE_TOKEN` is the FCM registration token for the secondary Android SMS gateway app that has SMS permission. It is server-side configuration and is no longer accepted in the `POST /api/Otp/send` request body.
+`ApiClientController.HandleResult` maps these to HTTP status codes:
 
-`InfrastructureDependencyInjectionHandler` uses Redis for `IDistributedCache` when a Redis URL/connection string is configured. It supports Heroku-style `redis://...` and `rediss://...` URLs. If Redis is missing, in-memory cache is allowed only in Development or when `Otp:AllowInMemoryCacheInProduction=true`. That flag is for temporary testing only; OTPs are lost on dyno/app restart and are not shared across multiple instances.
+- Success → `200 OK`
+- Validation failure → `400 Bad Request`
+- Not found → `404 Not Found`
+- Forbidden → `403 Forbidden`
+- `LibraryErrorCodes.DuplicateLibraryForUser` or `"DUPLICATE_APPLICATION"` → `409 Conflict`
+- Other domain errors → `400 Bad Request`
+
+### User ID extraction from JWT
+
+Controllers repeatedly use this pattern:
+
+```csharp
+var claimValue = User.FindFirstValue(ClaimTypes.NameIdentifier)
+    ?? User.FindFirstValue("nameid")
+    ?? User.FindFirstValue("sub");
+
+Guid.TryParse(claimValue, out var userId)
+```
+
+The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authentication configuration.
+
+### File upload abstraction
+
+`IUploadedFile` in `Quraaa.Application/Shared/Files/IUploadedFile.cs` keeps ASP.NET `IFormFile` out of the Application layer. The API adapter is `FormFileUploadedFile` in `Quraaa.API/Requests/Files/FormFileUploadedFile.cs`.
+
+## Security Considerations
+
+- JWT authentication uses a symmetric signing key from `JWT_SECRET_KEY`. Keep this key secret and rotate it periodically.
+- Passwords are hashed by ASP.NET Core Identity.
+- Phone numbers are used as usernames; emails are synthesized as `{phone}@quraaa.com`.
+- Phone numbers are normalized to E.164 where possible using `libphonenumber-csharp`.
+- The forgot-password endpoint returns a generic success even if the phone number is not registered, to avoid leaking registration status.
+- OTP send and verify endpoints implement rate limiting and failed-attempt lockouts via `IDistributedCache`.
+- Firebase service-account credentials and `.env` secrets must never be committed.
+- `Notifications:AllowTestEndpoint` is enabled in `appsettings.json` and `appsettings.Development.json`. Disable it in production unless you intend to allow unauthenticated test notification dispatch.
+- `Otp:AllowInMemoryCacheInProduction` is set to `true` in `appsettings.json`. This is acceptable only for temporary single-instance testing; production should use Redis.
+- HTTPS redirection and forwarded headers are enabled in the middleware pipeline. Configure `KnownProxies`/`KnownIPNetworks` appropriately if you deploy behind a reverse proxy.
+- The `AdminSeeder` creates an admin user from environment variables on every startup if the user does not already exist. Ensure `ADMIN_PHONE_NUMBER` and `ADMIN_PASSWORD` are strong and kept secret.
+
+## Testing Strategy
+
+There is no automated test suite in the repository. Manual testing workflow:
+
+1. Ensure PostgreSQL is running and `ConnectionStrings:DefaultConnection` is correct.
+2. Ensure `JWT_SECRET_KEY` is set.
+3. Run `dotnet run --project Quraaa.API`.
+4. Open `https://localhost:7260/docs` or `http://localhost:5153/docs`.
+5. Use the Swagger UI or an HTTP client (Postman, curl, etc.) to exercise endpoints.
+6. For OTP/forgot-password flows, configure `OTP_DEVICE_TOKEN` and Firebase credentials.
+
+Recommended additions (TODO):
+
+- Unit tests for validators and domain aggregates.
+- Integration tests for command/query handlers using `WebApplicationFactory`.
+- Repository tests against an in-memory or test-container PostgreSQL database.
+
+## Deployment
+
+### Docker
+
+The multi-stage `Dockerfile` builds the API and runs it on port `8080`. Build with:
+
+```bash
+docker build -t quraaa-api .
+```
+
+Run with environment variables or an `--env-file`:
+
+```bash
+docker run -p 8080:8080 --env-file .env quraaa-api
+```
+
+### Heroku-style deployment
+
+The `Procfile` indicates Heroku-style deployment:
+
+```text
+web: cd Quraaa.API/bin/publish/; dotnet Quraaa.API.dll --urls http://*:$PORT
+```
+
+This expects the API to be pre-published to `Quraaa.API/bin/publish/` and binds to the platform-provided `$PORT`.
+
+### CI/CD
+
+The only GitHub Actions workflow is `.github/workflows/check-branch-name.yml`. It validates pull-request branch names against these patterns:
+
+- `feature/123-description`
+- `fix/123-description`
+- `refactor/123-description`
+- `feature/branch-name`
+- `<name>-patch-<number>`
+- lowercase kebab-case names like `register-library`
+
+There is currently no automated build, test, publish, or deploy workflow.
 
 ## HTTP API Surface
 
-All controllers inherit the base route from `ApiClientController`:
+All controllers inherit from `ApiClientController`:
 
 ```csharp
 [Route("api/[controller]")]
@@ -243,25 +577,26 @@ Current endpoints:
 
 ```text
 POST /api/Auth/register
+POST /api/Auth/login
 POST /api/Auth/reset-password
 POST /api/Auth/forgot-password
 POST /api/Auth/forgot-password/verify
 GET /api/Profile/me
 PUT /api/Profile/me
 POST /api/Library/register
+GET /api/Library
+GET /api/Categories
+GET /api/Categories/{categoryId}
+POST /api/Categories
 POST /api/Otp/send
 POST /api/Otp/verify
 POST /api/Notifications/send
 POST /api/Notifications/test
 ```
 
-Controller:
+### Authentication
 
-```text
-Quraaa.API/Controllers/AuthController.cs
-```
-
-Request body maps directly to `RegisterCommand`:
+`POST /api/Auth/register` request body:
 
 ```json
 {
@@ -282,6 +617,8 @@ Request body maps directly to `RegisterCommand`:
 2 = Female
 ```
 
+`interests` are category codes; each value must match an existing `CategoryAggregate.Code`.
+
 Successful registration response is `AuthResponse`:
 
 ```json
@@ -293,6 +630,17 @@ Successful registration response is `AuthResponse`:
 }
 ```
 
+`POST /api/Auth/login` request body:
+
+```json
+{
+  "phoneNumber": "+9647XXXXXXXXX",
+  "password": "abc123"
+}
+```
+
+Successful login response is also `AuthResponse`.
+
 Password reset request body maps to `ResetPasswordRequest`; the controller creates `ResetPasswordCommand` after reading `UserId` from the authenticated JWT:
 
 ```json
@@ -302,15 +650,29 @@ Password reset request body maps to `ResetPasswordRequest`; the controller creat
 }
 ```
 
-Successful password reset response comes from `HandleResult(AppResult)`:
+Forgot-password request body:
 
 ```json
 {
-  "message": "Operation successful."
+  "phoneNumber": "+9647XXXXXXXXX"
 }
 ```
 
-Profile update request body maps to `UpdateProfileRequest`; the controller creates `UpdateProfileCommand` after reading `UserId` from the authenticated JWT:
+Forgot-password verify request body:
+
+```json
+{
+  "phoneNumber": "+9647XXXXXXXXX",
+  "otpCode": "123456",
+  "newPassword": "newPass123"
+}
+```
+
+### Profile
+
+`GET /api/Profile/me` has no request body. `ProfileController` reads the user id from JWT claims and sends `GetMyProfileQuery`.
+
+`PUT /api/Profile/me` request body maps to `UpdateProfileRequest`:
 
 ```json
 {
@@ -323,18 +685,530 @@ Profile update request body maps to `UpdateProfileRequest`; the controller creat
 }
 ```
 
-`ApiClientController.HandleResult` maps application results to HTTP responses:
+Successful profile responses use `ProfileResponse` and do not expose `PasswordHash`:
 
-- success data -> `200 OK`
-- validation failure -> `400 Bad Request`
-- not found -> `404 Not Found`
-- forbidden -> `403 Forbidden`
-- domain/application business error -> `400 Bad Request`
-- special domain message `DUPLICATE_APPLICATION` -> `409 Conflict`
+```json
+{
+  "userId": "guid",
+  "firstName": "Ali",
+  "lastName": "Hassan",
+  "phoneNumber": "+9647XXXXXXXXX",
+  "gender": 1,
+  "role": 1,
+  "dateOfBirth": "2000-01-01",
+  "profileImageUrl": "/uploads/profiles/user.jpg",
+  "interests": ["science", "history"],
+  "lastLoginDate": null,
+  "previousLoginDate": null,
+  "creationTime": "utc-date-time",
+  "lastModificationTime": "utc-date-time"
+}
+```
 
-There is no custom global exception middleware currently visible in the repository. Unhandled exceptions bubble to ASP.NET Core defaults.
+### Library
 
-## OTP Flow
+`POST /api/Library/register` uses `multipart/form-data`:
+
+```text
+libraryName: Central Library
+location: Baghdad
+libraryImage: uploaded image file
+headerImage: uploaded image file
+email: library@example.com
+```
+
+The request does not accept `userId`; `LibraryController` reads it from the JWT. New libraries are created with `ApprovalStatus = Pending`.
+
+`GET /api/Library` returns a paged list of approved libraries. It accepts `[Authorize(Roles = "User")]` and query parameters for paging through `GetLibrariesQuery`.
+
+### Categories
+
+`GET /api/Categories` returns all active categories.
+
+`GET /api/Categories/{categoryId}` returns a single category.
+
+`POST /api/Categories` is admin-only (`[Authorize(Roles = "Admin")]`) and creates a new category.
+
+### OTP
+
+`POST /api/Otp/send` request body:
+
+```json
+{
+  "phoneNumber": "+9647XXXXXXXXX"
+}
+```
+
+`POST /api/Otp/verify` request body:
+
+```json
+{
+  "phoneNumber": "+9647XXXXXXXXX",
+  "code": "123456"
+}
+```
+
+### Notifications
+
+`POST /api/Notifications/send` request body:
+
+```json
+{
+  "deviceToken": "fcm-registration-token-from-client-app",
+  "title": "Welcome",
+  "body": "Your notification body",
+  "data": {
+    "type": "general"
+  }
+}
+```
+
+`POST /api/Notifications/test` has the same shape (with optional fields) and is allowed anonymously in Development or when `Notifications:AllowTestEndpoint=true`.
+
+## Feature Flows
+
+### Registration Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/AuthController.cs
+Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommand.cs
+Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommandValidator.cs
+Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommandHandler.cs
+Quraaa.Persistence/Services/IdentityService.cs
+Quraaa.Persistence/Repositories/UserRepository.cs
+Quraaa.Domain/User/UserAggregate.cs
+```
+
+Flow:
+
+```text
+HTTP POST /api/Auth/register
+  -> AuthController.Register(command)
+  -> Mediator.Send(command)
+  -> RegisterCommandHandler.Handle(...)
+  -> BaseApplicationService validates RegisterCommand
+  -> IIdentityService.IsPhoneNumberUniqueAsync(phone)
+  -> IIdentityService.CreateUserIdentityAsync(id, phone, password)
+  -> IPhoneService.FormatToE164(phone)
+  -> new UserAggregate(...)
+  -> UserAggregate.AddInterest(...) for each interest category code
+  -> IUserRepository.AddUserAsync(profile)
+  -> IUserRepository.SaveChangesAsync()
+  -> IIdentityService.GenerateAuthTokensAsync(id, phone)
+  -> AuthResponse
+```
+
+Important registration details:
+
+- The same generated `Guid` is used as the ASP.NET Identity user ID and the domain `UserAggregate.Id`.
+- `ApplicationUser.UserName` is the submitted phone number.
+- `ApplicationUser.Email` is synthesized as `{phoneNumber}@quraaa.com`.
+- Email and phone are marked confirmed at registration time.
+- `UserAggregate.PhoneNumber` is formatted to E.164 when possible.
+- `UserAggregate.PasswordHash` stores the Identity password hash.
+- New users receive `Role.User`.
+- Refresh tokens are random 64-byte values encoded as Base64 and saved on the Identity user.
+- Refresh token expiry is set to `DateTime.UtcNow.AddDays(30)`.
+
+### Registration Validation Rules
+
+`RegisterCommandValidator` enforces:
+
+- `FirstName`: required, max 50 characters.
+- `LastName`: required, max 50 characters.
+- `PhoneNumber`: required, must start with `+`, must be valid according to libphonenumber.
+- `Password`: required, at least 6 characters, must contain at least one digit.
+- `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
+- `Gender`: must be a valid enum value.
+- `Interests`: required and not empty.
+- Each interest code must exist as a `CategoryAggregate.Code`.
+
+### Login Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/AuthController.cs
+Quraaa.Application/Features/Authentication/Commands/Login/LoginCommand.cs
+Quraaa.Application/Features/Authentication/Commands/Login/LoginCommandValidator.cs
+Quraaa.Application/Features/Authentication/Commands/Login/LoginCommandHandler.cs
+Quraaa.Persistence/Services/IdentityService.cs
+Quraaa.Persistence/Repositories/UserRepository.cs
+```
+
+Flow:
+
+```text
+HTTP POST /api/Auth/login
+  -> AuthController.Login(command)
+  -> Mediator.Send(command)
+  -> LoginCommandHandler.Handle(...)
+  -> BaseApplicationService validates LoginCommand
+  -> IPhoneService.FormatToE164(phone)
+  -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
+  -> IIdentityService.CheckPasswordAsync(user, password)
+  -> updates last/previous login timestamps on UserAggregate
+  -> IUserRepository.SaveChangesAsync()
+  -> IIdentityService.GenerateAuthTokensAsync(id, phone)
+  -> AuthResponse
+```
+
+### Password Reset Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/AuthController.cs
+Quraaa.API/Requests/Authentication/ResetPasswordRequest.cs
+Quraaa.Application/Features/Authentication/Commands/ResetPassword/ResetPasswordCommand.cs
+Quraaa.Application/Features/Authentication/Commands/ResetPassword/ResetPasswordCommandValidator.cs
+Quraaa.Application/Features/Authentication/Commands/ResetPassword/ResetPasswordCommandHandler.cs
+Quraaa.Application/Features/Authentication/Interfaces/IIdentityService.cs
+Quraaa.Persistence/Services/IdentityService.cs
+Quraaa.Persistence/Repositories/UserRepository.cs
+Quraaa.Domain/User/UserAggregate.cs
+```
+
+Route:
+
+```text
+POST /api/Auth/reset-password
+```
+
+Authentication:
+
+```text
+Authorization: Bearer <access-token>
+```
+
+Validation rules:
+
+- `UserId`: required on the command, sourced from the authenticated JWT rather than the request body.
+- `OldPassword`: required string, min 8 characters, max 64 characters.
+- `NewPassword`: required string, min 8 characters, max 64 characters, must be different from `OldPassword`.
+
+Flow:
+
+```text
+HTTP POST /api/Auth/reset-password
+  -> AuthController.ResetPassword(body request)
+  -> [Authorize] validates JWT bearer token
+  -> AuthController extracts UserId from token claims
+  -> AuthController creates ResetPasswordCommand with token UserId and request passwords
+  -> Mediator.Send(command)
+  -> ResetPasswordCommandHandler.Handle(...)
+  -> BaseApplicationService validates ResetPasswordCommand
+  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
+  -> handler throws NotFoundException if the user profile is null
+  -> IIdentityService.ChangePasswordAsync(userId, oldPassword, newPassword)
+  -> IdentityService uses UserManager.ChangePasswordAsync to verify the old password and update the Identity password hash
+  -> handler converts Identity failures to ApplicationBusinessException
+  -> handler checks the updated hash was returned
+  -> UserAggregate.UpdatePasswordHash(updatedHash, userId)
+  -> IUserRepository.SaveChangesAsync()
+  -> AppResult success
+```
+
+### Forgot Password Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/AuthController.cs
+Quraaa.API/Requests/Authentication/ForgotPasswordRequest.cs
+Quraaa.API/Requests/Authentication/ResetForgotPasswordRequest.cs
+Quraaa.Application/Features/Authentication/Commands/ForgotPassword/ForgotPasswordCommand.cs
+Quraaa.Application/Features/Authentication/Commands/ForgotPassword/ForgotPasswordCommandValidator.cs
+Quraaa.Application/Features/Authentication/Commands/ForgotPassword/ForgotPasswordCommandHandler.cs
+Quraaa.Application/Features/Authentication/Commands/ResetForgotPassword/ResetForgotPasswordCommand.cs
+Quraaa.Application/Features/Authentication/Commands/ResetForgotPassword/ResetForgotPasswordCommandValidator.cs
+Quraaa.Application/Features/Authentication/Commands/ResetForgotPassword/ResetForgotPasswordCommandHandler.cs
+Quraaa.Application/Features/Authentication/Interfaces/IIdentityService.cs
+Quraaa.Application/Features/Authentication/Interfaces/IUserRepository.cs
+Quraaa.Application/Features/Otp/Interfaces/IFirebaseSmsGateway.cs
+Quraaa.Application/Features/Otp/Interfaces/IOtpCacheService.cs
+Quraaa.Persistence/Services/IdentityService.cs
+Quraaa.Persistence/Repositories/UserRepository.cs
+Quraaa.Domain/User/UserAggregate.cs
+```
+
+Routes:
+
+```text
+POST /api/Auth/forgot-password
+POST /api/Auth/forgot-password/verify
+```
+
+Authentication:
+
+```text
+AllowAnonymous
+```
+
+Validation rules:
+
+- `PhoneNumber`: required, must start with `+`, must be valid according to libphonenumber.
+- `SmsGatewayDeviceToken`: required server-side configuration read from `OTP_DEVICE_TOKEN` by `AuthController`; not accepted in the request body.
+- `OtpCode`: required, exactly 6 digits.
+- `NewPassword`: required, min 8 characters, max 64 characters, must contain at least one digit.
+
+Flow:
+
+```text
+HTTP POST /api/Auth/forgot-password
+  -> AuthController.ForgotPassword(body request)
+  -> [AllowAnonymous]
+  -> AuthController reads smsGatewayDeviceToken from OTP_DEVICE_TOKEN
+  -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
+  -> ForgotPasswordCommand(phoneNumber, smsGatewayDeviceToken, clientIp)
+  -> ForgotPasswordCommandHandler.Handle(...)
+  -> BaseApplicationService validates ForgotPasswordCommand
+  -> IPhoneService.FormatToE164(phone)
+  -> IOtpCacheService checks send and verification lockouts
+  -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
+  -> if user is null, records the request lockout and returns generic success without sending an OTP to avoid leaking registration status
+  -> handler generates OTP and stores it in IDistributedCache
+  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp, smsGatewayDeviceToken)
+  -> FirebaseSmsGateway sends an FCM data message to the gateway device token
+
+HTTP POST /api/Auth/forgot-password/verify
+  -> AuthController.VerifyForgotPassword(body request)
+  -> [AllowAnonymous]
+  -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
+  -> ResetForgotPasswordCommand(phoneNumber, otpCode, newPassword, clientIp)
+  -> ResetForgotPasswordCommandHandler.Handle(...)
+  -> BaseApplicationService validates ResetForgotPasswordCommand
+  -> IPhoneService.FormatToE164(phone)
+  -> handler reads OTP from IDistributedCache and verifies with fixed-time comparison
+  -> failed attempts are tracked; 5 failures in 5 minutes trigger a 5-minute lockout
+  -> success clears OTP and verification state
+  -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
+  -> handler throws NotFoundException if the user profile is null
+  -> IIdentityService.ResetPasswordAsync(user.Id, newPassword)
+  -> IdentityService generates a reset token and calls UserManager.ResetPasswordAsync
+  -> handler throws ApplicationBusinessException on Identity errors
+  -> UserAggregate.UpdatePasswordHash(updatedHash, user.Id)
+  -> IUserRepository.SaveChangesAsync()
+  -> AppResult success
+```
+
+### Profile Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/ProfileController.cs
+Quraaa.API/Requests/Profiles/UpdateProfileRequest.cs
+Quraaa.Application/Features/Profiles/Common/ProfileResponse.cs
+Quraaa.Application/Features/Profiles/Queries/GetMyProfile/GetMyProfileQuery.cs
+Quraaa.Application/Features/Profiles/Queries/GetMyProfile/GetMyProfileQueryValidator.cs
+Quraaa.Application/Features/Profiles/Queries/GetMyProfile/GetMyProfileQueryHandler.cs
+Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommand.cs
+Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommandValidator.cs
+Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommandHandler.cs
+Quraaa.Application/Features/Authentication/Interfaces/IUserRepository.cs
+Quraaa.Persistence/Repositories/UserRepository.cs
+Quraaa.Domain/User/UserAggregate.cs
+```
+
+Routes:
+
+```text
+GET /api/Profile/me
+PUT /api/Profile/me
+```
+
+Authentication:
+
+```text
+Authorization: Bearer <access-token>
+```
+
+Validation rules:
+
+- `UserId`: required on the command/query, sourced from the authenticated JWT rather than the request body.
+- `FirstName`: required, max 50 characters.
+- `LastName`: required, max 50 characters.
+- `Gender`: must be a valid enum value.
+- `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
+- `ProfileImageUrl`: optional, max 500 characters.
+- `Interests`: required and not empty.
+- Each interest code must exist as a `CategoryAggregate.Code`.
+
+Read flow:
+
+```text
+HTTP GET /api/Profile/me
+  -> ProfileController.GetMyProfile()
+  -> [Authorize] validates JWT bearer token
+  -> ProfileController extracts UserId from token claims
+  -> ProfileController creates GetMyProfileQuery with token UserId
+  -> Mediator.Send(query)
+  -> GetMyProfileQueryHandler.Handle(...)
+  -> BaseApplicationService validates GetMyProfileQuery
+  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
+  -> handler throws NotFoundException if the user profile is null
+  -> ProfileResponse.FromUser(user)
+  -> ProfileResponse
+```
+
+Update flow:
+
+```text
+HTTP PUT /api/Profile/me
+  -> ProfileController.UpdateMyProfile(body request)
+  -> [Authorize] validates JWT bearer token
+  -> ProfileController extracts UserId from token claims
+  -> ProfileController creates UpdateProfileCommand with token UserId and editable fields
+  -> Mediator.Send(command)
+  -> UpdateProfileCommandHandler.Handle(...)
+  -> BaseApplicationService validates UpdateProfileCommand
+  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
+  -> handler throws NotFoundException if the user profile is null
+  -> UserAggregate.UpdateProfile(...)
+  -> IUserRepository.SaveChangesAsync()
+  -> ProfileResponse
+```
+
+### Library Registration Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/LibraryController.cs
+Quraaa.API/Requests/Files/FormFileUploadedFile.cs
+Quraaa.API/Services/LibraryImageStorageService.cs
+Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommand.cs
+Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommandValidator.cs
+Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommandHandler.cs
+Quraaa.Application/Features/Libraries/Common/LibraryResponse.cs
+Quraaa.Application/Features/Libraries/Interfaces/ILibraryImageStorageService.cs
+Quraaa.Application/Features/Libraries/Interfaces/ILibraryRepository.cs
+Quraaa.Persistence/Repositories/LibraryRepository.cs
+Quraaa.Persistence/Configurations/LibraryConfiguration.cs
+Quraaa.Domain/Library/LibraryAggregate.cs
+```
+
+Route:
+
+```text
+POST /api/Library/register
+```
+
+Authentication:
+
+```text
+Authorization: Bearer <access-token>
+```
+
+Request body:
+
+```text
+Content-Type: multipart/form-data
+
+libraryName: Central Library
+location: Baghdad
+libraryImage: uploaded image file
+headerImage: uploaded image file
+email: library@example.com
+```
+
+The request does not accept `userId`. `LibraryController` reads the user id from JWT claims and sends that value to the application command.
+
+The successful `LibraryResponse` does not expose `UserId`; ownership stays internal and token-derived.
+
+Library ownership is one-to-one: one authenticated user profile can register at most one library. `RegisterLibraryCommandHandler` checks `ILibraryRepository.ExistsByUserIdAsync(userId)` before storing uploaded images. If a library already exists for that user, the handler returns an application business error.
+
+The image fields are uploaded files. `LibraryController` wraps ASP.NET `IFormFile` values in the application-level `IUploadedFile` abstraction. `RegisterLibraryCommandValidator` validates the uploaded files before storage. After validation succeeds, `RegisterLibraryCommandHandler` stores them through `ILibraryImageStorageService`; the API implementation writes files under `wwwroot/uploads/libraries` with generated file names. The database stores the path strings, for example `/uploads/libraries/<generated-name>.jpg`.
+
+The request does not accept approval status. New libraries are always created as `Pending`; future admin logic should transition them to `Approved` or `Rejected`.
+
+Validation rules:
+
+- `LibraryName`: required, max 100 characters.
+- `Location`: required, max 250 characters.
+- `LibraryImage`: required uploaded file, JPG/PNG, max 5 MB.
+- `HeaderImage`: required uploaded file, JPG/PNG, max 5 MB.
+- `Email`: required, valid email format, max 256 characters.
+- `UserId`: required on the command, sourced from the authenticated JWT rather than the form body.
+
+Flow:
+
+```text
+HTTP POST /api/Library/register
+  -> LibraryController.Register(form request)
+  -> [Authorize] validates JWT bearer token
+  -> LibraryController extracts UserId from token claims
+  -> LibraryController wraps form files as IUploadedFile
+  -> LibraryController creates RegisterLibraryCommand with uploaded files and token UserId
+  -> Mediator.Send(command)
+  -> RegisterLibraryCommandHandler.Handle(...)
+  -> BaseApplicationService validates RegisterLibraryCommand
+  -> RegisterLibraryCommandValidator validates image presence, size, extension, and content type
+  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
+  -> handler throws NotFoundException if the user profile is null
+  -> ILibraryRepository.ExistsByUserIdAsync(userId) confirms the user does not already own a library
+  -> handler throws ApplicationBusinessException if a library already exists for the user
+  -> ILibraryImageStorageService.SaveAsync(...) stores images in wwwroot/uploads/libraries
+  -> new LibraryAggregate(...)
+  -> ILibraryRepository.AddLibraryAsync(library)
+  -> ILibraryRepository.SaveChangesAsync()
+  -> handler deletes stored image files if persistence fails
+  -> LibraryResponse
+```
+
+### Library Listing Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/LibraryController.cs
+Quraaa.Application/Features/Libraries/Queries/GetLibraries/GetLibrariesQuery.cs
+Quraaa.Application/Features/Libraries/Queries/GetLibraries/GetLibrariesQueryHandler.cs
+Quraaa.Application/Features/Libraries/Queries/GetLibraries/GetLibrariesQueryValidator.cs
+Quraaa.Application/Features/Libraries/Queries/GetLibraries/PublicLibraryResponse.cs
+Quraaa.Application/Features/Libraries/Interfaces/ILibraryRepository.cs
+Quraaa.Persistence/Repositories/LibraryRepository.cs
+```
+
+Route:
+
+```text
+GET /api/Library
+```
+
+Authentication:
+
+```text
+Authorization: Bearer <access-token>
+[Authorize(Roles = "User")]
+```
+
+Query parameters (paging):
+
+```text
+pageNumber: int (default 1)
+pageSize: int (default 10)
+```
+
+Flow:
+
+```text
+HTTP GET /api/Library
+  -> LibraryController.GetLibraries(query)
+  -> [Authorize(Roles = "User")] validates JWT bearer token and role
+  -> Mediator.Send(query)
+  -> GetLibrariesQueryHandler.Handle(...)
+  -> BaseApplicationService validates GetLibrariesQuery
+  -> ILibraryRepository.GetApprovedLibrariesAsync(pageNumber, pageSize)
+  -> returns PagedResult<PublicLibraryResponse>
+```
+
+Only libraries with `ApprovalStatus = Approved` are returned.
+
+### OTP Flow
 
 Files:
 
@@ -419,7 +1293,7 @@ HTTP POST /api/Otp/verify
   -> success clears OTP state; invalid attempts update failed-attempt counters
 ```
 
-## Notifications Flow
+### Notifications Flow
 
 Files:
 
@@ -493,929 +1367,94 @@ HTTP POST /api/Notifications/test
   -> FirebaseNotificationService sends an FCM notification message to the requested device token
 ```
 
-## Library Registration Flow
+### Categories Flow
 
 Files:
 
 ```text
-Quraaa.API/Controllers/LibraryController.cs
-Quraaa.API/Requests/Files/FormFileUploadedFile.cs
-Quraaa.API/Services/LibraryImageStorageService.cs
-Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommand.cs
-Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommandValidator.cs
-Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommandHandler.cs
-Quraaa.Application/Features/Libraries/Common/LibraryResponse.cs
-Quraaa.Application/Features/Libraries/Interfaces/ILibraryImageStorageService.cs
-Quraaa.Application/Features/Libraries/Interfaces/ILibraryRepository.cs
-Quraaa.Application/Shared/Files/IUploadedFile.cs
-Quraaa.Persistence/Repositories/LibraryRepository.cs
-Quraaa.Persistence/Configurations/LibraryConfiguration.cs
-Quraaa.Domain/Library/LibraryAggregate.cs
-```
-
-Route:
-
-```text
-POST /api/Library/register
-```
-
-Authentication:
-
-```text
-Authorization: Bearer <access-token>
-```
-
-Request body:
-
-```text
-Content-Type: multipart/form-data
-
-libraryName: Central Library
-location: Baghdad
-libraryImage: uploaded image file
-headerImage: uploaded image file
-email: library@example.com
-```
-
-The request no longer accepts `userId`. `LibraryController` reads the user id from JWT claims (`ClaimTypes.NameIdentifier`, `nameid`, or `sub`) and sends that value to the application command.
-
-The successful `LibraryResponse` does not expose `UserId`; ownership stays internal and token-derived.
-
-Library ownership is one-to-one: one authenticated user profile can register at most one library. `RegisterLibraryCommandHandler` checks `ILibraryRepository.ExistsByUserIdAsync(userId)` before storing uploaded images. If a library already exists for that user, the handler returns an application business error.
-
-The image fields are uploaded files. `LibraryController` wraps ASP.NET `IFormFile` values in the application-level `IUploadedFile` abstraction. `RegisterLibraryCommandValidator` validates the uploaded files before storage. After validation succeeds, `RegisterLibraryCommandHandler` stores them through `ILibraryImageStorageService`; the API implementation writes files under `wwwroot/uploads/libraries` with generated file names. The database stores the path strings, for example `/uploads/libraries/<generated-name>.jpg`.
-
-The request does not accept approval status. New libraries are always created as `Pending`; future admin logic should transition them to `Approved` or `Rejected`.
-
-Validation rules:
-
-- `LibraryName`: required, max 100 characters.
-- `Location`: required, max 250 characters.
-- `LibraryImage`: required uploaded file, JPG/PNG, max 5 MB.
-- `HeaderImage`: required uploaded file, JPG/PNG, max 5 MB.
-- `Email`: required, valid email format, max 256 characters.
-- `UserId`: required on the command, sourced from the authenticated JWT rather than the form body.
-
-Flow:
-
-```text
-HTTP POST /api/Library/register
-  -> LibraryController.Register(form request)
-  -> [Authorize] validates JWT bearer token
-  -> LibraryController extracts UserId from token claims
-  -> LibraryController wraps form files as IUploadedFile
-  -> LibraryController creates RegisterLibraryCommand with uploaded files and token UserId
-  -> Mediator.Send(command)
-  -> RegisterLibraryCommandHandler.Handle(...)
-  -> BaseApplicationService validates RegisterLibraryCommand
-  -> RegisterLibraryCommandValidator validates image presence, size, extension, and content type
-  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
-  -> handler throws NotFoundException if the user profile is null
-  -> ILibraryRepository.ExistsByUserIdAsync(userId) confirms the user does not already own a library
-  -> handler throws ApplicationBusinessException if a library already exists for the user
-  -> ILibraryImageStorageService.SaveAsync(...) stores images in wwwroot/uploads/libraries
-  -> new LibraryAggregate(...)
-  -> ILibraryRepository.AddLibraryAsync(library)
-  -> ILibraryRepository.SaveChangesAsync()
-  -> handler deletes stored image files if persistence fails
-  -> LibraryResponse
-```
-
-## Registration Flow
-
-Files:
-
-```text
-Quraaa.API/Controllers/AuthController.cs
-Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommand.cs
-Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommandValidator.cs
-Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommandHandler.cs
-Quraaa.Persistence/Services/IdentityService.cs
-Quraaa.Persistence/Repositories/UserRepository.cs
-Quraaa.Domain/User/UserAggregate.cs
-```
-
-Flow:
-
-```text
-HTTP POST /api/Auth/register
-  -> AuthController.Register(command)
-  -> Mediator.Send(command)
-  -> RegisterCommandHandler.Handle(...)
-  -> BaseApplicationService validates RegisterCommand
-  -> IIdentityService.IsPhoneNumberUniqueAsync(phone)
-  -> IIdentityService.CreateUserIdentityAsync(id, phone, password)
-  -> IPhoneService.FormatToE164(phone)
-  -> new UserAggregate(...)
-  -> UserAggregate.AddInterest(...) for each interest code
-  -> IUserRepository.AddUserAsync(profile)
-  -> IUserRepository.SaveChangesAsync()
-  -> IIdentityService.GenerateAuthTokensAsync(id, phone)
-  -> AuthResponse
-```
-
-Important registration details:
-
-- The same generated `Guid` is used as the ASP.NET Identity user ID and the domain `UserAggregate.Id`.
-- `ApplicationUser.UserName` is the submitted phone number.
-- `ApplicationUser.Email` is synthesized as `{phoneNumber}@quraaa.com`.
-- Email and phone are marked confirmed at registration time.
-- `UserAggregate.PhoneNumber` is formatted to E.164 when possible.
-- `UserAggregate.PasswordHash` stores the Identity password hash.
-- New users receive `Role.User`.
-- Refresh tokens are random 64-byte values encoded as Base64 and saved on the Identity user.
-- Refresh token expiry is set to `DateTime.UtcNow.AddDays(30)`.
-
-## Registration Validation Rules
-
-`RegisterCommandValidator` enforces:
-
-- `FirstName`: required, max 50 characters.
-- `LastName`: required, max 50 characters.
-- `PhoneNumber`: required, must start with `+`, must be valid according to libphonenumber.
-- `Password`: required, at least 6 characters, must contain at least one digit.
-- `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
-- `Gender`: must be a valid enum value.
-- `Interests`: required and not empty.
-- Each interest code must exist in `Interest.FromCode`.
-
-## Password Reset Flow
-
-Files:
-
-```text
-Quraaa.API/Controllers/AuthController.cs
-Quraaa.API/Requests/Authentication/ResetPasswordRequest.cs
-Quraaa.Application/Features/Authentication/Commands/ResetPassword/ResetPasswordCommand.cs
-Quraaa.Application/Features/Authentication/Commands/ResetPassword/ResetPasswordCommandValidator.cs
-Quraaa.Application/Features/Authentication/Commands/ResetPassword/ResetPasswordCommandHandler.cs
-Quraaa.Application/Features/Authentication/Interfaces/IIdentityService.cs
-Quraaa.Persistence/Services/IdentityService.cs
-Quraaa.Persistence/Repositories/UserRepository.cs
-Quraaa.Domain/User/UserAggregate.cs
-```
-
-Route:
-
-```text
-POST /api/Auth/reset-password
-```
-
-Authentication:
-
-```text
-Authorization: Bearer <access-token>
-```
-
-Request body maps to `ResetPasswordRequest`:
-
-```json
-{
-  "oldPassword": "oldPass123",
-  "newPassword": "newPass123"
-}
-```
-
-The request does not accept `userId`. `AuthController` reads the user id from JWT claims (`ClaimTypes.NameIdentifier`, `nameid`, or `sub`) and sends that value to the application command.
-
-Validation rules:
-
-- `UserId`: required on the command, sourced from the authenticated JWT rather than the request body.
-- `OldPassword`: required string, min 8 characters, max 64 characters.
-- `NewPassword`: required string, min 8 characters, max 64 characters, must be different from `OldPassword`.
-
-Flow:
-
-```text
-HTTP POST /api/Auth/reset-password
-  -> AuthController.ResetPassword(body request)
-  -> [Authorize] validates JWT bearer token
-  -> AuthController extracts UserId from token claims
-  -> AuthController creates ResetPasswordCommand with token UserId and request passwords
-  -> Mediator.Send(command)
-  -> ResetPasswordCommandHandler.Handle(...)
-  -> BaseApplicationService validates ResetPasswordCommand
-  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
-  -> handler throws NotFoundException if the user profile is null
-  -> IIdentityService.ChangePasswordAsync(userId, oldPassword, newPassword)
-  -> IdentityService uses UserManager.ChangePasswordAsync to verify the old password and update the Identity password hash
-  -> handler converts Identity failures to ApplicationBusinessException
-  -> handler checks the updated hash was returned
-  -> UserAggregate.UpdatePasswordHash(updatedHash, userId)
-  -> IUserRepository.SaveChangesAsync()
-  -> AppResult success
-```
-
-## Forgot Password Flow
-
-Files:
-
-```text
-Quraaa.API/Controllers/AuthController.cs
-Quraaa.API/Requests/Authentication/ForgotPasswordRequest.cs
-Quraaa.API/Requests/Authentication/ResetForgotPasswordRequest.cs
-Quraaa.Application/Features/Authentication/Commands/ForgotPassword/ForgotPasswordCommand.cs
-Quraaa.Application/Features/Authentication/Commands/ForgotPassword/ForgotPasswordCommandValidator.cs
-Quraaa.Application/Features/Authentication/Commands/ForgotPassword/ForgotPasswordCommandHandler.cs
-Quraaa.Application/Features/Authentication/Commands/ResetForgotPassword/ResetForgotPasswordCommand.cs
-Quraaa.Application/Features/Authentication/Commands/ResetForgotPassword/ResetForgotPasswordCommandValidator.cs
-Quraaa.Application/Features/Authentication/Commands/ResetForgotPassword/ResetForgotPasswordCommandHandler.cs
-Quraaa.Application/Features/Authentication/Interfaces/IIdentityService.cs
-Quraaa.Application/Features/Authentication/Interfaces/IUserRepository.cs
-Quraaa.Application/Features/Otp/Interfaces/IFirebaseSmsGateway.cs
-Quraaa.Application/Features/Otp/Interfaces/IOtpCacheService.cs
-Quraaa.Persistence/Services/IdentityService.cs
-Quraaa.Persistence/Repositories/UserRepository.cs
-Quraaa.Domain/User/UserAggregate.cs
+Quraaa.API/Controllers/CategoriesController.cs
+Quraaa.Application/Features/Categories/Commands/CreateCategory/
+Quraaa.Application/Features/Categories/Queries/GetAllCategories/
+Quraaa.Application/Features/Categories/Queries/GetCategoryById/
+Quraaa.Application/Features/Categories/Common/CategoryResponse.cs
+Quraaa.Application/Features/Categories/Interfaces/ICategoryRepository.cs
+Quraaa.Persistence/Repositories/CategoryRepository.cs
+Quraaa.Persistence/Configurations/CategoryConfiguration.cs
+Quraaa.Persistence/Seed/CategorySeeder.cs
+Quraaa.Domain/Category/CategoryAggregate.cs
 ```
 
 Routes:
 
 ```text
-POST /api/Auth/forgot-password
-POST /api/Auth/forgot-password/verify
+GET /api/Categories
+GET /api/Categories/{categoryId}
+POST /api/Categories
 ```
 
 Authentication:
 
 ```text
-AllowAnonymous
+GET /api/Categories -> AllowAnonymous
+GET /api/Categories/{categoryId} -> AllowAnonymous
+POST /api/Categories -> Authorization: Bearer <admin-access-token>
 ```
 
-`POST /api/Auth/forgot-password` request body:
+`POST /api/Categories` requires the `Admin` role.
 
-```json
-{
-  "phoneNumber": "+9647XXXXXXXXX"
-}
-```
+The `CategoryAggregate` model includes:
 
-`POST /api/Auth/forgot-password/verify` request body:
-
-```json
-{
-  "phoneNumber": "+9647XXXXXXXXX",
-  "otpCode": "123456",
-  "newPassword": "newPass123"
-}
-```
-
-Validation rules:
-
-- `PhoneNumber`: required, must start with `+`, must be valid according to libphonenumber.
-- `SmsGatewayDeviceToken`: required server-side configuration read from `OTP_DEVICE_TOKEN` by `AuthController`; not accepted in the request body.
-- `OtpCode`: required, exactly 6 digits.
-- `NewPassword`: required, min 8 characters, max 64 characters, must contain at least one digit.
+- `Code` — unique string code used as an interest identifier during registration/profile update.
+- `NameAr` — Arabic name.
+- `NameEn` — English name.
+- `ParentCategoryId` — optional parent category.
+- `IsActive` — soft-active flag; inactive categories are filtered from `GET` queries globally.
 
 Flow:
 
 ```text
-HTTP POST /api/Auth/forgot-password
-  -> AuthController.ForgotPassword(body request)
-  -> [AllowAnonymous]
-  -> AuthController reads smsGatewayDeviceToken from OTP_DEVICE_TOKEN
-  -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
-  -> ForgotPasswordCommand(phoneNumber, smsGatewayDeviceToken, clientIp)
-  -> ForgotPasswordCommandHandler.Handle(...)
-  -> BaseApplicationService validates ForgotPasswordCommand
-  -> IPhoneService.FormatToE164(phone)
-  -> IOtpCacheService checks send and verification lockouts
-  -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
-  -> if user is null, records the request lockout and returns generic success without sending an OTP to avoid leaking registration status
-  -> handler generates OTP and stores it in IDistributedCache
-  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp, smsGatewayDeviceToken)
-  -> FirebaseSmsGateway sends an FCM data message to the gateway device token
+HTTP GET /api/Categories
+  -> CategoriesController.GetAllCategories()
+  -> GetAllCategoriesQuery
+  -> GetAllCategoriesQueryHandler
+  -> ICategoryRepository.GetAllAsync()
+  -> List<CategoryResponse>
 
-HTTP POST /api/Auth/forgot-password/verify
-  -> AuthController.VerifyForgotPassword(body request)
-  -> [AllowAnonymous]
-  -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
-  -> ResetForgotPasswordCommand(phoneNumber, otpCode, newPassword, clientIp)
-  -> ResetForgotPasswordCommandHandler.Handle(...)
-  -> BaseApplicationService validates ResetForgotPasswordCommand
-  -> IPhoneService.FormatToE164(phone)
-  -> handler reads OTP from IDistributedCache and verifies with fixed-time comparison
-  -> failed attempts are tracked; 5 failures in 5 minutes trigger a 5-minute lockout
-  -> success clears OTP and verification state
-  -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
-  -> handler throws NotFoundException if the user profile is null
-  -> IIdentityService.ResetPasswordAsync(user.Id, newPassword)
-  -> IdentityService generates a reset token and calls UserManager.ResetPasswordAsync
-  -> handler throws ApplicationBusinessException on Identity errors
-  -> UserAggregate.UpdatePasswordHash(updatedHash, user.Id)
-  -> IUserRepository.SaveChangesAsync()
-  -> AppResult success
+HTTP GET /api/Categories/{categoryId}
+  -> CategoriesController.GetCategoryById(categoryId)
+  -> GetCategoryByIdQuery(categoryId)
+  -> GetCategoryByIdQueryHandler
+  -> ICategoryRepository.GetByIdAsync(categoryId)
+  -> CategoryResponse or NotFound
+
+HTTP POST /api/Categories
+  -> CategoriesController.CreateCategory(request)
+  -> [Authorize(Roles = "Admin")]
+  -> CreateCategoryCommand(...)
+  -> CreateCategoryCommandHandler
+  -> ICategoryRepository.AddAsync(category)
+  -> CategoryResponse
 ```
 
-## Profile Flow
-
-Files:
-
-```text
-Quraaa.API/Controllers/ProfileController.cs
-Quraaa.API/Requests/Profiles/UpdateProfileRequest.cs
-Quraaa.Application/Features/Profiles/Common/ProfileResponse.cs
-Quraaa.Application/Features/Profiles/Queries/GetMyProfile/GetMyProfileQuery.cs
-Quraaa.Application/Features/Profiles/Queries/GetMyProfile/GetMyProfileQueryValidator.cs
-Quraaa.Application/Features/Profiles/Queries/GetMyProfile/GetMyProfileQueryHandler.cs
-Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommand.cs
-Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommandValidator.cs
-Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommandHandler.cs
-Quraaa.Application/Features/Authentication/Interfaces/IUserRepository.cs
-Quraaa.Persistence/Repositories/UserRepository.cs
-Quraaa.Domain/User/UserAggregate.cs
-```
-
-Routes:
-
-```text
-GET /api/Profile/me
-PUT /api/Profile/me
-```
-
-Authentication:
-
-```text
-Authorization: Bearer <access-token>
-```
-
-`GET /api/Profile/me` has no request body. `ProfileController` reads the user id from JWT claims (`ClaimTypes.NameIdentifier`, `nameid`, or `sub`) and sends `GetMyProfileQuery`.
-
-`PUT /api/Profile/me` request body maps to `UpdateProfileRequest`:
-
-```json
-{
-  "firstName": "Ali",
-  "lastName": "Hassan",
-  "gender": 1,
-  "dateOfBirth": "2000-01-01",
-  "profileImageUrl": "/uploads/profiles/user.jpg",
-  "interests": ["science", "history"]
-}
-```
-
-The update request does not accept `userId`, `phoneNumber`, `password`, `passwordHash`, or `role`. User identity comes from the JWT. Phone and password changes require separate Identity-aware flows.
-
-Successful profile responses use `ProfileResponse` and do not expose `PasswordHash`:
-
-```json
-{
-  "userId": "guid",
-  "firstName": "Ali",
-  "lastName": "Hassan",
-  "phoneNumber": "+9647XXXXXXXXX",
-  "gender": 1,
-  "role": 1,
-  "dateOfBirth": "2000-01-01",
-  "profileImageUrl": "/uploads/profiles/user.jpg",
-  "interests": ["science", "history"],
-  "lastLoginDate": null,
-  "previousLoginDate": null,
-  "creationTime": "utc-date-time",
-  "lastModificationTime": "utc-date-time"
-}
-```
-
-Validation rules:
-
-- `UserId`: required on the command/query, sourced from the authenticated JWT rather than the request body.
-- `FirstName`: required, max 50 characters.
-- `LastName`: required, max 50 characters.
-- `Gender`: must be a valid enum value.
-- `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
-- `ProfileImageUrl`: optional, max 500 characters.
-- `Interests`: required and not empty.
-- Each interest code must exist in `Interest.FromCode`.
-
-Read flow:
-
-```text
-HTTP GET /api/Profile/me
-  -> ProfileController.GetMyProfile()
-  -> [Authorize] validates JWT bearer token
-  -> ProfileController extracts UserId from token claims
-  -> ProfileController creates GetMyProfileQuery with token UserId
-  -> Mediator.Send(query)
-  -> GetMyProfileQueryHandler.Handle(...)
-  -> BaseApplicationService validates GetMyProfileQuery
-  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
-  -> handler throws NotFoundException if the user profile is null
-  -> ProfileResponse.FromUser(user)
-  -> ProfileResponse
-```
-
-Update flow:
-
-```text
-HTTP PUT /api/Profile/me
-  -> ProfileController.UpdateMyProfile(body request)
-  -> [Authorize] validates JWT bearer token
-  -> ProfileController extracts UserId from token claims
-  -> ProfileController creates UpdateProfileCommand with token UserId and editable fields
-  -> Mediator.Send(command)
-  -> UpdateProfileCommandHandler.Handle(...)
-  -> BaseApplicationService validates UpdateProfileCommand
-  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
-  -> handler throws NotFoundException if the user profile is null
-  -> UserAggregate.UpdateProfile(...)
-  -> IUserRepository.SaveChangesAsync()
-  -> ProfileResponse.FromUser(user)
-  -> ProfileResponse
-```
-
-## Domain Model
-
-Main aggregate:
-
-```text
-Quraaa.Domain/User/UserAggregate.cs
-```
-
-Properties:
-
-```text
-Id: Guid
-FirstName: string
-LastName: string
-PhoneNumber: string
-PasswordHash: string
-Gender: Gender
-Role: Role
-DateOfBirth: DateOnly
-ProfileImageUrl: string?
-LastLoginDate: DateTime?
-PreviousLoginDate: DateTime?
-PaymentMethod: PaymentMethodInfo?
-Interests: IReadOnlyCollection<string>
-CreationTime: DateTime
-LastModificationTime: DateTime?
-LastModifiedBy: Guid?
-IsDeleted: bool
-DeleationTime: DateTime?
-DeletedBy: Guid?
-DomainEvents: IReadOnlyCollection<IDomainEvents>
-```
-
-Business behavior:
-
-- `AddInterest(string interestCode)` validates against domain interest constants and deduplicates by normalized code.
-- `UpdateProfile(...)` updates editable profile fields, replaces interests with validated domain interest codes, and updates audit metadata.
-- `UpdatePasswordHash(string passwordHash, Guid modifiedBy)` updates the profile copy of the Identity password hash and audit metadata after a successful Identity password change.
-- `LinkPaymentMethod(string customerId, string brand, string lastFour)` creates `PaymentMethodInfo`.
-- `Delete(Guid deletedBy)` marks the aggregate as soft-deleted.
-- `UpdateAudit(Guid modifiedBy)` updates last modified metadata.
-
-Current enums:
-
-```text
-Gender.Male = 1
-Gender.Female = 2
-Role.User = 1
-Role.Admin = 2
-```
-
-Current allowed interest codes:
-
-```text
-space_science
-geography
-history
-encyclopedias
-patrols
-culture
-science
-novels
-policy
-dictionary
-education
-technology
-art
-literature
-other
-```
-
-`Interest` also stores Arabic and English display names, but only interest codes are persisted on the user profile.
-
-## Database Model
-
-Main context:
-
-```text
-Quraaa.Persistence/Data/ApplicationDbContext.cs
-```
-
-The context inherits:
-
-```csharp
-IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
-```
-
-It includes:
-
-```csharp
-DbSet<UserAggregate> UsersProfiles
-DbSet<LibraryAggregate> Libraries
-```
-
-Identity tables from ASP.NET Core Identity include:
-
-```text
-AspNetUsers
-AspNetRoles
-AspNetRoleClaims
-AspNetUserClaims
-AspNetUserLogins
-AspNetUserRoles
-AspNetUserTokens
-```
-
-Custom Identity user:
-
-```text
-Quraaa.Persistence/Data/ApplicationUser.cs
-```
-
-Adds:
-
-```text
-RefreshToken: string?
-RefreshTokenExpiryTime: DateTime
-```
-
-Domain profile table:
-
-```text
-UsersProfiles
-```
-
-Library table:
-
-```text
-Libraries
-```
-
-Library columns:
-
-```text
-Id uuid not null primary key
-LibraryName character varying(100) not null
-Location character varying(250) not null
-LibraryImage character varying(500) not null
-HeaderImage character varying(500) not null
-Email character varying(256) not null
-UserId uuid not null FK to UsersProfiles.Id, unique owner reference
-ApprovalStatus integer not null
-CreationTime timestamp with time zone not null
-LastModificationTime timestamp with time zone null
-LastModifiedBy uuid null
-IsDeleted boolean not null
-DeleationTime timestamp with time zone null
-DeletedBy uuid null
-```
-
-Important mapping:
-
-- `UsersProfiles.Id` is the primary key.
-- `UsersProfiles.Id` is also a foreign key to `AspNetUsers.Id`.
-- Delete behavior is cascade from `AspNetUsers` to `UsersProfiles`.
-- `Id` uses `ValueGeneratedNever`; the application generates the `Guid`.
-- `FirstName` and `LastName` max length 50 and required.
-- `PhoneNumber` max length 20 and required.
-- `DateOfBirth` is required.
-- `Gender` and `Role` are stored as integers.
-- `Interests` is serialized to JSON text in a `character varying(500)` column.
-- `PaymentMethodInfo` is owned by `UserAggregate` and stored in the same `UsersProfiles` table.
-- `Libraries.UserId` is a scalar aggregate identity reference, not an EF aggregate navigation.
-- `Libraries.UserId` has a unique index (`IX_Libraries_UserId`) to enforce one library per user profile.
-- The `Libraries.UserId` foreign key to `UsersProfiles.Id` is a database constraint created in the migration, not an EF `HasOne<UserAggregate>()` relationship.
-
-Custom profile columns from current migrations/mapping:
-
-```text
-Id uuid not null primary key / FK to AspNetUsers.Id
-FirstName character varying(50) not null
-LastName character varying(50) not null
-PhoneNumber character varying(20) not null
-PasswordHash text not null
-Gender integer not null
-Role integer not null
-DateOfBirth date not null
-ProfileImageUrl text null
-LastLoginDate timestamp with time zone null
-PreviousLoginDate timestamp with time zone null
-Interests character varying(500) not null
-PaymentCustomerId character varying(100) null
-PaymentCardBrand character varying(20) null
-PaymentLastFourDigits character varying(4) null
-CreationTime timestamp with time zone not null
-LastModificationTime timestamp with time zone null
-LastModifiedBy uuid null
-IsDeleted boolean not null
-DeleationTime timestamp with time zone null
-DeletedBy uuid null
-```
-
-Current migrations:
-
-```text
-20260608185002_InitialPostgresCreate
-20260608221526_AddLibraries
-```
-
-Watch item: `ApplicationDbContextModelSnapshot.cs` should normally reflect the latest model. If migrations behave unexpectedly, inspect and regenerate the snapshot through normal EF tooling.
-
-## Persistence And Identity Services
-
-Registered in:
-
-```text
-Quraaa.Persistence/Extensions/PersistenceDependencyInjectionHandler.cs
-```
-
-Current registrations:
-
-```text
-IUserRepository -> UserRepository
-ILibraryRepository -> LibraryRepository
-IIdentityService -> IdentityService
-```
-
-`UserRepository` implements add, lookup by ID, lookup by phone number, and save changes. Lookup methods return `null` when no active user profile is found. Handlers that require a user profile should check for `null` and throw `NotFoundException` themselves so application behavior is explicit at the use-case boundary.
-
-`LibraryRepository` implements add and save changes for `LibraryAggregate`.
-
-`IdentityService` currently implements:
-
-```text
-IsPhoneNumberUniqueAsync(string phoneNumber)
-CreateUserIdentityAsync(Guid id, string phoneNumber, string password)
-ChangePasswordAsync(Guid userId, string oldPassword, string newPassword)
-GenerateAuthTokensAsync(Guid userId, string phoneNumber)
-```
-
-Phone uniqueness uses `UserManager.FindByNameAsync(phoneNumber)`, so it checks the Identity username, not `UsersProfiles.PhoneNumber` directly.
-
-Password changes use `UserManager.ChangePasswordAsync`, so the old password check and configured ASP.NET Identity password rules are enforced by Identity. After a successful change, the handler updates `UsersProfiles.PasswordHash` through `UserAggregate.UpdatePasswordHash(...)`.
-
-## Application Result Pattern
-
-Result types live in:
-
-```text
-Quraaa.Application/Shared/Results/
-```
-
-`AppResult` can contain:
-
-```text
-Success
-ValidationFailed
-NotFound
-Forbidden
-DomainError
-```
-
-`AppResult<TData>` can contain:
-
-```text
-TData
-ValidationFailed
-NotFound
-Forbidden
-DomainError
-```
-
-`BaseApplicationService<TService>` wraps use case execution:
-
-- resolves and runs `IValidator<TRequest>` when available
-- logs validation failures
-- converts `NotFoundException` to `Result.NotFound`
-- converts domain exceptions to `Result.DomainError`
-- converts `ApplicationBusinessException` to `Result.DomainError`
-- converts `UnauthorizedAccessException` to `Result.Forbidden`
-- rethrows unexpected exceptions
-
-When adding new handlers, prefer returning `AppResult` or `AppResult<T>` and use the existing `ExecuteAsync` helpers unless a local pattern says otherwise.
-
-## Dependency Injection
-
-API-level composition:
-
-```text
-Quraaa.API/Extensions/ServiceCollectionExtensions.cs
-```
-
-Currently registers API-owned application integrations:
-
-- JWT bearer authentication and authorization using `JWT_SECRET_KEY`, `JWT_ISSUER`, and `JWT_AUDIENCE`.
-- `ILibraryImageStorageService -> LibraryImageStorageService`.
-
-Application registrations:
-
-```text
-Quraaa.Application/Extensions/ApplicationPackagesRegisterExtensions.cs
-```
-
-Currently registers:
-
-- FluentValidation validators from the application assembly.
-- MediatR handlers from the application assembly.
-- `IPhoneService -> PhoneService`.
-
-Infrastructure registrations:
-
-```text
-Quraaa.Infrastructure/Extensions/InfrastructureDependencyInjectionHandler.cs
-```
-
-Currently:
-
-- initializes Firebase Admin through `FirebaseExtensions`
-- registers `IDistributedCache` as Redis when Redis config exists
-- registers `IDistributedCache` as in-memory only for development or explicit temporary production fallback
-- registers `IOtpCacheService -> OtpCacheService`
-- registers `IFirebaseSmsGateway -> FirebaseSmsGateway`
-- registers `IFirebaseNotificationService -> FirebaseNotificationService`
-
-Notification test endpoint configuration:
-
-```text
-Notifications:AllowTestEndpoint
-Notifications__AllowTestEndpoint
-```
-
-`Quraaa.API/appsettings.Development.json` enables the test endpoint for local development. `Quraaa.API/appsettings.json` disables it by default for non-development environments.
-
-Persistence registrations:
-
-```text
-Quraaa.Persistence/Extensions/PersistenceDependencyInjectionHandler.cs
-```
-
-Database/Identity registrations:
-
-```text
-Quraaa.API/Extensions/DatabaseExtensions.cs
-```
-
-Currently:
-
-- adds `ApplicationDbContext` with PostgreSQL through `UseNpgsql`
-- adds Identity Core for `ApplicationUser`
-- sets `RequireUniqueEmail = false`
-- allows standard username characters
-- adds EF Identity stores
-
-## Naming And Current Quirks
-
-Known quirks to respect or fix intentionally:
-
-- `PhoneService.cs` is under `Quraaa.Application/Features/Authentication/Helpers`, but its namespace is `IdentityServer.Helpers`. Existing code imports that namespace. Do not copy this namespace into new unrelated code.
-- `AggregateRoot.DeleationTime` is misspelled. The database column also uses `DeleationTime`. Renaming it requires a coordinated migration.
-- `ApplicationPackagesRegisterExtensions` creates an unused local `assembly` variable.
-- `RegisterCommand.cs` has no namespace declaration while related files do. This works only because consumers reference the global type. Adding a namespace is a breaking cleanup unless all references are updated.
-- `Quraaa.Infrastructure` currently contains Firebase/OTP cache implementations. Keep future external provider SDK usage in Infrastructure rather than Domain.
-- `check-branch-name.yml` exists both at root and under `.github/workflows`; the GitHub workflow version is the active workflow.
-
-## Common Change Patterns
-
-Adding a new feature usually follows this order:
-
-```text
-1. Domain
-   Add or update entities, value objects, enums, and invariant methods.
-
-2. Application
-   Add command/query, validator, handler, response DTO, and interfaces.
-
-3. Persistence
-   Implement interfaces, update EF configuration, update migrations if schema changes.
-
-4. API
-   Add controller endpoint and request/response mapping.
-
-5. Verification
-   Build, run targeted tests if available, and manually check Swagger/API behavior if needed.
-```
-
-Adding a new authentication use case:
-
-```text
-Quraaa.Application/Features/Authentication/Commands/<UseCase>/
-Quraaa.Application/Features/Authentication/Common/
-Quraaa.Application/Features/Authentication/Interfaces/IIdentityService.cs
-Quraaa.Persistence/Services/IdentityService.cs
-Quraaa.API/Controllers/AuthController.cs
-```
-
-Adding a new user profile field:
-
-```text
-Quraaa.Domain/User/UserAggregate.cs
-Quraaa.Persistence/Configurations/UserConfiguration.cs
-Quraaa.Persistence/Migrations/
-Application command/query DTOs
-API controller/request/response models if exposed
-```
-
-Adding external provider behavior:
-
-```text
-1. Define an interface in Quraaa.Application.
-2. Implement the interface in Quraaa.Infrastructure.
-3. Register the implementation in dependency injection.
-4. Keep provider SDK objects out of Quraaa.Domain.
-```
-
-## Useful Commands
-
-Build solution:
-
-```bash
-dotnet build QuraaaPlatform.slnx
-```
-
-Build API with an external artifacts directory when local `bin`/`obj` files are locked by Windows:
-
-```bash
-dotnet build Quraaa.API/Quraaa.API.csproj --artifacts-path <temp-artifacts-path>
-```
-
-Run API:
-
-```bash
-dotnet run --project Quraaa.API
-```
-
-Run HTTP launch profile:
-
-```bash
-dotnet run --project Quraaa.API --launch-profile http
-```
-
-Create EF migration:
-
-```bash
-dotnet ef migrations add MigrationName --project Quraaa.Persistence --startup-project Quraaa.API
-```
-
-Apply EF migrations:
-
-```bash
-dotnet ef database update --project Quraaa.Persistence --startup-project Quraaa.API
-```
-
-Build Docker image:
-
-```bash
-docker build -t quraaa-api .
-```
-
-Run Docker image:
-
-```bash
-docker run -p 8080:8080 quraaa-api
-```
-
-Useful Heroku config keys for OTP/Firebase:
-
-```bash
-heroku config:set FIREBASE_CREDENTIALS_JSON='<service-account-json>' -a <app-name>
-heroku config:set OTP_DEVICE_TOKEN='<sms-gateway-fcm-registration-token>' -a <app-name>
-heroku config:set REDIS_URL='<redis-or-rediss-url>' -a <app-name>
-heroku config:set Otp__AllowInMemoryCacheInProduction=true -a <app-name>
-```
-
-Use `Otp__AllowInMemoryCacheInProduction=true` only as a short-lived testing workaround when Redis is unavailable.
-
-## Agent Editing Rules
-
-When working in this repository:
-
-- Read relevant files before changing behavior.
-- Keep the existing layered architecture.
-- Prefer existing patterns: MediatR handlers, FluentValidation validators, `AppResult<T>`, repository/service interfaces.
-- Do not edit `bin` or `obj`.
-- Do not introduce domain dependencies on API, EF Core, Identity, PostgreSQL/Npgsql, or provider SDKs.
-- Do not add EF Core relationships between separate aggregate roots. Use scalar IDs in aggregate mappings; put any cross-aggregate FK constraint in the database migration layer.
-- Preserve the one-library-per-user rule with the unique `Libraries.UserId` index and application duplicate check; do not implement it with EF navigation properties or `HasOne<UserAggregate>()`.
-- Do not add unrelated refactors while implementing a feature.
-- If changing schema, update EF configuration and create/check migrations.
-- If changing API behavior, update controller response metadata where appropriate.
-- If adding a handler, ensure its validator and DI dependencies are registered through the existing assembly scanning or DI extension methods.
-- If adding JWT-protected endpoints, use `[Authorize]` and the configured JWT bearer authentication in `Quraaa.API/Extensions/ServiceCollectionExtensions.cs`.
-
-## Current High-Value TODOs
-
-These are known incomplete or risky areas based on the current code:
-
-- Add admin review endpoints to approve/reject pending libraries.
-- Ensure public library listing/search endpoints only expose approved libraries.
-- Add login, refresh-token, and logout/revoke-token flows.
-- Integrate OTP verification into the intended business flow when product behavior is decided.
-- Replace temporary production in-memory OTP cache with Redis or PostgreSQL-backed OTP storage before real users rely on it.
-- Add tests for registration validation and the registration handler.
-- Decide whether `PasswordHash` should be duplicated in `UsersProfiles`; Identity already stores it in `AspNetUsers`.
-- Align `ApplicationDbContextModelSnapshot.cs` with the current model if EF tooling reports drift.
-- Normalize the `PhoneService` namespace.
-- Rename `DeleationTime` only with a deliberate migration plan.
+## Development Tips & Common Patterns
+
+- Run the API with `dotnet run --project Quraaa.API` from the repository root.
+- The database is migrated and seeded automatically on startup; ensure PostgreSQL is reachable.
+- If you add a new aggregate, create the domain class, an EF configuration in `Quraaa.Persistence/Configurations/`, add a `DbSet` to `ApplicationDbContext`, and create a migration.
+- If you add a new feature, create the command/query/handler/validator under `Quraaa.Application/Features/{Feature}/` and a controller action in `Quraaa.API/Controllers/`.
+- Keep interfaces in the Application layer and implementations in Persistence or Infrastructure.
+- Use `BaseApplicationService.ExecuteAsync(...)` in handlers to get automatic validation and exception-to-result mapping.
+- Use `ApplicationBusinessException` for application-level rule failures and `DomainException` for aggregate invariants.
+- Avoid navigation properties between aggregates in EF Core mappings; use scalar IDs and database constraints.
+
+## Known Gaps & High-Value TODOs
+
+Based on the current codebase:
+
+- **Admin library review**: `LibraryAggregate` has `Approve`/`Reject` methods, but there is no HTTP endpoint to transition a library from `Pending` to `Approved`/`Rejected`.
+- **Refresh token rotation / logout**: tokens are generated and stored, but there is no logout or refresh endpoint.
+- **OTP integration**: OTP send/verify is standalone; it is not yet required during registration, login, password reset, or phone verification.
+- **Book/listing HTTP surface**: `BookAggregate` and `ListingAggregate` are modeled and migrated, but no controllers or handlers expose them yet. `AddPhysicalBookCommand` exists without a handler or validator, and `IBookMetadataService`/`GoogleBooksService` registration is commented out.
+- **Tests**: no unit, integration, or end-to-end tests exist.
+- **CI/CD**: only branch-name validation is automated; add build, test, and publish workflows.
+- **Production readiness**: review `Otp:AllowInMemoryCacheInProduction=true` and `Notifications:AllowTestEndpoint=true` in `appsettings.json` before production deployment.
