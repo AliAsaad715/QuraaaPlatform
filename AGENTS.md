@@ -17,6 +17,7 @@ Current implemented business capabilities:
 - Authenticated profile update through `PUT /api/Profile/me`.
 - Library registration through `POST /api/Library/register`.
 - Public library listing through `GET /api/Library`.
+- Public ebook listing through `GET /api/Ebooks`.
 - Category management through `GET /api/Categories`, `GET /api/Categories/{categoryId}`, and `POST /api/Categories` (admin-only).
 - Standalone OTP send through `POST /api/Otp/send`.
 - Standalone OTP verification through `POST /api/Otp/verify`.
@@ -67,6 +68,7 @@ Quraaa.API/
     ApiClientController.cs
     AuthController.cs
     CategoriesController.cs
+    EbooksController.cs
     LibraryController.cs
     NotificationsController.cs
     OtpController.cs
@@ -88,6 +90,7 @@ Quraaa.API/
     LibraryImageStorageService.cs
   storage/firebase/       # Firebase service-account JSON files (ignored by git)
   wwwroot/uploads/libraries/  # Uploaded library images
+  wwwroot/uploads/books/      # Uploaded/seeded ebook PDF files and book media
 
 Quraaa.Application/
   Quraaa.Application.csproj
@@ -107,6 +110,10 @@ Quraaa.Application/
       Commands/CreateCategory/
       Queries/GetAllCategories/
       Queries/GetCategoryById/
+      Common/
+      Interfaces/
+    Ebooks/
+      Queries/GetEbooks/
       Common/
       Interfaces/
     Libraries/
@@ -428,6 +435,7 @@ Located in `Quraaa.Persistence/Migrations/`:
 - `AdminSeeder.SeedAsync` — creates an admin user from `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`.
 - `UserSeeder.SeedAsync` — seeds a default user and deterministic library-owner users.
 - `LibrarySeeder.SeedAsync` — seeds libraries linked to the owner users.
+- `EbookSeeder.SeedAsync` — seeds one catalog ebook and one active digital listing. The seeded listing stores `DigitalAssetUrl = "/uploads/books/book1.pdf"`, so the PDF should be stored at `Quraaa.API/wwwroot/uploads/books/book1.pdf`.
 
 ## Code Style & Conventions
 
@@ -585,6 +593,7 @@ GET /api/Profile/me
 PUT /api/Profile/me
 POST /api/Library/register
 GET /api/Library
+GET /api/Ebooks
 GET /api/Categories
 GET /api/Categories/{categoryId}
 POST /api/Categories
@@ -720,6 +729,44 @@ email: library@example.com
 The request does not accept `userId`; `LibraryController` reads it from the JWT. New libraries are created with `ApprovalStatus = Pending`.
 
 `GET /api/Library` returns a paged list of approved libraries. It accepts `[Authorize(Roles = "User")]` and query parameters for paging through `GetLibrariesQuery`.
+
+### Ebooks
+
+`GET /api/Ebooks` returns a paged public list of active digital listings joined with their catalog book metadata. It allows anonymous access and accepts these optional query parameters through `GetEbooksQuery`:
+
+```text
+pageNumber: int (default 1)
+pageSize: int (default 20, max 100)
+searchTerm: string? (filters by title or author)
+```
+
+Successful responses use `PagedResult<EbookResponse>`:
+
+```json
+{
+  "items": [
+    {
+      "listingId": "guid",
+      "bookId": "guid",
+      "title": "Ebook One",
+      "author": "Quraaa Seed Data",
+      "description": "Seeded ebook for development and manual testing.",
+      "coverImageUrl": "/uploads/books/book1-cover.jpg",
+      "categoryId": "guid",
+      "language": "en",
+      "isbn": null,
+      "price": 1.0,
+      "digitalAssetUrl": "/uploads/books/book1.pdf"
+    }
+  ],
+  "pageNumber": 1,
+  "pageSize": 20,
+  "totalCount": 1,
+  "totalPages": 1,
+  "hasNextPage": false,
+  "hasPreviousPage": false
+}
+```
 
 ### Categories
 
@@ -1208,6 +1255,64 @@ HTTP GET /api/Library
 
 Only libraries with `ApprovalStatus = Approved` are returned.
 
+### Ebook Listing Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/EbooksController.cs
+Quraaa.Application/Features/Ebooks/Common/EbookResponse.cs
+Quraaa.Application/Features/Ebooks/Queries/GetEbooks/GetEbooksQuery.cs
+Quraaa.Application/Features/Ebooks/Queries/GetEbooks/GetEbooksQueryHandler.cs
+Quraaa.Application/Features/Ebooks/Queries/GetEbooks/GetEbooksQueryValidator.cs
+Quraaa.Application/Features/Ebooks/Interfaces/IEbookRepository.cs
+Quraaa.Persistence/Repositories/EbookRepository.cs
+Quraaa.Persistence/Seed/EbookSeeder.cs
+Quraaa.Domain/Catalog/BookAggregate.cs
+Quraaa.Domain/Marketplace/ListingAggregate.cs
+```
+
+Route:
+
+```text
+GET /api/Ebooks
+```
+
+Authentication:
+
+```text
+AllowAnonymous
+```
+
+Query parameters:
+
+```text
+pageNumber: int (default 1)
+pageSize: int (default 20, max 100)
+searchTerm: string? (optional title/author filter)
+```
+
+Seeded ebook details:
+
+- `EbookSeeder` creates a `BookAggregate` and an active digital `ListingAggregate`.
+- The seeded listing uses `DigitalAssetUrl = "/uploads/books/book1.pdf"`.
+- Store the actual PDF at `Quraaa.API/wwwroot/uploads/books/book1.pdf`; `app.UseStaticFiles()` serves it as `/uploads/books/book1.pdf`.
+- If an old seeded listing with the fixed seed ID still has a placeholder URL, `EbookSeeder` updates it to `/uploads/books/book1.pdf` on startup.
+
+Flow:
+
+```text
+HTTP GET /api/Ebooks
+  -> EbooksController.GetEbooks(query)
+  -> GetEbooksQuery
+  -> GetEbooksQueryHandler
+  -> BaseApplicationService validates GetEbooksQuery
+  -> IEbookRepository.GetPagedAsync(pageNumber, pageSize, searchTerm)
+  -> EbookRepository joins Listings to Books
+  -> filters ListingFormat.Digital, ListingStatus.Active, and non-null DigitalAssetUrl
+  -> returns PagedResult<EbookResponse>
+```
+
 ### OTP Flow
 
 Files:
@@ -1454,7 +1559,7 @@ Based on the current codebase:
 - **Admin library review**: `LibraryAggregate` has `Approve`/`Reject` methods, but there is no HTTP endpoint to transition a library from `Pending` to `Approved`/`Rejected`.
 - **Refresh token rotation / logout**: tokens are generated and stored, but there is no logout or refresh endpoint.
 - **OTP integration**: OTP send/verify is standalone; it is not yet required during registration, login, password reset, or phone verification.
-- **Book/listing HTTP surface**: `BookAggregate` and `ListingAggregate` are modeled and migrated, but no controllers or handlers expose them yet. `AddPhysicalBookCommand` exists without a handler or validator, and `IBookMetadataService`/`GoogleBooksService` registration is commented out.
+- **Book/listing HTTP surface**: `GET /api/Ebooks` exposes active digital listings with book metadata, but broader catalog/listing management is still missing. `AddPhysicalBookCommand` exists without a handler or validator, and `IBookMetadataService`/`GoogleBooksService` registration is commented out.
 - **Tests**: no unit, integration, or end-to-end tests exist.
 - **CI/CD**: only branch-name validation is automated; add build, test, and publish workflows.
 - **Production readiness**: review `Otp:AllowInMemoryCacheInProduction=true` and `Notifications:AllowTestEndpoint=true` in `appsettings.json` before production deployment.
