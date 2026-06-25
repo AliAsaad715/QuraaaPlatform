@@ -19,6 +19,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
         private readonly IOtpCacheService _otpCacheService;
         private readonly IIdentityService _identityService;
 
+        private const string OtpKeyPrefix = "forgot-password-otp";
         private const int MaxFailedAttempts = 5;
         private static readonly TimeSpan FailedAttemptWindow = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan VerificationLockout = TimeSpan.FromMinutes(5);
@@ -54,7 +55,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
                     throw new ApplicationBusinessException($"Too many invalid OTP attempts. Please wait {VerificationLockout.TotalMinutes} minutes before trying again.");
                 }
 
-                var cachedOtp = await _otpCacheService.GetOtpAsync(formattedPhone, cancellationToken);
+                var cachedOtp = await _otpCacheService.GetOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
 
                 if (string.IsNullOrEmpty(cachedOtp))
                 {
@@ -67,7 +68,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
                     throw new ApplicationBusinessException("Invalid OTP code.");
                 }
 
-                await _otpCacheService.ClearOtpAsync(formattedPhone, cancellationToken);
+                await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
                 await ClearVerificationStateAsync(formattedPhone, clientTargetKey, cancellationToken);
 
                 var user = await _userRepository.GetUserByPhoneNumberAsync(formattedPhone);
@@ -102,6 +103,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
             var phoneAttempts = await _otpCacheService.IncrementFailedVerificationAttemptAsync(
                 formattedPhone,
                 FailedAttemptWindow,
+                OtpKeyPrefix,
                 cancellationToken);
 
             var clientAttempts = 0;
@@ -110,6 +112,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
                 clientAttempts = await _otpCacheService.IncrementFailedVerificationAttemptAsync(
                     clientTargetKey,
                     FailedAttemptWindow,
+                    OtpKeyPrefix,
                     cancellationToken);
             }
 
@@ -118,14 +121,14 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
                 return;
             }
 
-            await _otpCacheService.ClearOtpAsync(formattedPhone, cancellationToken);
-            await _otpCacheService.RecordVerificationLockoutAsync(formattedPhone, VerificationLockout, cancellationToken);
-            await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, cancellationToken);
+            await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+            await _otpCacheService.RecordVerificationLockoutAsync(formattedPhone, VerificationLockout, OtpKeyPrefix, cancellationToken);
+            await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
 
             if (clientTargetKey is not null)
             {
-                await _otpCacheService.RecordVerificationLockoutAsync(clientTargetKey, VerificationLockout, cancellationToken);
-                await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, cancellationToken);
+                await _otpCacheService.RecordVerificationLockoutAsync(clientTargetKey, VerificationLockout, OtpKeyPrefix, cancellationToken);
+                await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
             }
 
             throw new ApplicationBusinessException($"Too many invalid OTP attempts. Please wait {VerificationLockout.TotalMinutes} minutes before trying again.");
@@ -136,13 +139,13 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
             string? clientTargetKey,
             CancellationToken cancellationToken)
         {
-            if (await _otpCacheService.IsVerificationLockedOutAsync(formattedPhone, cancellationToken))
+            if (await _otpCacheService.IsVerificationLockedOutAsync(formattedPhone, OtpKeyPrefix, cancellationToken))
             {
                 return true;
             }
 
             return clientTargetKey is not null
-                && await _otpCacheService.IsVerificationLockedOutAsync(clientTargetKey, cancellationToken);
+                && await _otpCacheService.IsVerificationLockedOutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
         }
 
         private async Task ClearVerificationStateAsync(
@@ -150,13 +153,13 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
             string? clientTargetKey,
             CancellationToken cancellationToken)
         {
-            await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, cancellationToken);
-            await _otpCacheService.ClearVerificationLockoutAsync(formattedPhone, cancellationToken);
+            await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+            await _otpCacheService.ClearVerificationLockoutAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
 
             if (clientTargetKey is not null)
             {
-                await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, cancellationToken);
-                await _otpCacheService.ClearVerificationLockoutAsync(clientTargetKey, cancellationToken);
+                await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                await _otpCacheService.ClearVerificationLockoutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
             }
         }
 

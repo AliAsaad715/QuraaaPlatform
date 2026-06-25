@@ -12,8 +12,6 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
                 .Must(BeAValidInternationalPhoneNumber)
                 .WithMessage("Invalid international phone number format. It must start with '+' and include a valid country code.");
 
-            RuleFor(x => x.SmsGatewayDeviceToken)
-                .NotEmpty().WithMessage("SMS gateway device token is required.");
         }
 
         private bool BeAValidInternationalPhoneNumber(string phoneNumber)

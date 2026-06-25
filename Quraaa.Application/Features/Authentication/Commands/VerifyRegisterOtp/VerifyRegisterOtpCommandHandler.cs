@@ -1,6 +1,8 @@
 using IdentityServer.Helpers;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Quraaa.Application.Features.Authentication.Common;
+using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Otp.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Results;
@@ -8,31 +10,37 @@ using Quraaa.Application.Shared.Services;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Quraaa.Application.Features.Otp.Commands.VerifyOtp
+namespace Quraaa.Application.Features.Authentication.Commands.VerifyRegisterOtp
 {
-    public class VerifyOtpCommandHandler : BaseApplicationService<VerifyOtpCommandHandler>, IRequestHandler<VerifyOtpCommand, AppResult>
+    public class VerifyRegisterOtpCommandHandler : BaseApplicationService<VerifyRegisterOtpCommandHandler>, IRequestHandler<VerifyRegisterOtpCommand, AppResult<AuthResponse>>
     {
-        private readonly IOtpCacheService _otpCacheService;
+        private readonly IIdentityService _identityService;
+        private readonly IUserRepository _userRepository;
         private readonly IPhoneService _phoneService;
+        private readonly IOtpCacheService _otpCacheService;
 
-        private const string OtpKeyPrefix = "standalone-otp";
+        private const string OtpKeyPrefix = "register-otp";
         private const int MaxFailedAttempts = 5;
         private static readonly TimeSpan FailedAttemptWindow = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan VerificationLockout = TimeSpan.FromMinutes(5);
 
-        public VerifyOtpCommandHandler(
-            IOtpCacheService otpCacheService,
+        public VerifyRegisterOtpCommandHandler(
+            IIdentityService identityService,
+            IUserRepository userRepository,
             IPhoneService phoneService,
-            ILogger<VerifyOtpCommandHandler> logger,
+            IOtpCacheService otpCacheService,
+            ILogger<VerifyRegisterOtpCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
-            _otpCacheService = otpCacheService;
+            _identityService = identityService;
+            _userRepository = userRepository;
             _phoneService = phoneService;
+            _otpCacheService = otpCacheService;
         }
 
-        public async Task<AppResult> Handle(VerifyOtpCommand request, CancellationToken cancellationToken)
+        public async Task<AppResult<AuthResponse>> Handle(VerifyRegisterOtpCommand request, CancellationToken cancellationToken)
         {
-            return await ExecuteAsync(request, async () =>
+            return await ExecuteAsync<VerifyRegisterOtpCommand, AuthResponse>(request, async () =>
             {
                 var formattedPhone = _phoneService.FormatToE164(request.PhoneNumber);
                 if (string.IsNullOrEmpty(formattedPhone))
@@ -40,30 +48,54 @@ namespace Quraaa.Application.Features.Otp.Commands.VerifyOtp
                     throw new ApplicationBusinessException("Invalid phone number format.");
                 }
 
-                var clientTargetKey = GetClientTargetKey(request.ClientIpAddress);
+                var clientTargetKey = GetClientTargetKey(request.ClientIp);
 
                 if (await IsVerificationLockedOutAsync(formattedPhone, clientTargetKey, cancellationToken))
                 {
                     throw new ApplicationBusinessException($"Too many invalid OTP attempts. Please wait {VerificationLockout.TotalMinutes} minutes before trying again.");
                 }
 
-                var cachedOtp = await _otpCacheService.GetOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+                var identity = await _identityService.GetUserIdentityByPhoneNumberAsync(formattedPhone);
+                if (identity is null)
+                {
+                    throw new ApplicationBusinessException("Registration was not started for this phone number.");
+                }
 
+                if (identity.PhoneNumberConfirmed)
+                {
+                    throw new ApplicationBusinessException("Phone number is already verified.");
+                }
+
+                var userProfile = await _userRepository.GetUserByPhoneNumberAsync(formattedPhone);
+                if (userProfile is null)
+                {
+                    throw new ApplicationBusinessException("Pending registration profile was not found. Please start registration again.");
+                }
+
+                var cachedOtp = await _otpCacheService.GetOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
                 if (string.IsNullOrEmpty(cachedOtp))
                 {
                     throw new ApplicationBusinessException("OTP code is expired or was not requested.");
                 }
 
-                if (!OtpCodesMatch(cachedOtp, request.Code))
+                if (!OtpCodesMatch(cachedOtp, request.OtpCode))
                 {
                     await RecordFailedAttemptAsync(formattedPhone, clientTargetKey, cancellationToken);
                     throw new ApplicationBusinessException("Invalid OTP code.");
                 }
 
+                var confirmResult = await _identityService.ConfirmPhoneNumberAsync(identity.UserId);
+                if (!confirmResult.Succeeded)
+                {
+                    var allErrors = string.Join(" | ", confirmResult.Errors);
+                    throw new ApplicationBusinessException(allErrors);
+                }
+
                 await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
                 await ClearVerificationStateAsync(formattedPhone, clientTargetKey, cancellationToken);
 
-            }, "OTP verified successfully");
+                return await _identityService.GenerateAuthTokensAsync(identity.UserId, formattedPhone);
+            }, "Registration verified successfully");
         }
 
         private async Task RecordFailedAttemptAsync(

@@ -1,19 +1,21 @@
-﻿using FluentValidation;
+using FluentValidation;
 using PhoneNumbers;
 
-namespace Quraaa.Application.Features.Authentication.Commands.Login
+namespace Quraaa.Application.Features.Authentication.Commands.VerifyRegisterOtp
 {
-    public class LoginCommandValidator : AbstractValidator<LoginCommand>
+    public class VerifyRegisterOtpCommandValidator : AbstractValidator<VerifyRegisterOtpCommand>
     {
-        public LoginCommandValidator()
+        public VerifyRegisterOtpCommandValidator()
         {
             RuleFor(x => x.PhoneNumber)
                 .NotEmpty().WithMessage("Phone number is required.")
                 .Must(BeAValidInternationalPhoneNumber)
                 .WithMessage("Invalid international phone number format. It must start with '+' and include a valid country code.");
 
-            RuleFor(x => x.Password)
-                .NotEmpty().WithMessage("Password is required.");
+            RuleFor(x => x.OtpCode)
+                .NotEmpty().WithMessage("OTP code is required.")
+                .Length(6).WithMessage("OTP code must be exactly 6 digits.")
+                .Matches("^[0-9]+$").WithMessage("OTP code must contain only digits.");
         }
 
         private bool BeAValidInternationalPhoneNumber(string phoneNumber)

@@ -50,6 +50,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
             RuleFor(x => x.Interests)
                 .MustAsync(BeValidCategoryIds)
                 .WithMessage("One or more interest IDs do not exist in the system.");
+
         }
 
         private bool BeAValidInternationalPhoneNumber(string phoneNumber)

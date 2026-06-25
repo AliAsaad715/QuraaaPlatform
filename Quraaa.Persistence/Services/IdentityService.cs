@@ -24,13 +24,29 @@ namespace Quraaa.Persistence.Services
             _configuration = configuration;
         }
 
+        public async Task<IdentityUserInfo?> GetUserIdentityByPhoneNumberAsync(string phoneNumber)
+        {
+            var user = await _userManager.FindByNameAsync(phoneNumber);
+            return user is null
+                ? null
+                : new IdentityUserInfo(
+                    user.Id,
+                    user.PhoneNumber ?? phoneNumber,
+                    user.PhoneNumberConfirmed);
+        }
+
         public async Task<bool> IsPhoneNumberUniqueAsync(string phoneNumber)
         {
             var user = await _userManager.FindByNameAsync(phoneNumber);
             return user == null;
         }
 
-        public async Task<IdentityResultDto> CreateUserIdentityAsync(Guid id, string phoneNumber, string password, string role)
+        public async Task<IdentityResultDto> CreateUserIdentityAsync(
+            Guid id,
+            string phoneNumber,
+            string password,
+            string role,
+            bool phoneNumberConfirmed = true)
         {
             var identityUser = new ApplicationUser
             {
@@ -39,7 +55,7 @@ namespace Quraaa.Persistence.Services
                 PhoneNumber = phoneNumber,
                 Email = $"{phoneNumber}@quraaa.com",
                 EmailConfirmed = true,
-                PhoneNumberConfirmed = true
+                PhoneNumberConfirmed = phoneNumberConfirmed
             };
 
             var result = await _userManager.CreateAsync(identityUser, password);
@@ -95,6 +111,25 @@ namespace Quraaa.Persistence.Services
             return (true, refreshedUser?.PasswordHash, Array.Empty<string>());
         }
 
+        public async Task<IdentityResultDto> ConfirmPhoneNumberAsync(Guid userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user == null)
+            {
+                return IdentityResultDto.Failure(new[] { "User security identity was not found." });
+            }
+
+            user.PhoneNumberConfirmed = true;
+
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+            {
+                return IdentityResultDto.Failure(result.Errors.Select(e => e.Description));
+            }
+
+            return IdentityResultDto.Success(user.PasswordHash ?? string.Empty);
+        }
+
         public async Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber)
         {
             var user = await _userManager.FindByIdAsync(userId.ToString());
@@ -144,15 +179,27 @@ namespace Quraaa.Persistence.Services
             );
         }
 
-        public async Task<AuthResponse?> CheckPasswordAndGenerateTokensAsync(string phoneNumber, string password)
+        public async Task<SignInResultDto> CheckPasswordAndGenerateTokensAsync(string phoneNumber, string password)
         {
             var user = await _userManager.FindByNameAsync(phoneNumber);
-            if (user == null) return null;
+            if (user == null)
+            {
+                return SignInResultDto.Failure(SignInFailureReason.InvalidCredentials);
+            }
 
             var isPasswordValid = await _userManager.CheckPasswordAsync(user, password);
-            if (!isPasswordValid) return null;
+            if (!isPasswordValid)
+            {
+                return SignInResultDto.Failure(SignInFailureReason.InvalidCredentials);
+            }
 
-            return await GenerateAuthTokensAsync(user.Id, phoneNumber);
+            if (!user.PhoneNumberConfirmed)
+            {
+                return SignInResultDto.Failure(SignInFailureReason.PhoneNumberNotConfirmed);
+            }
+
+            var authResponse = await GenerateAuthTokensAsync(user.Id, phoneNumber);
+            return SignInResultDto.Success(authResponse);
         }
 
         private string GenerateSecureRefreshToken()

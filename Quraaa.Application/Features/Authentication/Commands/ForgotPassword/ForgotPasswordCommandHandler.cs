@@ -16,6 +16,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
         private readonly IOtpCacheService _otpCacheService;
         private readonly IFirebaseSmsGateway _firebaseSmsGateway;
 
+        private const string OtpKeyPrefix = "forgot-password-otp";
         private static readonly TimeSpan OtpExpiration = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan OtpLockout = TimeSpan.FromSeconds(60);
         private static readonly TimeSpan VerificationLockout = TimeSpan.FromMinutes(5);
@@ -65,7 +66,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
 
                 var otpCode = System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1_000_000).ToString();
 
-                await _otpCacheService.SetOtpAsync(formattedPhone, otpCode, OtpExpiration, cancellationToken);
+                await _otpCacheService.SetOtpAsync(formattedPhone, otpCode, OtpExpiration, OtpKeyPrefix, cancellationToken);
 
                 try
                 {
@@ -73,8 +74,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
                     await _firebaseSmsGateway.SendSmsRequestAsync(
                         formattedPhone,
                         otpCode,
-                        request.SmsGatewayDeviceToken,
-                        cancellationToken);
+                        cancellationToken: cancellationToken);
                 }
                 catch
                 {
@@ -90,13 +90,13 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
             string? clientTargetKey,
             CancellationToken cancellationToken)
         {
-            if (await _otpCacheService.HasRecentOtpRequestAsync(formattedPhone, OtpLockout, cancellationToken))
+            if (await _otpCacheService.HasRecentOtpRequestAsync(formattedPhone, OtpLockout, OtpKeyPrefix, cancellationToken))
             {
                 return true;
             }
 
             return clientTargetKey is not null
-                && await _otpCacheService.HasRecentOtpRequestAsync(clientTargetKey, OtpLockout, cancellationToken);
+                && await _otpCacheService.HasRecentOtpRequestAsync(clientTargetKey, OtpLockout, OtpKeyPrefix, cancellationToken);
         }
 
         private async Task<bool> IsVerificationLockedOutAsync(
@@ -104,13 +104,13 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
             string? clientTargetKey,
             CancellationToken cancellationToken)
         {
-            if (await _otpCacheService.IsVerificationLockedOutAsync(formattedPhone, cancellationToken))
+            if (await _otpCacheService.IsVerificationLockedOutAsync(formattedPhone, OtpKeyPrefix, cancellationToken))
             {
                 return true;
             }
 
             return clientTargetKey is not null
-                && await _otpCacheService.IsVerificationLockedOutAsync(clientTargetKey, cancellationToken);
+                && await _otpCacheService.IsVerificationLockedOutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
         }
 
         private async Task RecordRequestLockoutAsync(
@@ -118,11 +118,11 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
             string? clientTargetKey,
             CancellationToken cancellationToken)
         {
-            await _otpCacheService.RecordOtpRequestAsync(formattedPhone, OtpLockout, cancellationToken);
+            await _otpCacheService.RecordOtpRequestAsync(formattedPhone, OtpLockout, OtpKeyPrefix, cancellationToken);
 
             if (clientTargetKey is not null)
             {
-                await _otpCacheService.RecordOtpRequestAsync(clientTargetKey, OtpLockout, cancellationToken);
+                await _otpCacheService.RecordOtpRequestAsync(clientTargetKey, OtpLockout, OtpKeyPrefix, cancellationToken);
             }
         }
 
@@ -131,12 +131,12 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
             string? clientTargetKey,
             CancellationToken cancellationToken)
         {
-            await _otpCacheService.ClearOtpAsync(formattedPhone, cancellationToken);
-            await _otpCacheService.ClearOtpRequestAsync(formattedPhone, cancellationToken);
+            await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+            await _otpCacheService.ClearOtpRequestAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
 
             if (clientTargetKey is not null)
             {
-                await _otpCacheService.ClearOtpRequestAsync(clientTargetKey, cancellationToken);
+                await _otpCacheService.ClearOtpRequestAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
             }
         }
 

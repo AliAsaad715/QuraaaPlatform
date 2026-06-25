@@ -4,3 +4,65 @@ GET {{Quraaa.API_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+# @name Register
+POST {{Quraaa.API_HostAddress}}/api/Auth/register
+Content-Type: application/json
+
+{
+  "firstName": "Ali",
+  "lastName": "Hassan",
+  "phoneNumber": "+9647XXXXXXXXX",
+  "password": "abc123",
+  "gender": 1,
+  "dateOfBirth": "2000-01-01",
+  "interests": [
+    "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+  ]
+}
+
+###
+
+# @name VerifyRegisterOtp
+POST {{Quraaa.API_HostAddress}}/api/Auth/register/verify
+Content-Type: application/json
+
+{
+  "phoneNumber": "+9647XXXXXXXXX",
+  "otpCode": "123456"
+}
+
+###
+
+# @name Login
+POST {{Quraaa.API_HostAddress}}/api/Auth/login
+Content-Type: application/json
+
+{
+  "phoneNumber": "+9647XXXXXXXXX",
+  "password": "abc123"
+}
+
+###
+
+# @name ForgotPassword
+POST {{Quraaa.API_HostAddress}}/api/Auth/forgot-password
+Content-Type: application/json
+
+{
+  "phoneNumber": "+9647XXXXXXXXX"
+}
+
+###
+
+# @name VerifyForgotPassword
+POST {{Quraaa.API_HostAddress}}/api/Auth/forgot-password/verify
+Content-Type: application/json
+
+{
+  "phoneNumber": "+9647XXXXXXXXX",
+  "otpCode": "123456",
+  "newPassword": "newPass123"
+}
+
+###

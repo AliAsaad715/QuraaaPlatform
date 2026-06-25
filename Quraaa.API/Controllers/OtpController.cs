@@ -11,35 +11,19 @@ namespace Quraaa.API.Controllers
     [ApiController]
     public class OtpController : ApiClientController
     {
-        private const string OtpDeviceTokenConfigurationKey = "OTP_DEVICE_TOKEN";
-
         private readonly IMediator _mediator;
-        private readonly IConfiguration _configuration;
 
-        public OtpController(IMediator mediator, IConfiguration configuration)
+        public OtpController(IMediator mediator)
         {
             _mediator = mediator;
-            _configuration = configuration;
         }
 
         [HttpPost("send")]
         [AllowAnonymous]
         public async Task<IActionResult> SendOtp([FromBody] SendOtpRequest request)
         {
-            var smsGatewayDeviceToken = GetSmsGatewayDeviceToken();
-            if (string.IsNullOrWhiteSpace(smsGatewayDeviceToken))
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError, new
-                {
-                    type = "ConfigurationError",
-                    title = "OTP Gateway Token Missing",
-                    detail = "OTP_DEVICE_TOKEN is not configured on the server."
-                });
-            }
-
             var command = new SendOtpCommand(
                 request.PhoneNumber,
-                smsGatewayDeviceToken,
                 GetClientIpAddress());
             var result = await _mediator.Send(command);
 
@@ -59,12 +43,6 @@ namespace Quraaa.API.Controllers
         private string? GetClientIpAddress()
         {
             return HttpContext.Connection.RemoteIpAddress?.ToString();
-        }
-
-        private string? GetSmsGatewayDeviceToken()
-        {
-            return _configuration[OtpDeviceTokenConfigurationKey]
-                ?? Environment.GetEnvironmentVariable(OtpDeviceTokenConfigurationKey);
         }
     }
 }
