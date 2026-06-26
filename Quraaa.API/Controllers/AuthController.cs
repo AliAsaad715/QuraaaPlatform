@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Quraaa.Application.Features.Authentication.Commands.AdminLogin;
 using Quraaa.Application.Features.Authentication.Commands.Login;
 using Quraaa.API.Requests.Authentication;
 using Quraaa.Application.Features.Authentication.Commands.Register;
 using Quraaa.Application.Features.Authentication.Commands.ResetPassword;
 using Quraaa.Application.Features.Authentication.Commands.ForgotPassword;
 using Quraaa.Application.Features.Authentication.Commands.ResetForgotPassword;
+using Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOtp;
 using Quraaa.Application.Features.Authentication.Commands.VerifyRegisterOtp;
 using Quraaa.Application.Features.Authentication.Common;
 using System.Security.Claims;
@@ -39,6 +41,36 @@ namespace Quraaa.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Login([FromBody] LoginCommand command)
         {
+            var result = await Mediator.Send(command);
+            return HandleResult(result);
+        }
+
+        [AllowAnonymous]
+        [HttpPost("admin/login")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> AdminLogin([FromBody] AdminLoginRequest request)
+        {
+            var command = new AdminLoginCommand(
+                request.PhoneNumber,
+                request.Password,
+                GetClientIpAddress() ?? string.Empty);
+
+            var result = await Mediator.Send(command);
+            return HandleResult(result);
+        }
+
+        [AllowAnonymous]
+        [HttpPost("admin/login/verify")]
+        [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> VerifyAdminLoginOtp([FromBody] VerifyAdminLoginOtpRequest request)
+        {
+            var command = new VerifyAdminLoginOtpCommand(
+                request.PhoneNumber,
+                request.OtpCode,
+                GetClientIpAddress() ?? string.Empty);
+
             var result = await Mediator.Send(command);
             return HandleResult(result);
         }

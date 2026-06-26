@@ -130,6 +130,18 @@ namespace Quraaa.Persistence.Services
             return IdentityResultDto.Success(user.PasswordHash ?? string.Empty);
         }
 
+        public async Task<bool> CheckPasswordAsync(Guid userId, string password)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            return user is not null && await _userManager.CheckPasswordAsync(user, password);
+        }
+
+        public async Task<bool> IsInRoleAsync(Guid userId, string role)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            return user is not null && await _userManager.IsInRoleAsync(user, role);
+        }
+
         public async Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber)
         {
             var user = await _userManager.FindByIdAsync(userId.ToString());
