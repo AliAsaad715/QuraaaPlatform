@@ -14,7 +14,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.AdminLogin
 
             RuleFor(x => x.Password)
                 .NotEmpty().WithMessage("Password is required.")
-                .MinimumLength(8).WithMessage("Password is too short.")
+                .MinimumLength(6).WithMessage("Password is too short.")
                 .MaximumLength(256).WithMessage("Password is too long.");
         }
 

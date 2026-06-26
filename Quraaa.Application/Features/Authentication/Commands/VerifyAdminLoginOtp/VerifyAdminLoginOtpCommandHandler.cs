@@ -21,6 +21,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
         private readonly IOtpCacheService _otpCacheService;
 
         private const string OtpKeyPrefix = "admin-login-otp";
+        private const string InvalidAdminVerificationMessage = "Invalid or expired admin login verification code.";
         private const int MaxFailedAttempts = 5;
         private static readonly TimeSpan FailedAttemptWindow = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan VerificationLockout = TimeSpan.FromMinutes(5);
@@ -56,6 +57,18 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
                     throw new ApplicationBusinessException($"Too many invalid OTP attempts. Please wait {VerificationLockout.TotalMinutes} minutes before trying again.");
                 }
 
+                var cachedOtp = await _otpCacheService.GetOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+                if (string.IsNullOrEmpty(cachedOtp))
+                {
+                    throw new ApplicationBusinessException(InvalidAdminVerificationMessage);
+                }
+
+                if (!OtpCodesMatch(cachedOtp, request.OtpCode))
+                {
+                    await RecordFailedAttemptAsync(formattedPhone, clientTargetKey, cancellationToken);
+                    throw new ApplicationBusinessException(InvalidAdminVerificationMessage);
+                }
+
                 var identity = await _identityService.GetUserIdentityByPhoneNumberAsync(formattedPhone);
                 var adminProfile = await _userRepository.GetUserByPhoneNumberAsync(formattedPhone);
                 var isAdminIdentity = identity is not null
@@ -63,19 +76,18 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
 
                 if (identity is null || adminProfile?.Role != Role.Admin || !isAdminIdentity)
                 {
-                    throw new ApplicationBusinessException("Admin login was not started for this phone number.");
+                    await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+                    await ClearVerificationStateAsync(formattedPhone, clientTargetKey, cancellationToken);
+                    throw new ApplicationBusinessException(InvalidAdminVerificationMessage);
                 }
 
-                var cachedOtp = await _otpCacheService.GetOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-                if (string.IsNullOrEmpty(cachedOtp))
+                if (!identity.PhoneNumberConfirmed)
                 {
-                    throw new ApplicationBusinessException("OTP code is expired or was not requested.");
-                }
-
-                if (!OtpCodesMatch(cachedOtp, request.OtpCode))
-                {
-                    await RecordFailedAttemptAsync(formattedPhone, clientTargetKey, cancellationToken);
-                    throw new ApplicationBusinessException("Invalid OTP code.");
+                    var confirmResult = await _identityService.ConfirmPhoneNumberAsync(identity.UserId);
+                    if (!confirmResult.Succeeded)
+                    {
+                        throw new ApplicationBusinessException("Admin login verification failed.");
+                    }
                 }
 
                 await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);

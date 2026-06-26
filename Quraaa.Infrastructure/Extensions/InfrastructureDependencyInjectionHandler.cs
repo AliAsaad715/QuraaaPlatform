@@ -36,6 +36,9 @@ namespace Quraaa.Infrastructure.Extensions
 
             if (!string.IsNullOrWhiteSpace(redisConnection))
             {
+                services.AddSingleton<IConnectionMultiplexer>(_ =>
+                    ConnectionMultiplexer.Connect(CreateRedisConfiguration(redisConnection)));
+
                 services.AddStackExchangeRedisCache(options =>
                 {
                     options.ConfigurationOptions = CreateRedisConfiguration(redisConnection);

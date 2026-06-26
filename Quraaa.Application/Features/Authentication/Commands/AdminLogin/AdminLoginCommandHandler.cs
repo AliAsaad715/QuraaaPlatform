@@ -20,9 +20,14 @@ namespace Quraaa.Application.Features.Authentication.Commands.AdminLogin
         private readonly IFirebaseSmsGateway _firebaseSmsGateway;
 
         private const string OtpKeyPrefix = "admin-login-otp";
+        private const string CredentialAttemptKeyPrefix = "admin-login-credentials";
+        private const string InvalidAdminLoginMessage = "Invalid admin phone number or password.";
+        private const int MaxFailedCredentialAttempts = 5;
         private static readonly TimeSpan OtpExpiration = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan OtpLockout = TimeSpan.FromSeconds(60);
         private static readonly TimeSpan VerificationLockout = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan CredentialFailedAttemptWindow = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan CredentialLockout = TimeSpan.FromMinutes(5);
 
         public AdminLoginCommandHandler(
             IIdentityService identityService,
@@ -52,6 +57,33 @@ namespace Quraaa.Application.Features.Authentication.Commands.AdminLogin
 
                 var clientTargetKey = GetClientTargetKey(request.ClientIp);
 
+                if (await IsCredentialLockedOutAsync(formattedPhone, clientTargetKey, cancellationToken))
+                {
+                    throw new ApplicationBusinessException($"Too many invalid admin login attempts. Please wait {CredentialLockout.TotalMinutes} minutes before trying again.");
+                }
+
+                var identity = await _identityService.GetUserIdentityByPhoneNumberAsync(formattedPhone);
+                if (identity is null)
+                {
+                    await RecordCredentialFailureAndThrowAsync(formattedPhone, clientTargetKey, cancellationToken);
+                    throw new ApplicationBusinessException(InvalidAdminLoginMessage);
+                }
+
+                var isPasswordValid = await _identityService.CheckPasswordAsync(identity.UserId, request.Password);
+                if (!isPasswordValid)
+                {
+                    await RecordCredentialFailureAndThrowAsync(formattedPhone, clientTargetKey, cancellationToken);
+                }
+
+                var adminProfile = await _userRepository.GetUserByPhoneNumberAsync(formattedPhone);
+                var isAdminIdentity = await _identityService.IsInRoleAsync(identity.UserId, Role.Admin.ToString());
+                if (adminProfile?.Role != Role.Admin || !isAdminIdentity)
+                {
+                    await RecordCredentialFailureAndThrowAsync(formattedPhone, clientTargetKey, cancellationToken);
+                }
+
+                await ClearCredentialStateAsync(formattedPhone, clientTargetKey, cancellationToken);
+
                 if (await IsVerificationLockedOutAsync(formattedPhone, clientTargetKey, cancellationToken))
                 {
                     throw new ApplicationBusinessException($"Too many invalid OTP attempts. Please wait {VerificationLockout.TotalMinutes} minutes before requesting another OTP.");
@@ -60,25 +92,6 @@ namespace Quraaa.Application.Features.Authentication.Commands.AdminLogin
                 if (await HasRecentRequestAsync(formattedPhone, clientTargetKey, cancellationToken))
                 {
                     throw new ApplicationBusinessException($"Please wait at least {OtpLockout.TotalSeconds} seconds before requesting another OTP.");
-                }
-
-                var identity = await _identityService.GetUserIdentityByPhoneNumberAsync(formattedPhone);
-                if (identity is null)
-                {
-                    throw new ApplicationBusinessException("Invalid admin phone number or password.");
-                }
-
-                var isPasswordValid = await _identityService.CheckPasswordAsync(identity.UserId, request.Password);
-                if (!isPasswordValid)
-                {
-                    throw new ApplicationBusinessException("Invalid admin phone number or password.");
-                }
-
-                var adminProfile = await _userRepository.GetUserByPhoneNumberAsync(formattedPhone);
-                var isAdminIdentity = await _identityService.IsInRoleAsync(identity.UserId, Role.Admin.ToString());
-                if (adminProfile?.Role != Role.Admin || !isAdminIdentity)
-                {
-                    throw new ApplicationBusinessException("Invalid admin phone number or password.");
                 }
 
                 await SendAdminLoginOtpAsync(formattedPhone, clientTargetKey, cancellationToken);
@@ -161,6 +174,87 @@ namespace Quraaa.Application.Features.Authentication.Commands.AdminLogin
 
             return clientTargetKey is not null
                 && await _otpCacheService.IsVerificationLockedOutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+        }
+
+        private async Task RecordCredentialFailureAndThrowAsync(
+            string formattedPhone,
+            string? clientTargetKey,
+            CancellationToken cancellationToken)
+        {
+            var phoneAttempts = await _otpCacheService.IncrementFailedVerificationAttemptAsync(
+                formattedPhone,
+                CredentialFailedAttemptWindow,
+                CredentialAttemptKeyPrefix,
+                cancellationToken);
+
+            var clientAttempts = 0;
+            if (clientTargetKey is not null)
+            {
+                clientAttempts = await _otpCacheService.IncrementFailedVerificationAttemptAsync(
+                    clientTargetKey,
+                    CredentialFailedAttemptWindow,
+                    CredentialAttemptKeyPrefix,
+                    cancellationToken);
+            }
+
+            if (phoneAttempts < MaxFailedCredentialAttempts && clientAttempts < MaxFailedCredentialAttempts)
+            {
+                throw new ApplicationBusinessException(InvalidAdminLoginMessage);
+            }
+
+            await _otpCacheService.RecordVerificationLockoutAsync(
+                formattedPhone,
+                CredentialLockout,
+                CredentialAttemptKeyPrefix,
+                cancellationToken);
+            await _otpCacheService.ClearFailedVerificationAttemptsAsync(
+                formattedPhone,
+                CredentialAttemptKeyPrefix,
+                cancellationToken);
+
+            if (clientTargetKey is not null)
+            {
+                await _otpCacheService.RecordVerificationLockoutAsync(
+                    clientTargetKey,
+                    CredentialLockout,
+                    CredentialAttemptKeyPrefix,
+                    cancellationToken);
+                await _otpCacheService.ClearFailedVerificationAttemptsAsync(
+                    clientTargetKey,
+                    CredentialAttemptKeyPrefix,
+                    cancellationToken);
+            }
+
+            throw new ApplicationBusinessException($"Too many invalid admin login attempts. Please wait {CredentialLockout.TotalMinutes} minutes before trying again.");
+        }
+
+        private async Task<bool> IsCredentialLockedOutAsync(
+            string formattedPhone,
+            string? clientTargetKey,
+            CancellationToken cancellationToken)
+        {
+            if (await _otpCacheService.IsVerificationLockedOutAsync(formattedPhone, CredentialAttemptKeyPrefix, cancellationToken))
+            {
+                return true;
+            }
+
+            return clientTargetKey is not null
+                && await _otpCacheService.IsVerificationLockedOutAsync(clientTargetKey, CredentialAttemptKeyPrefix, cancellationToken);
+        }
+
+        private async Task ClearCredentialStateAsync(
+            string formattedPhone,
+            string? clientTargetKey,
+            CancellationToken cancellationToken)
+        {
+            await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, CredentialAttemptKeyPrefix, cancellationToken);
+            await _otpCacheService.ClearVerificationLockoutAsync(formattedPhone, CredentialAttemptKeyPrefix, cancellationToken);
+
+            if (clientTargetKey is not null)
+            {
+                await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, CredentialAttemptKeyPrefix, cancellationToken);
+                await _otpCacheService.ClearVerificationLockoutAsync(clientTargetKey, CredentialAttemptKeyPrefix, cancellationToken);
+            }
         }
 
         private static string? GetClientTargetKey(string? clientIpAddress)
