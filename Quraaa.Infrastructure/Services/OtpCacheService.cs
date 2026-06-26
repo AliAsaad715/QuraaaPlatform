@@ -12,58 +12,66 @@ namespace Quraaa.Infrastructure.Services
             _cache = cache;
         }
 
-        private static string GetOtpKey(string phoneNumber) => $"otp:{phoneNumber}";
-        private static string GetLockoutKey(string phoneNumber) => $"otp_lockout:{phoneNumber}";
-        private static string GetFailedVerificationAttemptKey(string targetKey) => $"otp_verify_failed:{targetKey}";
-        private static string GetVerificationLockoutKey(string targetKey) => $"otp_verify_lockout:{targetKey}";
+        private static string GetOtpKey(string phoneNumber, string keyPrefix) =>
+            $"{keyPrefix}:otp:{phoneNumber}";
 
-        public async Task SetOtpAsync(string phoneNumber, string otpCode, TimeSpan expiration, CancellationToken cancellationToken = default)
+        private static string GetLockoutKey(string phoneNumber, string keyPrefix) =>
+            $"{keyPrefix}:otp_lockout:{phoneNumber}";
+
+        private static string GetFailedVerificationAttemptKey(string targetKey, string keyPrefix) =>
+            $"{keyPrefix}:otp_verify_failed:{targetKey}";
+
+        private static string GetVerificationLockoutKey(string targetKey, string keyPrefix) =>
+            $"{keyPrefix}:otp_verify_lockout:{targetKey}";
+
+        public async Task SetOtpAsync(string phoneNumber, string otpCode, TimeSpan expiration, string keyPrefix, CancellationToken cancellationToken = default)
         {
             var options = new DistributedCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = expiration
             };
 
-            await _cache.SetStringAsync(GetOtpKey(phoneNumber), otpCode, options, cancellationToken);
+            await _cache.SetStringAsync(GetOtpKey(phoneNumber, keyPrefix), otpCode, options, cancellationToken);
         }
 
-        public async Task<string?> GetOtpAsync(string phoneNumber, CancellationToken cancellationToken = default)
+        public async Task<string?> GetOtpAsync(string phoneNumber, string keyPrefix, CancellationToken cancellationToken = default)
         {
-            return await _cache.GetStringAsync(GetOtpKey(phoneNumber), cancellationToken);
+            return await _cache.GetStringAsync(GetOtpKey(phoneNumber, keyPrefix), cancellationToken);
         }
 
-        public async Task ClearOtpAsync(string phoneNumber, CancellationToken cancellationToken = default)
+        public async Task ClearOtpAsync(string phoneNumber, string keyPrefix, CancellationToken cancellationToken = default)
         {
-            await _cache.RemoveAsync(GetOtpKey(phoneNumber), cancellationToken);
+            await _cache.RemoveAsync(GetOtpKey(phoneNumber, keyPrefix), cancellationToken);
         }
 
-        public async Task<bool> HasRecentOtpRequestAsync(string phoneNumber, TimeSpan lockoutPeriod, CancellationToken cancellationToken = default)
+        public async Task<bool> HasRecentOtpRequestAsync(string phoneNumber, TimeSpan lockoutPeriod, string keyPrefix, CancellationToken cancellationToken = default)
         {
-            var lockout = await _cache.GetStringAsync(GetLockoutKey(phoneNumber), cancellationToken);
+            var lockout = await _cache.GetStringAsync(GetLockoutKey(phoneNumber, keyPrefix), cancellationToken);
             return !string.IsNullOrEmpty(lockout);
         }
 
-        public async Task RecordOtpRequestAsync(string phoneNumber, TimeSpan lockoutPeriod, CancellationToken cancellationToken = default)
+        public async Task RecordOtpRequestAsync(string phoneNumber, TimeSpan lockoutPeriod, string keyPrefix, CancellationToken cancellationToken = default)
         {
             var options = new DistributedCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = lockoutPeriod
             };
 
-            await _cache.SetStringAsync(GetLockoutKey(phoneNumber), "1", options, cancellationToken);
+            await _cache.SetStringAsync(GetLockoutKey(phoneNumber, keyPrefix), "1", options, cancellationToken);
         }
 
-        public async Task ClearOtpRequestAsync(string phoneNumber, CancellationToken cancellationToken = default)
+        public async Task ClearOtpRequestAsync(string phoneNumber, string keyPrefix, CancellationToken cancellationToken = default)
         {
-            await _cache.RemoveAsync(GetLockoutKey(phoneNumber), cancellationToken);
+            await _cache.RemoveAsync(GetLockoutKey(phoneNumber, keyPrefix), cancellationToken);
         }
 
         public async Task<int> IncrementFailedVerificationAttemptAsync(
             string targetKey,
             TimeSpan expiration,
+            string keyPrefix,
             CancellationToken cancellationToken = default)
         {
-            var key = GetFailedVerificationAttemptKey(targetKey);
+            var key = GetFailedVerificationAttemptKey(targetKey, keyPrefix);
             var currentValue = await _cache.GetStringAsync(key, cancellationToken);
             var currentCount = int.TryParse(currentValue, out var parsedCount) ? parsedCount : 0;
             var nextCount = currentCount + 1;
@@ -78,20 +86,21 @@ namespace Quraaa.Infrastructure.Services
             return nextCount;
         }
 
-        public async Task ClearFailedVerificationAttemptsAsync(string targetKey, CancellationToken cancellationToken = default)
+        public async Task ClearFailedVerificationAttemptsAsync(string targetKey, string keyPrefix, CancellationToken cancellationToken = default)
         {
-            await _cache.RemoveAsync(GetFailedVerificationAttemptKey(targetKey), cancellationToken);
+            await _cache.RemoveAsync(GetFailedVerificationAttemptKey(targetKey, keyPrefix), cancellationToken);
         }
 
-        public async Task<bool> IsVerificationLockedOutAsync(string targetKey, CancellationToken cancellationToken = default)
+        public async Task<bool> IsVerificationLockedOutAsync(string targetKey, string keyPrefix, CancellationToken cancellationToken = default)
         {
-            var lockout = await _cache.GetStringAsync(GetVerificationLockoutKey(targetKey), cancellationToken);
+            var lockout = await _cache.GetStringAsync(GetVerificationLockoutKey(targetKey, keyPrefix), cancellationToken);
             return !string.IsNullOrEmpty(lockout);
         }
 
         public async Task RecordVerificationLockoutAsync(
             string targetKey,
             TimeSpan lockoutPeriod,
+            string keyPrefix,
             CancellationToken cancellationToken = default)
         {
             var options = new DistributedCacheEntryOptions
@@ -99,12 +108,12 @@ namespace Quraaa.Infrastructure.Services
                 AbsoluteExpirationRelativeToNow = lockoutPeriod
             };
 
-            await _cache.SetStringAsync(GetVerificationLockoutKey(targetKey), "1", options, cancellationToken);
+            await _cache.SetStringAsync(GetVerificationLockoutKey(targetKey, keyPrefix), "1", options, cancellationToken);
         }
 
-        public async Task ClearVerificationLockoutAsync(string targetKey, CancellationToken cancellationToken = default)
+        public async Task ClearVerificationLockoutAsync(string targetKey, string keyPrefix, CancellationToken cancellationToken = default)
         {
-            await _cache.RemoveAsync(GetVerificationLockoutKey(targetKey), cancellationToken);
+            await _cache.RemoveAsync(GetVerificationLockoutKey(targetKey, keyPrefix), cancellationToken);
         }
     }
 }

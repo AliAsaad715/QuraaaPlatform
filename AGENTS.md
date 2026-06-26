@@ -8,7 +8,8 @@ This file is written for AI agents, coding assistants, and chatbots that need a 
 
 Current implemented business capabilities:
 
-- User registration through `POST /api/Auth/register`.
+- Pending user registration starts through `POST /api/Auth/register`.
+- Registration phone verification completes through `POST /api/Auth/register/verify`.
 - User login through `POST /api/Auth/login`.
 - Authenticated password reset through `POST /api/Auth/reset-password`.
 - Unauthenticated forgot-password OTP send through `POST /api/Auth/forgot-password`.
@@ -99,6 +100,7 @@ Quraaa.Application/
   Features/
     Authentication/
       Commands/Register/
+      Commands/VerifyRegisterOtp/
       Commands/Login/
       Commands/ResetPassword/
       Commands/ForgotPassword/
@@ -585,6 +587,7 @@ Current endpoints:
 
 ```text
 POST /api/Auth/register
+POST /api/Auth/register/verify
 POST /api/Auth/login
 POST /api/Auth/reset-password
 POST /api/Auth/forgot-password
@@ -615,7 +618,7 @@ POST /api/Notifications/test
   "password": "abc123",
   "gender": 1,
   "dateOfBirth": "2000-01-01",
-  "interests": ["science", "history"]
+  "interests": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"]
 }
 ```
 
@@ -626,9 +629,18 @@ POST /api/Notifications/test
 2 = Female
 ```
 
-`interests` are category codes; each value must match an existing `CategoryAggregate.Code`.
+`interests` are category IDs (`Guid`); each value must match an existing `CategoryAggregate.Id`.
 
-Successful registration response is `AuthResponse`:
+Successful registration start returns a generic success message after sending an OTP. `POST /api/Auth/register/verify` request body:
+
+```json
+{
+  "phoneNumber": "+9647XXXXXXXXX",
+  "otpCode": "123456"
+}
+```
+
+Successful registration verification response is `AuthResponse`:
 
 ```json
 {
@@ -820,29 +832,83 @@ Files:
 
 ```text
 Quraaa.API/Controllers/AuthController.cs
+Quraaa.API/Requests/Authentication/RegisterRequest.cs
+Quraaa.API/Requests/Authentication/VerifyRegisterOtpRequest.cs
 Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommand.cs
 Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommandValidator.cs
 Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommandHandler.cs
+Quraaa.Application/Features/Authentication/Commands/VerifyRegisterOtp/VerifyRegisterOtpCommand.cs
+Quraaa.Application/Features/Authentication/Commands/VerifyRegisterOtp/VerifyRegisterOtpCommandValidator.cs
+Quraaa.Application/Features/Authentication/Commands/VerifyRegisterOtp/VerifyRegisterOtpCommandHandler.cs
+Quraaa.Application/Features/Otp/Interfaces/IOtpCacheService.cs
+Quraaa.Application/Features/Otp/Interfaces/IFirebaseSmsGateway.cs
 Quraaa.Persistence/Services/IdentityService.cs
 Quraaa.Persistence/Repositories/UserRepository.cs
 Quraaa.Domain/User/UserAggregate.cs
 ```
 
+Routes:
+
+```text
+POST /api/Auth/register
+POST /api/Auth/register/verify
+```
+
+Authentication:
+
+```text
+AllowAnonymous
+```
+
+Validation rules:
+
+- `FirstName`: required, max 50 characters.
+- `LastName`: required, max 50 characters.
+- `PhoneNumber`: required, must start with `+`, must be valid according to libphonenumber.
+- `Password`: required, at least 6 characters, must contain at least one digit.
+- `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
+- `Gender`: must be a valid enum value.
+- `Interests`: required and not empty; each value must be an existing `CategoryAggregate.Id`.
+- `POST /api/Auth/register/verify` additionally requires `OtpCode`, exactly 6 digits.
+
 Flow:
 
 ```text
 HTTP POST /api/Auth/register
-  -> AuthController.Register(command)
+  -> AuthController.Register(body request)
+  -> [AllowAnonymous]
+  -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
+  -> RegisterCommand(firstName, lastName, phoneNumber, password, gender, dateOfBirth, interests, clientIp)
   -> Mediator.Send(command)
   -> RegisterCommandHandler.Handle(...)
   -> BaseApplicationService validates RegisterCommand
-  -> IIdentityService.IsPhoneNumberUniqueAsync(phone)
-  -> IIdentityService.CreateUserIdentityAsync(id, phone, password)
   -> IPhoneService.FormatToE164(phone)
-  -> new UserAggregate(...)
-  -> UserAggregate.AddInterest(...) for each interest category code
-  -> IUserRepository.AddUserAsync(profile)
+  -> handler checks verification lockout and 60-second resend lockout under the "register-otp" namespace
+  -> IIdentityService.GetUserIdentityByPhoneNumberAsync(formattedPhone)
+  -> if the phone belongs to a confirmed account, throws ApplicationBusinessException
+  -> if the phone belongs to an unconfirmed account, does not update pending password/profile data, resends an OTP, and returns a validation error telling the client to complete verification
+  -> otherwise creates a new ASP.NET Identity user with PhoneNumberConfirmed = false
+  -> rejects an unexpected existing UserAggregate for the phone, otherwise creates a new UserAggregate with the same id, normalized phone, password hash, and interest category IDs
   -> IUserRepository.SaveChangesAsync()
+  -> handler generates OTP and stores it in IDistributedCache under "register-otp" keys
+  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp)
+  -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends an FCM data message to the gateway device token
+  -> Success, no tokens yet
+
+HTTP POST /api/Auth/register/verify
+  -> AuthController.VerifyRegisterOtp(body request)
+  -> [AllowAnonymous]
+  -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
+  -> VerifyRegisterOtpCommand(phoneNumber, otpCode, clientIp)
+  -> Mediator.Send(command)
+  -> VerifyRegisterOtpCommandHandler.Handle(...)
+  -> BaseApplicationService validates VerifyRegisterOtpCommand
+  -> IPhoneService.FormatToE164(phone)
+  -> handler reads OTP from IDistributedCache under the "register-otp" namespace
+  -> handler compares code using fixed-time comparison
+  -> failed attempts are tracked; 5 failures in 5 minutes trigger a 5-minute lockout
+  -> IIdentityService.ConfirmPhoneNumberAsync(userId) sets PhoneNumberConfirmed = true
+  -> success clears OTP and verification state under the "register-otp" namespace
   -> IIdentityService.GenerateAuthTokensAsync(id, phone)
   -> AuthResponse
 ```
@@ -850,10 +916,10 @@ HTTP POST /api/Auth/register
 Important registration details:
 
 - The same generated `Guid` is used as the ASP.NET Identity user ID and the domain `UserAggregate.Id`.
-- `ApplicationUser.UserName` is the submitted phone number.
+- `ApplicationUser.UserName` is the normalized E.164 phone number.
 - `ApplicationUser.Email` is synthesized as `{phoneNumber}@quraaa.com`.
-- Email and phone are marked confirmed at registration time.
-- `UserAggregate.PhoneNumber` is formatted to E.164 when possible.
+- Email is marked confirmed at registration start; phone is marked confirmed only after `POST /api/Auth/register/verify`.
+- `UserAggregate.PhoneNumber` is formatted to E.164.
 - `UserAggregate.PasswordHash` stores the Identity password hash.
 - New users receive `Role.User`.
 - Refresh tokens are random 64-byte values encoded as Base64 and saved on the Identity user.
@@ -870,7 +936,8 @@ Important registration details:
 - `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
 - `Gender`: must be a valid enum value.
 - `Interests`: required and not empty.
-- Each interest code must exist as a `CategoryAggregate.Code`.
+- Each interest ID must exist as a `CategoryAggregate.Id`.
+- `VerifyRegisterOtpCommandValidator` requires `OtpCode`, exactly 6 digits.
 
 ### Login Flow
 
@@ -894,10 +961,8 @@ HTTP POST /api/Auth/login
   -> LoginCommandHandler.Handle(...)
   -> BaseApplicationService validates LoginCommand
   -> IPhoneService.FormatToE164(phone)
-  -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
-  -> IIdentityService.CheckPasswordAsync(user, password)
-  -> updates last/previous login timestamps on UserAggregate
-  -> IUserRepository.SaveChangesAsync()
+  -> IIdentityService.CheckPasswordAndGenerateTokensAsync(formattedPhone, password)
+  -> if credentials are valid but PhoneNumberConfirmed is false, returns validation error requiring registration completion
   -> IIdentityService.GenerateAuthTokensAsync(id, phone)
   -> AuthResponse
 ```
@@ -997,7 +1062,7 @@ AllowAnonymous
 Validation rules:
 
 - `PhoneNumber`: required, must start with `+`, must be valid according to libphonenumber.
-- `SmsGatewayDeviceToken`: required server-side configuration read from `OTP_DEVICE_TOKEN` by `AuthController`; not accepted in the request body.
+- `OTP_DEVICE_TOKEN`: required server-side configuration read by `FirebaseSmsGateway`; not accepted in the request body.
 - `OtpCode`: required, exactly 6 digits.
 - `NewPassword`: required, min 8 characters, max 64 characters, must contain at least one digit.
 
@@ -1007,18 +1072,17 @@ Flow:
 HTTP POST /api/Auth/forgot-password
   -> AuthController.ForgotPassword(body request)
   -> [AllowAnonymous]
-  -> AuthController reads smsGatewayDeviceToken from OTP_DEVICE_TOKEN
   -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
-  -> ForgotPasswordCommand(phoneNumber, smsGatewayDeviceToken, clientIp)
+  -> ForgotPasswordCommand(phoneNumber, clientIp)
   -> ForgotPasswordCommandHandler.Handle(...)
   -> BaseApplicationService validates ForgotPasswordCommand
   -> IPhoneService.FormatToE164(phone)
   -> IOtpCacheService checks send and verification lockouts
   -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
   -> if user is null, records the request lockout and returns generic success without sending an OTP to avoid leaking registration status
-  -> handler generates OTP and stores it in IDistributedCache
-  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp, smsGatewayDeviceToken)
-  -> FirebaseSmsGateway sends an FCM data message to the gateway device token
+  -> handler generates OTP and stores it in IDistributedCache under the `forgot-password-otp` namespace
+  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp)
+  -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends an FCM data message to the gateway device token
 
 HTTP POST /api/Auth/forgot-password/verify
   -> AuthController.VerifyForgotPassword(body request)
@@ -1028,9 +1092,9 @@ HTTP POST /api/Auth/forgot-password/verify
   -> ResetForgotPasswordCommandHandler.Handle(...)
   -> BaseApplicationService validates ResetForgotPasswordCommand
   -> IPhoneService.FormatToE164(phone)
-  -> handler reads OTP from IDistributedCache and verifies with fixed-time comparison
+  -> handler reads OTP from IDistributedCache under the `forgot-password-otp` namespace and verifies with fixed-time comparison
   -> failed attempts are tracked; 5 failures in 5 minutes trigger a 5-minute lockout
-  -> success clears OTP and verification state
+  -> success clears OTP and verification state under the `forgot-password-otp` namespace
   -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
   -> handler throws NotFoundException if the user profile is null
   -> IIdentityService.ResetPasswordAsync(user.Id, newPassword)
@@ -1352,7 +1416,7 @@ AllowAnonymous
 }
 ```
 
-`OtpController` reads the SMS gateway FCM token from `OTP_DEVICE_TOKEN` in configuration/environment variables.
+`FirebaseSmsGateway` reads the SMS gateway FCM token from `OTP_DEVICE_TOKEN` in configuration/environment variables.
 
 `POST /api/Otp/verify` request body:
 
@@ -1371,29 +1435,29 @@ OTP behavior:
 - Verification allows up to 5 failed attempts in a 5-minute window.
 - After too many invalid attempts, the OTP is cleared and verification is locked for 5 minutes.
 - Successful verification clears the OTP and failed-attempt state.
-- The OTP feature is standalone; it does not yet mark a user or phone number as verified and is not enforced by registration/login.
+- The standalone OTP flow stores its state under the `standalone-otp` cache namespace, so it never collides with registration (`register-otp`) or forgot-password (`forgot-password-otp`) OTP state.
+- The OTP feature is standalone; it does not yet mark a user or phone number as verified and is not enforced by login.
 
 Flow:
 
 ```text
 HTTP POST /api/Otp/send
   -> OtpController.SendOtp(body request)
-  -> OtpController reads smsGatewayDeviceToken from OTP_DEVICE_TOKEN
-  -> SendOtpCommand(phoneNumber, smsGatewayDeviceToken, clientIp)
+  -> SendOtpCommand(phoneNumber, clientIp)
   -> SendOtpCommandHandler.Handle(...)
   -> BaseApplicationService validates SendOtpCommand
   -> IPhoneService.FormatToE164(phone)
   -> IOtpCacheService checks send and verification lockouts
-  -> handler generates OTP and stores it in IDistributedCache
-  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp, smsGatewayDeviceToken)
-  -> FirebaseSmsGateway sends an FCM data message to the requested device token
+  -> handler generates OTP and stores it in IDistributedCache under the `standalone-otp` namespace
+  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp)
+  -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends an FCM data message to the gateway device token
 
 HTTP POST /api/Otp/verify
   -> OtpController.VerifyOtp(body request)
   -> VerifyOtpCommand(phoneNumber, code, clientIp)
   -> VerifyOtpCommandHandler.Handle(...)
   -> BaseApplicationService validates VerifyOtpCommand
-  -> handler reads OTP from IDistributedCache
+  -> handler reads OTP from IDistributedCache under the `standalone-otp` namespace
   -> handler compares code using fixed-time comparison
   -> success clears OTP state; invalid attempts update failed-attempt counters
 ```
@@ -1558,7 +1622,7 @@ Based on the current codebase:
 
 - **Admin library review**: `LibraryAggregate` has `Approve`/`Reject` methods, but there is no HTTP endpoint to transition a library from `Pending` to `Approved`/`Rejected`.
 - **Refresh token rotation / logout**: tokens are generated and stored, but there is no logout or refresh endpoint.
-- **OTP integration**: OTP send/verify is standalone; it is not yet required during registration, login, password reset, or phone verification.
+- **OTP integration**: OTP send/verify is required for registration and forgot-password flows, but not yet for login or general phone verification.
 - **Book/listing HTTP surface**: `GET /api/Ebooks` exposes active digital listings with book metadata, but broader catalog/listing management is still missing. `AddPhysicalBookCommand` exists without a handler or validator, and `IBookMetadataService`/`GoogleBooksService` registration is commented out.
 - **Tests**: no unit, integration, or end-to-end tests exist.
 - **CI/CD**: only branch-name validation is automated; add build, test, and publish workflows.

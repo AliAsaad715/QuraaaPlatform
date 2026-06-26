@@ -1,11 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
 using Quraaa.Application.Features.Authentication.Commands.Login;
 using Quraaa.API.Requests.Authentication;
+using Quraaa.Application.Features.Authentication.Commands.Register;
 using Quraaa.Application.Features.Authentication.Commands.ResetPassword;
 using Quraaa.Application.Features.Authentication.Commands.ForgotPassword;
 using Quraaa.Application.Features.Authentication.Commands.ResetForgotPassword;
+using Quraaa.Application.Features.Authentication.Commands.VerifyRegisterOtp;
 using Quraaa.Application.Features.Authentication.Common;
 using System.Security.Claims;
 
@@ -13,20 +14,22 @@ namespace Quraaa.API.Controllers
 {
     public class AuthController : ApiClientController
     {
-        private const string OtpDeviceTokenConfigurationKey = "OTP_DEVICE_TOKEN";
-
-        private readonly IConfiguration _configuration;
-
-        public AuthController(IConfiguration configuration)
-        {
-            _configuration = configuration;
-        }
-
+        [AllowAnonymous]
         [HttpPost("register")]
-        [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> Register([FromBody] RegisterCommand command)
+        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
+            var command = new RegisterCommand(
+                request.FirstName,
+                request.LastName,
+                request.PhoneNumber,
+                request.Password,
+                request.Gender,
+                request.DateOfBirth,
+                request.Interests,
+                GetClientIpAddress() ?? string.Empty);
+
             var result = await Mediator.Send(command);
             return HandleResult(result);
         }
@@ -69,26 +72,28 @@ namespace Quraaa.API.Controllers
         }
 
         [AllowAnonymous]
+        [HttpPost("register/verify")]
+        [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> VerifyRegisterOtp([FromBody] VerifyRegisterOtpRequest request)
+        {
+            var command = new VerifyRegisterOtpCommand(
+                request.PhoneNumber,
+                request.OtpCode,
+                GetClientIpAddress() ?? string.Empty);
+
+            var result = await Mediator.Send(command);
+            return HandleResult(result);
+        }
+
+        [AllowAnonymous]
         [HttpPost("forgot-password")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
         {
-            var smsGatewayDeviceToken = GetSmsGatewayDeviceToken();
-            if (string.IsNullOrWhiteSpace(smsGatewayDeviceToken))
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError, new
-                {
-                    type = "ConfigurationError",
-                    title = "OTP Gateway Token Missing",
-                    detail = "OTP_DEVICE_TOKEN is not configured on the server."
-                });
-            }
-
             var command = new ForgotPasswordCommand(
                 request.PhoneNumber,
-                smsGatewayDeviceToken,
                 GetClientIpAddress() ?? string.Empty);
 
             var result = await Mediator.Send(command);
@@ -115,12 +120,6 @@ namespace Quraaa.API.Controllers
         private string? GetClientIpAddress()
         {
             return HttpContext.Connection.RemoteIpAddress?.ToString();
-        }
-
-        private string? GetSmsGatewayDeviceToken()
-        {
-            return _configuration[OtpDeviceTokenConfigurationKey]
-                ?? Environment.GetEnvironmentVariable(OtpDeviceTokenConfigurationKey);
         }
 
         private bool TryGetCurrentUserId(out Guid userId)

@@ -12,9 +12,6 @@ namespace Quraaa.Application.Features.Otp.Commands.SendOtp
                 .Must(BeAValidInternationalPhoneNumber)
                 .WithMessage("Invalid international phone number format. It must start with '+' and include a valid country code.");
 
-            RuleFor(x => x.SmsGatewayDeviceToken)
-                .NotEmpty().WithMessage("SMS gateway device token is required.")
-                .MaximumLength(4096).WithMessage("SMS gateway device token is too long.");
         }
 
         private bool BeAValidInternationalPhoneNumber(string phoneNumber)

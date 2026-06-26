@@ -1,4 +1,5 @@
 using FirebaseAdmin.Messaging;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Otp.Interfaces;
 
@@ -6,24 +7,32 @@ namespace Quraaa.Infrastructure.Services
 {
     public class FirebaseSmsGateway : IFirebaseSmsGateway
     {
-        private readonly ILogger<FirebaseSmsGateway> _logger;
+        private const string OtpDeviceTokenConfigurationKey = "OTP_DEVICE_TOKEN";
 
-        public FirebaseSmsGateway(ILogger<FirebaseSmsGateway> logger)
+        private readonly ILogger<FirebaseSmsGateway> _logger;
+        private readonly IConfiguration _configuration;
+
+        public FirebaseSmsGateway(
+            ILogger<FirebaseSmsGateway> logger,
+            IConfiguration configuration)
         {
             _logger = logger;
+            _configuration = configuration;
         }
 
         public async Task SendSmsRequestAsync(
             string phoneNumber,
             string otpCode,
-            string smsGatewayDeviceToken,
+            string? smsGatewayDeviceToken = null,
             CancellationToken cancellationToken = default)
         {
             try
             {
+                var deviceToken = ResolveSmsGatewayDeviceToken(smsGatewayDeviceToken);
+
                 var message = new Message()
                 {
-                    Token = smsGatewayDeviceToken,
+                    Token = deviceToken,
                     Data = new Dictionary<string, string>()
                     {
                         { "action", "SEND_SMS" },
@@ -45,6 +54,20 @@ namespace Quraaa.Infrastructure.Services
                 _logger.LogError(ex, "Failed to send OTP FCM message to gateway for {PhoneNumber}", MaskPhoneNumber(phoneNumber));
                 throw new ApplicationException("Failed to communicate with the SMS gateway.", ex);
             }
+        }
+
+        private string ResolveSmsGatewayDeviceToken(string? smsGatewayDeviceToken)
+        {
+            var deviceToken = smsGatewayDeviceToken
+                ?? _configuration[OtpDeviceTokenConfigurationKey]
+                ?? Environment.GetEnvironmentVariable(OtpDeviceTokenConfigurationKey);
+
+            if (string.IsNullOrWhiteSpace(deviceToken))
+            {
+                throw new InvalidOperationException("OTP_DEVICE_TOKEN is not configured on the server.");
+            }
+
+            return deviceToken;
         }
 
         private static string MaskPhoneNumber(string phoneNumber)
