@@ -10,6 +10,8 @@ namespace Quraaa.Application.Features.Authentication.Interfaces
         Task<IdentityResultDto> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword);
         Task<(bool Succeeded, string? UpdatedPasswordHash, IEnumerable<string> Errors)> ResetPasswordAsync(Guid userId, string newPassword);
         Task<IdentityResultDto> ConfirmPhoneNumberAsync(Guid userId);
+        Task<bool> CheckPasswordAsync(Guid userId, string password);
+        Task<bool> IsInRoleAsync(Guid userId, string role);
         Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber);
         Task<SignInResultDto> CheckPasswordAndGenerateTokensAsync(string phoneNumber, string password);
     }
