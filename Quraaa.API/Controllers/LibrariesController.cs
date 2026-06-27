@@ -63,6 +63,12 @@ namespace Quraaa.API.Controllers
             return Guid.TryParse(claimValue, out userId);
         }
 
+        /// <summary>
+        /// Get a paged list of books available in a specific library.
+        /// </summary>
+        /// <param name="libraryId" example="01f185c0-dff4-45fa-8fe6-60d1c870ea8b">The unique identifier of the library (Pre-loaded example containing books for testing(FrontEnd)).</param>
+        /// <param name="request">Pagination, filtering, and sorting parameters.</param>
+        /// <param name="cancellationToken"></param>
         [Authorize(Roles = "User")]
         [HttpGet("{libraryId}/books")]
         [ProducesResponseType(typeof(PagedResult<LibraryBookResponse>), StatusCodes.Status200OK)]
