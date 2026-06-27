@@ -1,10 +1,16 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Quraaa.Application.Features.Categories.Common;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
+using Quraaa.Application.Features.Libraries.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Domain.Catalog;
+using Quraaa.Domain.Category;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.Library.Enums;
+using Quraaa.Domain.Marketplace;
+using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -18,15 +24,16 @@ namespace Quraaa.Persistence.Repositories
             _context = context;
         }
 
-        public async Task<bool> ExistsByUserIdAsync(Guid userId)
-        {
-            return await _context.Libraries.AnyAsync(l => l.UserId == userId);
-        }
+        public async Task<bool> ExistsByUserIdAsync(Guid userId) =>
+            await _context.Libraries.AnyAsync(l => l.UserId == userId);
 
-        public async Task AddLibraryAsync(LibraryAggregate library)
-        {
+        public async Task<bool> ExistsByIdAsync(
+            Guid libraryId,
+            CancellationToken cancellationToken = default) =>
+            await _context.Libraries.AnyAsync(l => l.Id == libraryId, cancellationToken);
+
+        public async Task AddLibraryAsync(LibraryAggregate library) =>
             await _context.Libraries.AddAsync(library);
-        }
 
         public async Task<(IReadOnlyCollection<LibraryAggregate> Items, int TotalCount)> GetPagedAsync(
             int pageNumber,
@@ -36,15 +43,14 @@ namespace Quraaa.Persistence.Repositories
         {
             var query = _context.Libraries
                 .AsNoTracking()
-                .Where(l => l.ApprovalStatus == LibraryApprovalStatus.Approved)
-                .AsQueryable();
+                .Where(l => l.ApprovalStatus == LibraryApprovalStatus.Approved);
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
-                var normalized = searchTerm.Trim().ToLower();
+                var normalized = searchTerm.Trim();
                 query = query.Where(l =>
-                    l.LibraryName.ToLower().Contains(normalized) ||
-                    l.Location.ToLower().Contains(normalized));
+                    EF.Functions.ILike(l.LibraryName, $"%{normalized}%") ||
+                    EF.Functions.ILike(l.Location, $"%{normalized}%"));
             }
 
             var totalCount = await query.CountAsync(cancellationToken);
@@ -53,6 +59,65 @@ namespace Quraaa.Persistence.Repositories
                 .OrderBy(l => l.LibraryName)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            return (items, totalCount);
+        }
+
+        public async Task<(IReadOnlyCollection<LibraryBookResponse> Items, int TotalCount)> GetLibraryBooksAsync(
+            Guid libraryId,
+            int pageNumber,
+            int pageSize,
+            string? searchTerm = null,
+            string? sortBy = null,
+            bool sortDescending = false,
+            CancellationToken cancellationToken = default)
+        {
+            var query = _context.Listings
+                .AsNoTracking()
+                .Where(lb => lb.LibraryId == libraryId && lb.Status == ListingStatus.Active)
+                .Join(
+                    _context.Books.AsNoTracking(),
+                    lb => lb.BookId,
+                    b => b.Id,
+                    (lb, b) => new { Listing = lb, Book = b })
+                .Join(
+                    _context.Categories.AsNoTracking(),
+                    combined => combined.Book.CategoryId,
+                    c => c.Id,
+                    (combined, c) => new LibraryBookFlatProjection
+                    {
+                        Listing = combined.Listing,
+                        Book = combined.Book,
+                        Category = c
+                    });
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                var normalized = searchTerm.Trim();
+                query = query.Where(x =>
+                    EF.Functions.ILike(x.Book.Title, $"%{normalized}%") ||
+                    EF.Functions.ILike(x.Book.Author, $"%{normalized}%") ||
+                    EF.Functions.ILike(x.Book.Language, $"%{normalized}%"));
+            }
+
+            query = ApplySorting(query, sortBy, sortDescending);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(x => new LibraryBookResponse(
+                    x.Book.Id,
+                    x.Book.Title,
+                    x.Book.Author,
+                    x.Book.Description,
+                    x.Book.CoverImageUrl,
+                    x.Book.Language,
+                    x.Book.Isbn,
+                    new CategoryResponse(x.Category.Id, x.Category.NameEn, x.Category.NameAr),
+                    x.Listing.Stock))
                 .ToListAsync(cancellationToken);
 
             return (items, totalCount);
@@ -70,11 +135,27 @@ namespace Quraaa.Persistence.Repositories
             }
         }
 
-        private static bool IsDuplicateLibraryForUserViolation(DbUpdateException exception)
+        private static IQueryable<LibraryBookFlatProjection> ApplySorting(
+            IQueryable<LibraryBookFlatProjection> query,
+            string? sortBy,
+            bool sortDescending)
         {
-            return exception.InnerException is PostgresException postgresException
-                && postgresException.SqlState == PostgresErrorCodes.UniqueViolation
-                && postgresException.ConstraintName == "IX_Libraries_UserId";
+            return sortBy?.ToLowerInvariant() switch
+            {
+                "author" => sortDescending ? query.OrderByDescending(x => x.Book.Author) : query.OrderBy(x => x.Book.Author),
+                "quantity" => sortDescending ? query.OrderByDescending(x => x.Listing.Stock) : query.OrderBy(x => x.Listing.Stock),
+                _ => sortDescending ? query.OrderByDescending(x => x.Book.Title) : query.OrderBy(x => x.Book.Title),
+            };
+        }
+
+        private static bool IsDuplicateLibraryForUserViolation(DbUpdateException exception) =>
+            exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_Libraries_UserId" };
+
+        private sealed class LibraryBookFlatProjection
+        {
+            public required ListingAggregate Listing { get; set; }
+            public required BookAggregate Book { get; set; }
+            public required CategoryAggregate Category { get; set; }
         }
     }
 }

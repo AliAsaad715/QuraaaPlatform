@@ -7,7 +7,6 @@ using Quraaa.Domain.Library;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.User;
 using System.Reflection;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace Quraaa.Persistence.Data
 {
