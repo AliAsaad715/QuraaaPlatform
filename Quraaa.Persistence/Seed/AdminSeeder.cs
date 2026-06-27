@@ -44,12 +44,35 @@ namespace Quraaa.Persistence.Seed
 
                 if (!await userManager.IsInRoleAsync(existingUser, role))
                 {
-                    await userManager.AddToRoleAsync(existingUser, role);
+                    var addRoleResult = await userManager.AddToRoleAsync(existingUser, role);
+                    if (!addRoleResult.Succeeded)
+                    {
+                        var errors = string.Join("; ", addRoleResult.Errors.Select(e => e.Description));
+                        throw new InvalidOperationException($"Failed to assign admin role: {errors}");
+                    }
                 }
 
                 if (identityChanged)
                 {
-                    await userManager.UpdateAsync(existingUser);
+                    var updateResult = await userManager.UpdateAsync(existingUser);
+                    if (!updateResult.Succeeded)
+                    {
+                        var errors = string.Join("; ", updateResult.Errors.Select(e => e.Description));
+                        throw new InvalidOperationException($"Failed to update admin account: {errors}");
+                    }
+                }
+
+                if (!await userManager.CheckPasswordAsync(existingUser, password))
+                {
+                    var resetToken = await userManager.GeneratePasswordResetTokenAsync(existingUser);
+                    var resetResult = await userManager.ResetPasswordAsync(existingUser, resetToken, password);
+                    if (!resetResult.Succeeded)
+                    {
+                        var errors = string.Join("; ", resetResult.Errors.Select(e => e.Description));
+                        throw new InvalidOperationException($"Failed to reset seeded admin password: {errors}");
+                    }
+
+                    existingUser = await userManager.FindByIdAsync(existingUser.Id.ToString()) ?? existingUser;
                 }
 
                 await EnsureAdminProfileAsync(context, passwordHasher, existingUser, phoneNumber, cancellationToken);
@@ -77,7 +100,8 @@ namespace Quraaa.Persistence.Seed
 
             await userManager.AddToRoleAsync(applicationUser, role);
 
-            var passwordHash = passwordHasher.HashPassword(applicationUser, password);
+            var passwordHash = applicationUser.PasswordHash
+                ?? passwordHasher.HashPassword(applicationUser, password);
 
             var adminProfile = new UserAggregate(
                 id,
@@ -133,6 +157,13 @@ namespace Quraaa.Persistence.Seed
             if (adminProfile.Role != Role.Admin)
             {
                 context.Entry(adminProfile).Property(nameof(UserAggregate.Role)).CurrentValue = Role.Admin;
+                profileChanged = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(applicationUser.PasswordHash)
+                && adminProfile.PasswordHash != applicationUser.PasswordHash)
+            {
+                adminProfile.UpdatePasswordHash(applicationUser.PasswordHash, applicationUser.Id);
                 profileChanged = true;
             }
 
