@@ -1,10 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.User;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Quraaa.Persistence.Seed
 {

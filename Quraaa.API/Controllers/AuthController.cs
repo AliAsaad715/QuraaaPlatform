@@ -34,6 +34,22 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
+        /// <summary>
+        /// Authenticates a user and returns an access token.
+        /// </summary>
+        /// <remarks>
+        /// 💡 **Demo Accounts for Testing:**
+        /// 
+        /// * **User Account:**
+        ///     * **Phone Number:** `+963912345678`
+        ///     
+        ///     * **Password:** `User@12345`
+        /// 
+        /// * **Admin Account:**
+        ///     * **Phone Number:** `+963987654321`
+        ///     
+        ///     * **Password:** `Admin@12345`
+        /// </remarks>
         [HttpPost("login")]
         [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

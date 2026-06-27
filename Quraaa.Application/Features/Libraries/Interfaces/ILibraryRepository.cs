@@ -1,3 +1,5 @@
+using Quraaa.Application.Features.Libraries.Common;
+using Quraaa.Application.Features.Libraries.Queries.GetLibraryBooks;
 using Quraaa.Domain.Library;
 
 namespace Quraaa.Application.Features.Libraries.Interfaces
@@ -10,6 +12,17 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
             int pageNumber,
             int pageSize,
             string? searchTerm,
+            CancellationToken cancellationToken = default);
+        Task<(IReadOnlyCollection<LibraryBookResponse> Items, int TotalCount)> GetLibraryBooksAsync(
+            Guid libraryId,
+            int pageNumber,
+            int pageSize,
+            string? searchTerm = null,
+            string? sortBy = null,
+            bool sortDescending = false,
+            CancellationToken cancellationToken = default);
+        Task<bool> ExistsByIdAsync(
+            Guid libraryId,
             CancellationToken cancellationToken = default);
         Task SaveChangesAsync();
     }

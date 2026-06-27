@@ -5,12 +5,13 @@ using Quraaa.API.Requests.Libraries;
 using Quraaa.Application.Features.Libraries.Commands.RegisterLibrary;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraries;
+using Quraaa.Application.Features.Libraries.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Results;
 using System.Security.Claims;
 
 namespace Quraaa.API.Controllers
 {
-    public class LibraryController : ApiClientController
+    public class LibrariesController : ApiClientController
     {
         [Authorize]
         [HttpPost("register")]
@@ -60,6 +61,29 @@ namespace Quraaa.API.Controllers
                 ?? User.FindFirstValue("sub");
 
             return Guid.TryParse(claimValue, out userId);
+        }
+
+        [Authorize(Roles = "User")]
+        [HttpGet("{libraryId}/books")]
+        [ProducesResponseType(typeof(PagedResult<LibraryBookResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetLibraryBooks(
+        [FromRoute] Guid libraryId,
+        [FromQuery] GetLibraryBooksRequest request,
+        CancellationToken cancellationToken = default)
+        {
+            var query = new GetLibraryBooksQuery
+            {
+                LibraryId = libraryId,
+                PageNumber = request.PageNumber,
+                PageSize = request.PageSize,
+                SearchTerm = request.SearchTerm,
+                SortBy = request.SortBy,
+                SortDescending = request.SortDescending
+            };
+            var result = await Mediator.Send(query, cancellationToken);
+            return HandleResult(result);
         }
     }
 }
