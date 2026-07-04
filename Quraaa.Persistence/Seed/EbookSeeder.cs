@@ -39,8 +39,8 @@ namespace Quraaa.Persistence.Seed
                     Author,
                     "Seeded ebook for development and manual testing.",
                     "/uploads/books/book1-cover.jpg",
-                    categoryId,
-                    Language);
+                    Language,
+                    categoryId);
 
                 await context.Books.AddAsync(ebook, cancellationToken);
                 await context.SaveChangesAsync(cancellationToken);

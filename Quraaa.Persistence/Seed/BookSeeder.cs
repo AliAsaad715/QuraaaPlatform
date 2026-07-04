@@ -16,7 +16,6 @@ namespace Quraaa.Persistence.Seed
             var bookSet = db.Set<BookAggregate>();
             var listingSet = db.Set<ListingAggregate>();
 
-            // التحقق من وجود الكتب مسبقاً لمنع التكرار عند إعادة تشغيل السيرفر
             if (await bookSet.AnyAsync(b => b.Title.StartsWith("Zero to One")))
             {
                 return;
@@ -59,7 +58,6 @@ namespace Quraaa.Persistence.Seed
                 var categoryId = categories[i % categories.Length];
                 var language = isArabic ? "ar" : "en";
 
-                // 🌟 الحل هنا: استخدام العداد i ليكون الـ ISBN فريد 100% وحتمي
                 var isbn = $"978-3-16-14{i:D4}-0";
 
                 var book = new BookAggregate(
@@ -68,8 +66,8 @@ namespace Quraaa.Persistence.Seed
                     author,
                     description,
                     coverImage,
-                    categoryId,
                     language,
+                    categoryId,
                     isbn
                 );
 

@@ -40,6 +40,8 @@ namespace Quraaa.Application.Shared.Results
     /// </summary>
     public record Unauthorized;
 
+    public record Conflict(string Message = "A conflict occurred.");
+
     // ==========================================
     // 2. THE FACTORY (The Readable Syntax)
     // ==========================================
@@ -83,5 +85,7 @@ namespace Quraaa.Application.Shared.Results
 
         public static Forbidden Forbidden() => new Forbidden();
         public static Unauthorized Unauthorized() => new Unauthorized();
+
+        public static Conflict Conflict(string message = "A conflict occurred.") => new Conflict(message);
     }
 }

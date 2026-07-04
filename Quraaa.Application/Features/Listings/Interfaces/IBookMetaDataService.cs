@@ -1,6 +1,6 @@
-﻿using Quraaa.Application.Features.Libraries.Commands.AddPhysicalBook;
+﻿using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
 
-namespace Quraaa.Application.Features.Libraries.Interfaces
+namespace Quraaa.Application.Features.Listings.Interfaces
 {
     public interface IBookMetadataService
     {

@@ -3,7 +3,8 @@ using Npgsql;
 using Quraaa.Application.Features.Categories.Common;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
-using Quraaa.Application.Features.Libraries.Queries.GetLibraryBooks;
+using Quraaa.Application.Features.Listings.Common;
+using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Category;
@@ -64,7 +65,7 @@ namespace Quraaa.Persistence.Repositories
             return (items, totalCount);
         }
 
-        public async Task<(IReadOnlyCollection<LibraryBookResponse> Items, int TotalCount)> GetLibraryBooksAsync(
+        public async Task<(IReadOnlyCollection<ListingSummaryResponse> Items, int TotalCount)> GetLibraryBooksAsync(
             Guid libraryId,
             int pageNumber,
             int pageSize,
@@ -72,56 +73,73 @@ namespace Quraaa.Persistence.Repositories
             string? sortBy = null,
             bool sortDescending = false,
             CancellationToken cancellationToken = default)
-        {
-            var query = _context.Listings
-                .AsNoTracking()
-                .Where(lb => lb.LibraryId == libraryId && lb.Status == ListingStatus.Active)
-                .Join(
-                    _context.Books.AsNoTracking(),
-                    lb => lb.BookId,
-                    b => b.Id,
-                    (lb, b) => new { Listing = lb, Book = b })
-                .Join(
-                    _context.Categories.AsNoTracking(),
-                    combined => combined.Book.CategoryId,
-                    c => c.Id,
-                    (combined, c) => new LibraryBookFlatProjection
-                    {
-                        Listing = combined.Listing,
-                        Book = combined.Book,
-                        Category = c
-                    });
-
-            if (!string.IsNullOrWhiteSpace(searchTerm))
             {
-                var normalized = searchTerm.Trim();
-                query = query.Where(x =>
-                    EF.Functions.ILike(x.Book.Title, $"%{normalized}%") ||
-                    EF.Functions.ILike(x.Book.Author, $"%{normalized}%") ||
-                    EF.Functions.ILike(x.Book.Language, $"%{normalized}%"));
+                var query = _context.Listings
+                    .AsNoTracking()
+                    .Where(lb => lb.LibraryId == libraryId && lb.Status == ListingStatus.Active)
+                    .Join(
+                        _context.Books.AsNoTracking(),
+                        lb => lb.BookId,
+                        b => b.Id,
+                        (lb, b) => new { Listing = lb, Book = b })
+                    .GroupJoin(
+                        _context.Categories.AsNoTracking(),
+                        x => x.Book.CategoryId,
+                        c => c.Id,
+                        (x, categories) => new { x.Listing, x.Book, Categories = categories })
+                    .SelectMany(
+                        x => x.Categories.DefaultIfEmpty(),
+                        (x, c) => new LibraryBookFlatProjection
+                        {
+                            Listing = x.Listing,
+                            Book = x.Book,
+                            Category = c
+                        });
+
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    var normalized = searchTerm.Trim();
+                    query = query.Where(x =>
+                        EF.Functions.ILike(x.Book.Title, $"%{normalized}%") ||
+                        EF.Functions.ILike(x.Book.Author, $"%{normalized}%") ||
+                        EF.Functions.ILike(x.Book.Language, $"%{normalized}%"));
+                }
+
+                query = ApplySorting(query, sortBy, sortDescending);
+
+                var totalCount = await query.CountAsync(cancellationToken);
+
+                var items = await query
+                    .Skip((pageNumber - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(x => new ListingSummaryResponse(
+                        x.Listing.Id,
+                        x.Listing.Price,
+                        x.Listing.Stock,
+                        x.Listing.Condition,
+                        new BookDetails(
+                            x.Book.Id,
+                            x.Book.Title,
+                            x.Book.Author,
+                            x.Book.Description,
+                            x.Book.CoverImageUrl,
+                            x.Book.Language,
+                            x.Book.Isbn,
+                            x.Category == null
+                                ? null
+                                : new CategoryResponse(x.Category.Id, x.Category.NameEn, x.Category.NameAr))))
+                    .ToListAsync(cancellationToken);
+
+                return (items, totalCount);
             }
 
-            query = ApplySorting(query, sortBy, sortDescending);
-
-            var totalCount = await query.CountAsync(cancellationToken);
-
-            var items = await query
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .Select(x => new LibraryBookResponse(
-                    x.Book.Id,
-                    x.Book.Title,
-                    x.Book.Author,
-                    x.Book.Description,
-                    x.Book.CoverImageUrl,
-                    x.Book.Language,
-                    x.Book.Isbn,
-                    new CategoryResponse(x.Category.Id, x.Category.NameEn, x.Category.NameAr),
-                    x.Listing.Stock))
-                .ToListAsync(cancellationToken);
-
-            return (items, totalCount);
-        }
+        public async Task<LibraryAggregate?> GetByUserIdAsync(
+                Guid userId, CancellationToken cancellationToken = default) =>
+                await _context.Libraries
+                    .FirstOrDefaultAsync(
+                        l => l.UserId == userId &&
+                                l.ApprovalStatus == LibraryApprovalStatus.Approved,
+                        cancellationToken);
 
         public async Task SaveChangesAsync()
         {
@@ -155,7 +173,7 @@ namespace Quraaa.Persistence.Repositories
         {
             public required ListingAggregate Listing { get; set; }
             public required BookAggregate Book { get; set; }
-            public required CategoryAggregate Category { get; set; }
+            public CategoryAggregate? Category { get; set; }
         }
     }
 }

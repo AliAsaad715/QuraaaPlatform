@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
 using Quraaa.Application.Features.Ebooks.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
+using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Persistence.Repositories;
 using Quraaa.Persistence.Services;
 
@@ -20,7 +21,8 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IIdentityService, IdentityService>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IEbookRepository, EbookRepository>();
-
+            services.AddScoped<IListingRepository, ListingRepository>();
+            services.AddScoped<IBookRepository, BookRepository>();
             return services;
         }
     }

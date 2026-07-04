@@ -5,7 +5,7 @@ using Quraaa.API.Requests.Libraries;
 using Quraaa.Application.Features.Libraries.Commands.RegisterLibrary;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraries;
-using Quraaa.Application.Features.Libraries.Queries.GetLibraryBooks;
+using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Results;
 using System.Security.Claims;
 
@@ -71,7 +71,7 @@ namespace Quraaa.API.Controllers
         /// <param name="cancellationToken"></param>
         [Authorize(Roles = "User")]
         [HttpGet("{libraryId}/books")]
-        [ProducesResponseType(typeof(PagedResult<LibraryBookResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(PagedResult<ListingSummaryResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetLibraryBooks(

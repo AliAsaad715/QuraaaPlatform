@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
-using Quraaa.Application.Features.Libraries.Commands.AddPhysicalBook;
-using Quraaa.Application.Features.Libraries.Interfaces;
+using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
+using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Infrastructure.Models;
 using System.Net.Http.Json;
 
@@ -14,7 +14,7 @@ namespace Quraaa.Infrastructure.Services
         public GoogleBooksService(HttpClient httpClient, IConfiguration configuration)
         {
             _httpClient = httpClient;
-            _apiKey = configuration["GoogleBooks__ApiKey"] ?? string.Empty;
+            _apiKey = configuration["GoogleBooks:ApiKey"] ?? string.Empty;
         }
 
         public async Task<BookMetadataDto?> GetBookByIsbnAsync(string isbn, CancellationToken cancellationToken = default)
@@ -39,7 +39,8 @@ namespace Quraaa.Infrastructure.Services
                     Description: volumeInfo.Description ?? string.Empty,
                     ThumbnailUrl: volumeInfo.ImageLinks?.Thumbnail?.Replace("http://", "https://") ?? string.Empty,
                     Publisher: volumeInfo.Publisher ?? string.Empty,
-                    PublishedDate: volumeInfo.PublishedDate ?? string.Empty
+                    PublishedDate: volumeInfo.PublishedDate ?? string.Empty,
+                    Language: volumeInfo.Language ?? string.Empty
                 );
             }
             catch (Exception)

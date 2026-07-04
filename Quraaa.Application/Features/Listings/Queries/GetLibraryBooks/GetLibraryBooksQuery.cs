@@ -1,11 +1,13 @@
 using FluentValidation;
 using MediatR;
-using Quraaa.Application.Features.Libraries.Queries.GetLibraryBooks;
+using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Requests;
 using Quraaa.Application.Shared.Results;
+using System.Text.Json.Serialization;
 
-public record GetLibraryBooksQuery : PaginationRequestDTO, IRequest<AppResult<PagedResult<LibraryBookResponse>>>
+public record GetLibraryBooksQuery : PaginationRequestDTO, IRequest<AppResult<PagedResult<ListingSummaryResponse>>>
 {
+    [JsonIgnore]
     public Guid LibraryId { get; init; }
     public string? SearchTerm { get; init; }
     public string? SortBy { get; init; }

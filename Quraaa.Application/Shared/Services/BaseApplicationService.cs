@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Results;
+using Quraaa.Domain.Shared.Errors;
 using Quraaa.Domain.Shared.Exceptions;
 
 namespace Quraaa.Application.Shared.Services
@@ -68,6 +69,11 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
                 return Result.ValidationFailed("Auth", ex.Message);
             }
+            catch (ConflictException ex)
+            {
+                Logger.LogWarning("Conflict: {Message}", ex.Message);
+                return Result.Conflict(ex.Message);
+            }
             catch (UnauthorizedAccessException)
             {
                 Logger.LogWarning("Security violation by User {User}", SafeGetCurrentUserIdForLog());
@@ -127,6 +133,11 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
                 return Result.ValidationFailed("Auth", ex.Message);
             }
+            catch (ConflictException ex)
+            {
+                Logger.LogWarning("Conflict: {Message}", ex.Message);
+                return Result.Conflict(ex.Message);
+            }
             catch (UnauthorizedAccessException)
             {
                 Logger.LogWarning("Security violation by User {User}", SafeGetCurrentUserIdForLog());
@@ -167,6 +178,11 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
                 return Result.ValidationFailed("Auth", ex.Message);
             }
+            catch (ConflictException ex)
+            {
+                Logger.LogWarning("Conflict: {Message}", ex.Message);
+                return Result.Conflict(ex.Message);
+            }
             catch (UnauthorizedAccessException)
             {
                 Logger.LogWarning("Security violation by User {User}", SafeGetCurrentUserIdForLog());
@@ -206,6 +222,11 @@ namespace Quraaa.Application.Shared.Services
             {
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
                 return Result.ValidationFailed("Auth", ex.Message);
+            }
+            catch (ConflictException ex)
+            {
+                Logger.LogWarning("Conflict: {Message}", ex.Message);
+                return Result.Conflict(ex.Message);
             }
             catch (UnauthorizedAccessException)
             {

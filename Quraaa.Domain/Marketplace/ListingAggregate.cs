@@ -163,5 +163,33 @@ namespace Quraaa.Domain.Marketplace
 
             UpdateAudit(modifiedBy);
         }
+
+        public void UpdateStock(int newStock, Guid modifiedBy)
+        {
+            if (Format != ListingFormat.Physical)
+                throw new DomainException("Only physical listings track stock.");
+
+            if (newStock < 0)
+                throw new DomainException("Stock cannot be negative.");
+
+            Stock = newStock;
+
+            // Flip status automatically when stock changes
+            if (Stock == 0)
+                Status = ListingStatus.OutOfStock;
+            else if (Status == ListingStatus.OutOfStock)
+                Status = ListingStatus.Active; // restocked
+
+            UpdateAudit(modifiedBy);
+        }
+
+        public void UpdateCondition(BookCondition newCondition, Guid modifiedBy)
+        {
+            if (Format != ListingFormat.Physical)
+                throw new DomainException("Only physical listings have a condition.");
+
+            Condition = newCondition;
+            UpdateAudit(modifiedBy);
+        }
     }
 }

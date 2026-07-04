@@ -21,11 +21,11 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
                 .NotEmpty().WithMessage("Last name is required.")
                 .MaximumLength(50).WithMessage("Last name must not exceed 50 characters.");
 
-            // 2. Validate phone number (adjust the regex for targeted country formats)
+            // 2. Validate phone number — only Syrian numbers (+963)
             RuleFor(x => x.PhoneNumber)
                 .NotEmpty().WithMessage("Phone number is required.")
-                .Must(BeAValidInternationalPhoneNumber)
-                .WithMessage("Invalid international phone number format. It must start with '+' and include a valid country code.");
+                .Must(BeASyrianPhoneNumber)
+                .WithMessage("Invalid Syrian phone number. It must start with '+963' and be a valid Syrian number.");
 
             // 3. Validate password strength to meet Identity requirements and avoid early exceptions
             RuleFor(x => x.Password)
@@ -53,25 +53,29 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
 
         }
 
-        private bool BeAValidInternationalPhoneNumber(string phoneNumber)
+        private bool BeASyrianPhoneNumber(string phoneNumber)
         {
-            if (string.IsNullOrWhiteSpace(phoneNumber)) return false;
+            if (string.IsNullOrWhiteSpace(phoneNumber))
+                return false;
 
-            // Strict check: must start with '+'
-            if (!phoneNumber.Trim().StartsWith("+")) return false;
+            var trimmed = phoneNumber.Trim();
+
+            // Strict prefix check for Syria
+            if (!trimmed.StartsWith("+963"))
+                return false;
 
             var phoneUtil = PhoneNumberUtil.GetInstance();
             try
             {
-                // Parse without a default region to force the library to read the country code from the input
-                var number = phoneUtil.Parse(phoneNumber, null);
+                // Parse using 'SY' region — ensures library applies Syrian rules.
+                var number = phoneUtil.Parse(trimmed, "SY");
 
-                // Validate number according to the extracted country's rules (length, possible range, etc.)
-                return phoneUtil.IsValidNumber(number);
+                // Ensure the parsed number is valid and belongs to Syria
+                return phoneUtil.IsValidNumberForRegion(number, "SY");
             }
             catch (NumberParseException)
             {
-                return false; // Input is not a valid phone number
+                return false;
             }
         }
 

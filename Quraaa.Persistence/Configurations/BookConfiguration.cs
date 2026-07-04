@@ -40,7 +40,7 @@ namespace Quraaa.Persistence.Configurations
                    .IsRequired(false);
 
             builder.Property(b => b.CategoryId)
-                   .IsRequired();
+                   .IsRequired(false);
 
             builder.HasOne<CategoryAggregate>()
                    .WithMany()
