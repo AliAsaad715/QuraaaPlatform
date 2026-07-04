@@ -1,4 +1,4 @@
-﻿namespace Quraaa.Application.Features.Libraries.Commands.AddPhysicalBook
+﻿namespace Quraaa.Application.Features.Listings.Commands.AddPhysicalBook
 {
     public record BookMetadataDto(
         string Title,
@@ -6,6 +6,7 @@
         string Description,
         string ThumbnailUrl,
         string Publisher,
-        string PublishedDate
+        string PublishedDate,
+        string Language
     );
 }

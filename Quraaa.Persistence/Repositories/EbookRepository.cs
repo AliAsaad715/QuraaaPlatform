@@ -65,7 +65,7 @@ namespace Quraaa.Persistence.Repositories
                     ebook.Author,
                     ebook.Description,
                     ebook.CoverImageUrl,
-                    ebook.CategoryId,
+                    ebook.CategoryId ?? Guid.Empty,
                     ebook.Language,
                     ebook.Isbn,
                     ebook.Price,

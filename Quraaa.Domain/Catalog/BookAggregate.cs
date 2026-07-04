@@ -8,7 +8,7 @@ namespace Quraaa.Domain.Catalog
         public string Author { get; private set; } = null!;
         public string Description { get; private set; } = null!;
         public string CoverImageUrl { get; private set; } = null!;
-        public Guid CategoryId { get; private set; }
+        public Guid? CategoryId { get; private set; }
         public string Language { get; private set; } = null!;
         public string? Isbn { get; private set; }
 
@@ -20,8 +20,8 @@ namespace Quraaa.Domain.Catalog
             string author,
             string description,
             string coverImageUrl,
-            Guid categoryId,
             string language,
+            Guid? categoryId = null,
             string? isbn = null)
         {
             Id = id;

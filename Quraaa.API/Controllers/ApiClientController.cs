@@ -60,19 +60,21 @@ namespace Quraaa.API.Controllers
                         title = "Conflict",
                         detail = LibraryErrorCodes.DuplicateLibraryForUserMessage
                     })
-                    : string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
-                    ? Conflict(new
-                    {
-                        type = "Conflict",
-                        title = "Conflict",
-                        detail = "You have already applied for this job offer."
-                    })
+
                     : BadRequest(new
                     {
                         type = "DomainError",
                         title = "Business Rule Violation",
                         detail = domainError.Message
-                    })
+                    }),
+
+                // 409 Conflict
+                Conflict => StatusCode(StatusCodes.Status409Conflict, new
+                {
+                    type = "Conflict",
+                    title = "Conflict",
+                    detail = "Conflict this resource."
+                })
             );
         }
 
@@ -116,19 +118,20 @@ namespace Quraaa.API.Controllers
                         title = "Conflict",
                         detail = LibraryErrorCodes.DuplicateLibraryForUserMessage
                     })
-                    : string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
-                    ? Conflict(new
-                    {
-                        type = "Conflict",
-                        title = "Conflict",
-                        detail = "You have already applied for this job offer."
-                    })
                     : BadRequest(new
                     {
                         type = "DomainError",
                         title = "Business Rule Violation",
                         detail = domainError.Message
-                    })
+                    }),
+
+                // 409 Conflict
+                Conflict => StatusCode(StatusCodes.Status409Conflict, new
+                {
+                    type = "Conflict",
+                    title = "Conflict",
+                    detail = Conflict.Message
+                })
             );
         }
     }
