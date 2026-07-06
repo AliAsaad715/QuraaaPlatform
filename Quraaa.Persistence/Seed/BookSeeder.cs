@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Library;
+using Quraaa.Domain.Library.Enums;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
 using System;
@@ -15,14 +16,25 @@ namespace Quraaa.Persistence.Seed
         {
             var bookSet = db.Set<BookAggregate>();
             var listingSet = db.Set<ListingAggregate>();
+            var librarySet = db.Set<LibraryAggregate>();
 
-            // التحقق من وجود الكتب مسبقاً لمنع التكرار عند إعادة تشغيل السيرفر
-            if (await bookSet.AnyAsync(b => b.Title.StartsWith("Zero to One")))
+            var targetLibraryId = await librarySet
+                .AsNoTracking()
+                .Where(l => l.ApprovalStatus == LibraryApprovalStatus.Approved)
+                .OrderBy(l => l.LibraryName)
+                .Select(l => (Guid?)l.Id)
+                .FirstOrDefaultAsync();
+
+            targetLibraryId ??= await librarySet
+                .AsNoTracking()
+                .OrderBy(l => l.LibraryName)
+                .Select(l => (Guid?)l.Id)
+                .FirstOrDefaultAsync();
+
+            if (targetLibraryId is null)
             {
                 return;
             }
-
-            var targetLibraryId = Guid.Parse("01f185c0-dff4-45fa-8fe6-60d1c870ea8b");
 
             var categories = new[]
             {
@@ -34,12 +46,25 @@ namespace Quraaa.Persistence.Seed
             var englishTitles = new[] { "Clean Code", "The Pragmatic Programmer", "To Kill a Mockingbird", "180°C Knowledge", "Atomic Habits", "Dune", "The Hobbit", "Zero to One" };
             var authors = new[] { "Ahmed Khaled", "Robert C. Martin", "Radwa Ashour", "James Clear", "Naguib Mahfouz", "Dan Brown" };
 
+            var seedIsbns = Enumerable.Range(0, 60)
+                .Select(i => $"978-3-16-14{i:D4}-0")
+                .ToArray();
+
+            var seedBookIdsByIsbn = await bookSet
+                .Where(b => b.Isbn != null && seedIsbns.Contains(b.Isbn))
+                .ToDictionaryAsync(b => b.Isbn!, b => b.Id);
+
             var books = new List<BookAggregate>();
-            var listings = new List<ListingAggregate>();
-            var random = new Random(42);
 
             for (int i = 0; i < 60; i++)
             {
+                var isbn = seedIsbns[i];
+
+                if (seedBookIdsByIsbn.ContainsKey(isbn))
+                {
+                    continue;
+                }
+
                 var bookId = Guid.NewGuid();
                 bool isArabic = i % 2 == 0;
 
@@ -59,9 +84,6 @@ namespace Quraaa.Persistence.Seed
                 var categoryId = categories[i % categories.Length];
                 var language = isArabic ? "ar" : "en";
 
-                // 🌟 الحل هنا: استخدام العداد i ليكون الـ ISBN فريد 100% وحتمي
-                var isbn = $"978-3-16-14{i:D4}-0";
-
                 var book = new BookAggregate(
                     bookId,
                     title,
@@ -74,16 +96,42 @@ namespace Quraaa.Persistence.Seed
                 );
 
                 books.Add(book);
+                seedBookIdsByIsbn.Add(isbn, bookId);
+            }
 
-                var listingId = Guid.NewGuid();
+            if (books.Count > 0)
+            {
+                await bookSet.AddRangeAsync(books);
+                await db.SaveChangesAsync();
+            }
+
+            var seedBookIds = seedBookIdsByIsbn.Values.ToArray();
+            var listedBookIds = (await listingSet
+                .Where(l => seedBookIds.Contains(l.BookId))
+                .Select(l => l.BookId)
+                .ToListAsync())
+                .ToHashSet();
+
+            var listings = new List<ListingAggregate>();
+            var random = new Random(42);
+
+            for (int i = 0; i < 60; i++)
+            {
+                var bookId = seedBookIdsByIsbn[seedIsbns[i]];
                 var price = random.Next(10, 50) + 0.99m;
                 var condition = (BookCondition)random.Next(0, 3);
                 var stock = random.Next(2, 15);
 
+                if (listedBookIds.Contains(bookId))
+                {
+                    continue;
+                }
+
+                var listingId = Guid.NewGuid();
                 var listing = ListingAggregate.CreateForLibrary(
                     listingId,
                     bookId,
-                    targetLibraryId,
+                    targetLibraryId.Value,
                     price,
                     condition,
                     stock
@@ -93,11 +141,11 @@ namespace Quraaa.Persistence.Seed
                 listings.Add(listing);
             }
 
-            await bookSet.AddRangeAsync(books);
-            await db.SaveChangesAsync();
-
-            await listingSet.AddRangeAsync(listings);
-            await db.SaveChangesAsync();
+            if (listings.Count > 0)
+            {
+                await listingSet.AddRangeAsync(listings);
+                await db.SaveChangesAsync();
+            }
         }
     }
 }

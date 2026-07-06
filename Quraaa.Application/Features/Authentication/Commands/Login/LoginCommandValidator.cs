@@ -13,7 +13,8 @@ namespace Quraaa.Application.Features.Authentication.Commands.Login
                 .WithMessage("Invalid international phone number format. It must start with '+' and include a valid country code.");
 
             RuleFor(x => x.Password)
-                .NotEmpty().WithMessage("Password is required.");
+                .NotEmpty().WithMessage("Password is required.")
+                .MaximumLength(256).WithMessage("Password is too long.");
         }
 
         private bool BeAValidInternationalPhoneNumber(string phoneNumber)

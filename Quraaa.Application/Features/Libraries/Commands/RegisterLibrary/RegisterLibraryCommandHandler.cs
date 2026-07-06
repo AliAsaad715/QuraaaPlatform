@@ -44,6 +44,12 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                     throw new DomainException(LibraryErrorCodes.DuplicateLibraryForUser);
                 }
 
+                var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+                if (await _libraryRepository.ExistsByEmailAsync(normalizedEmail, cancellationToken))
+                {
+                    throw new DomainException(LibraryErrorCodes.DuplicateLibraryEmail);
+                }
+
                 string? libraryImagePath = null;
                 string? headerImagePath = null;
 
@@ -58,7 +64,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                         request.Location,
                         libraryImagePath,
                         headerImagePath,
-                        request.Email,
+                        normalizedEmail,
                         request.UserId
                     );
 
@@ -68,9 +74,10 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                         await _libraryRepository.SaveChangesAsync();
                     }
                     catch (ApplicationBusinessException ex)
-                        when (ex.Message == LibraryErrorCodes.DuplicateLibraryForUser)
+                        when (ex.Message == LibraryErrorCodes.DuplicateLibraryForUser
+                              || ex.Message == LibraryErrorCodes.DuplicateLibraryEmail)
                     {
-                        throw new DomainException(LibraryErrorCodes.DuplicateLibraryForUser);
+                        throw new DomainException(ex.Message);
                     }
 
                     return new LibraryResponse(

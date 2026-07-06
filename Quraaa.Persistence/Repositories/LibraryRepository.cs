@@ -27,6 +27,38 @@ namespace Quraaa.Persistence.Repositories
         public async Task<bool> ExistsByUserIdAsync(Guid userId) =>
             await _context.Libraries.AnyAsync(l => l.UserId == userId);
 
+        public async Task<bool> ExistsByEmailAsync(
+            string email,
+            CancellationToken cancellationToken = default)
+        {
+            var normalizedEmail = NormalizeEmail(email);
+
+            return await _context.Libraries
+                .AsNoTracking()
+                .AnyAsync(l => l.Email.ToLower() == normalizedEmail, cancellationToken);
+        }
+
+        public async Task<bool> ExistsApprovedByUserIdAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default) =>
+            await _context.Libraries.AnyAsync(
+                l => l.UserId == userId && l.ApprovalStatus == LibraryApprovalStatus.Approved,
+                cancellationToken);
+
+        public async Task<LibraryAggregate?> GetApprovedByEmailAsync(
+            string email,
+            CancellationToken cancellationToken = default)
+        {
+            var normalizedEmail = NormalizeEmail(email);
+
+            return await _context.Libraries
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    l => l.ApprovalStatus == LibraryApprovalStatus.Approved
+                        && l.Email.ToLower() == normalizedEmail,
+                    cancellationToken);
+        }
+
         public async Task<bool> ExistsByIdAsync(
             Guid libraryId,
             CancellationToken cancellationToken = default) =>
@@ -133,7 +165,13 @@ namespace Quraaa.Persistence.Repositories
             {
                 throw new ApplicationBusinessException(LibraryErrorCodes.DuplicateLibraryForUser);
             }
+            catch (DbUpdateException ex) when (IsDuplicateLibraryEmailViolation(ex))
+            {
+                throw new ApplicationBusinessException(LibraryErrorCodes.DuplicateLibraryEmail);
+            }
         }
+
+        private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 
         private static IQueryable<LibraryBookFlatProjection> ApplySorting(
             IQueryable<LibraryBookFlatProjection> query,
@@ -150,6 +188,9 @@ namespace Quraaa.Persistence.Repositories
 
         private static bool IsDuplicateLibraryForUserViolation(DbUpdateException exception) =>
             exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_Libraries_UserId" };
+
+        private static bool IsDuplicateLibraryEmailViolation(DbUpdateException exception) =>
+            exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_Libraries_Email" };
 
         private sealed class LibraryBookFlatProjection
         {

@@ -60,6 +60,13 @@ namespace Quraaa.API.Controllers
                         title = "Conflict",
                         detail = LibraryErrorCodes.DuplicateLibraryForUserMessage
                     })
+                    : string.Equals(domainError.Message, LibraryErrorCodes.DuplicateLibraryEmail, StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = LibraryErrorCodes.DuplicateLibraryEmailMessage
+                    })
                     : string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
                     ? Conflict(new
                     {
@@ -115,6 +122,13 @@ namespace Quraaa.API.Controllers
                         type = "Conflict",
                         title = "Conflict",
                         detail = LibraryErrorCodes.DuplicateLibraryForUserMessage
+                    })
+                    : string.Equals(domainError.Message, LibraryErrorCodes.DuplicateLibraryEmail, StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = LibraryErrorCodes.DuplicateLibraryEmailMessage
                     })
                     : string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
                     ? Conflict(new

@@ -3,8 +3,11 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Category;
+using Quraaa.Domain.Favorites;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.Marketplace;
+using Quraaa.Domain.Purchases;
+using Quraaa.Domain.Ratings;
 using Quraaa.Domain.User;
 using System.Reflection;
 
@@ -21,6 +24,9 @@ namespace Quraaa.Persistence.Data
         public DbSet<BookAggregate> Books { get; set; }
         public DbSet<ListingAggregate> Listings { get; set; }
         public DbSet<CategoryAggregate> Categories { get; set; }
+        public DbSet<FavoriteBookAggregate> FavoriteBooks { get; set; }
+        public DbSet<BookPurchaseAggregate> BookPurchases { get; set; }
+        public DbSet<BookRatingAggregate> BookRatings { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
