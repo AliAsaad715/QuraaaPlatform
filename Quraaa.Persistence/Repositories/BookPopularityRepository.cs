@@ -30,7 +30,7 @@ namespace Quraaa.Persistence.Repositories
                 select new
                 {
                     BookId = purchaseGroup.Key,
-                    PurchaseCount = purchaseGroup.Sum(purchase => (long)purchase.Quantity)
+                    PurchaseCount = (long?)purchaseGroup.Sum(purchase => (long)purchase.Quantity)
                 };
 
             var ratingStats =
@@ -40,8 +40,8 @@ namespace Quraaa.Persistence.Repositories
                 select new
                 {
                     BookId = ratingGroup.Key,
-                    RatingCount = ratingGroup.Count(),
-                    AverageRating = ratingGroup.Average(rating => (double)rating.RatingValue)
+                    RatingCount = (int?)ratingGroup.Count(),
+                    AverageRating = ratingGroup.Average(rating => (double?)rating.RatingValue)
                 };
 
             var activeListingStats =
@@ -51,8 +51,7 @@ namespace Quraaa.Persistence.Repositories
                 select new
                 {
                     BookId = listingGroup.Key,
-                    ActiveListingCount = listingGroup.Count(),
-                    LowestPrice = listingGroup.Min(listing => listing.Price)
+                    ActiveListingCount = (int?)listingGroup.Count()
                 };
 
             var query =
@@ -77,11 +76,10 @@ namespace Quraaa.Persistence.Repositories
                     CategoryId = book.CategoryId,
                     Language = book.Language,
                     Isbn = book.Isbn,
-                    PurchaseCount = purchase == null ? 0 : purchase.PurchaseCount,
-                    RatingCount = rating == null ? 0 : rating.RatingCount,
-                    AverageRating = rating == null ? null : rating.AverageRating,
-                    ActiveListingCount = listing == null ? 0 : listing.ActiveListingCount,
-                    LowestPrice = listing == null ? null : listing.LowestPrice
+                    PurchaseCount = purchase.PurchaseCount ?? 0,
+                    RatingCount = rating.RatingCount ?? 0,
+                    AverageRating = rating.AverageRating,
+                    ActiveListingCount = listing.ActiveListingCount ?? 0
                 };
 
             if (!includeUnranked)
@@ -97,9 +95,9 @@ namespace Quraaa.Persistence.Repositories
                     EF.Functions.ILike(book.Author, $"%{normalized}%"));
             }
 
-            query = ApplySorting(query, sortBy);
-
             var totalCount = await query.CountAsync(cancellationToken);
+
+            query = ApplySorting(query, sortBy);
 
             var items = await query
                 .Skip((pageNumber - 1) * pageSize)
@@ -116,8 +114,7 @@ namespace Quraaa.Persistence.Repositories
                     book.PurchaseCount,
                     book.RatingCount,
                     book.AverageRating,
-                    book.ActiveListingCount,
-                    book.LowestPrice))
+                    book.ActiveListingCount))
                 .ToListAsync(cancellationToken);
 
             return (items, totalCount);
@@ -170,7 +167,6 @@ namespace Quraaa.Persistence.Repositories
             public int RatingCount { get; set; }
             public double? AverageRating { get; set; }
             public int ActiveListingCount { get; set; }
-            public decimal? LowestPrice { get; set; }
         }
     }
 }
