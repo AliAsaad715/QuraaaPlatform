@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Quraaa.Domain.Library.Enums;
 using Quraaa.Domain.User;
 using Quraaa.Domain.User.Enums;
 using Quraaa.Persistence.Data;
@@ -27,25 +28,32 @@ namespace Quraaa.Persistence.Seed
             IConfiguration configuration,
             CancellationToken cancellationToken = default)
         {
-            string role = Role.User.ToString();
-            if (!await roleManager.RoleExistsAsync(role))
-            {
-                await roleManager.CreateAsync(new IdentityRole<Guid> { Name = role });
-            }
+            var userRole = Role.User.ToString();
+            var libraryOwnerRole = Role.LibraryOwner.ToString();
+
+            await EnsureRoleAsync(roleManager, userRole);
+            await EnsureRoleAsync(roleManager, libraryOwnerRole);
 
             await EnsureUserAsync(
                 context,
                 userManager,
+                roleManager,
                 passwordHasher,
                 DefaultUserPhoneNumber,
                 firstName: "Quraaa",
                 lastName: "User",
                 gender: Gender.Male,
-                role,
+                domainRole: Role.User,
+                identityRoles: new[] { userRole },
                 cancellationToken);
 
             if (await context.Libraries.AnyAsync(cancellationToken))
             {
+                await EnsureApprovedLibraryOwnerRolesAsync(
+                    context,
+                    userManager,
+                    roleManager,
+                    cancellationToken);
                 return;
             }
 
@@ -55,12 +63,14 @@ namespace Quraaa.Persistence.Seed
                 await EnsureUserAsync(
                     context,
                     userManager,
+                    roleManager,
                     passwordHasher,
                     phoneNumber,
                     firstName: "Library",
                     lastName: $"Owner {ownerIndex:000}",
                     gender: ownerIndex % 2 == 0 ? Gender.Female : Gender.Male,
-                    role,
+                    domainRole: Role.User,
+                    identityRoles: new[] { userRole },
                     cancellationToken);
 
                 ownerIndex++;
@@ -72,15 +82,90 @@ namespace Quraaa.Persistence.Seed
             return $"+963930000{index:000}";
         }
 
+        private static async Task EnsureRoleAsync(
+            RoleManager<IdentityRole<Guid>> roleManager,
+            string role)
+        {
+            if (!await roleManager.RoleExistsAsync(role))
+            {
+                var result = await roleManager.CreateAsync(new IdentityRole<Guid> { Name = role });
+                if (!result.Succeeded)
+                {
+                    var errors = string.Join("; ", result.Errors.Select(e => e.Description));
+                    throw new InvalidOperationException($"Failed to create role {role}: {errors}");
+                }
+            }
+        }
+
+        public static async Task EnsureApprovedLibraryOwnerRolesAsync(
+            ApplicationDbContext context,
+            UserManager<ApplicationUser> userManager,
+            RoleManager<IdentityRole<Guid>> roleManager,
+            CancellationToken cancellationToken)
+        {
+            var userRole = Role.User.ToString();
+            var libraryOwnerRole = Role.LibraryOwner.ToString();
+
+            await EnsureRoleAsync(roleManager, userRole);
+            await EnsureRoleAsync(roleManager, libraryOwnerRole);
+
+            var ownerUserIds = await context.Libraries
+                .AsNoTracking()
+                .Where(library => library.ApprovalStatus == LibraryApprovalStatus.Approved)
+                .Select(library => library.UserId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            if (ownerUserIds.Count == 0)
+            {
+                return;
+            }
+
+            var ownerProfiles = await context.UsersProfiles
+                .Where(user => ownerUserIds.Contains(user.Id))
+                .ToListAsync(cancellationToken);
+
+            var profilesChanged = false;
+            foreach (var ownerProfile in ownerProfiles)
+            {
+                if (ownerProfile.Role == Role.LibraryOwner)
+                {
+                    continue;
+                }
+
+                ownerProfile.BecomeLibraryOwner(ownerProfile.Id);
+                profilesChanged = true;
+            }
+
+            if (profilesChanged)
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+
+            foreach (var ownerUserId in ownerUserIds)
+            {
+                var applicationUser = await userManager.FindByIdAsync(ownerUserId.ToString());
+                if (applicationUser is null)
+                {
+                    continue;
+                }
+
+                await EnsureIdentityRoleAsync(userManager, roleManager, applicationUser, userRole);
+                await EnsureIdentityRoleAsync(userManager, roleManager, applicationUser, libraryOwnerRole);
+            }
+        }
+
         private static async Task EnsureUserAsync(
             ApplicationDbContext context,
             UserManager<ApplicationUser> userManager,
+            RoleManager<IdentityRole<Guid>> roleManager,
             IPasswordHasher<ApplicationUser> passwordHasher,
             string phoneNumber,
             string firstName,
             string lastName,
             Gender gender,
-            string role,
+            Role domainRole,
+            IReadOnlyCollection<string> identityRoles,
             CancellationToken cancellationToken)
         {
             var applicationUser = await userManager.FindByNameAsync(phoneNumber);
@@ -104,18 +189,30 @@ namespace Quraaa.Persistence.Seed
                 }
             }
 
-            if (!await userManager.IsInRoleAsync(applicationUser, role))
+            foreach (var identityRole in identityRoles.Distinct())
             {
-                var roleResult = await userManager.AddToRoleAsync(applicationUser, role);
-                if (!roleResult.Succeeded)
-                {
-                    var errors = string.Join("; ", roleResult.Errors.Select(e => e.Description));
-                    throw new InvalidOperationException($"Failed to assign role {role} to {phoneNumber}: {errors}");
-                }
+                await EnsureIdentityRoleAsync(userManager, roleManager, applicationUser, identityRole);
             }
 
-            if (await context.UsersProfiles.AnyAsync(u => u.Id == applicationUser.Id, cancellationToken))
+            var existingProfile = await context.UsersProfiles
+                .FirstOrDefaultAsync(u => u.Id == applicationUser.Id, cancellationToken);
+
+            if (existingProfile is not null)
             {
+                if (existingProfile.Role != domainRole)
+                {
+                    if (domainRole == Role.LibraryOwner)
+                    {
+                        existingProfile.BecomeLibraryOwner(applicationUser.Id);
+                    }
+                    else
+                    {
+                        context.Entry(existingProfile).Property(nameof(UserAggregate.Role)).CurrentValue = domainRole;
+                    }
+
+                    await context.SaveChangesAsync(cancellationToken);
+                }
+
                 return;
             }
 
@@ -128,11 +225,32 @@ namespace Quraaa.Persistence.Seed
                 phoneNumber: phoneNumber,
                 passwordHash: passwordHash,
                 gender: gender,
-                role: Role.User,
+                role: domainRole,
                 dateOfBirth: new DateOnly(2000, 1, 1));
 
             await context.UsersProfiles.AddAsync(userProfile, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
+        }
+
+        private static async Task EnsureIdentityRoleAsync(
+            UserManager<ApplicationUser> userManager,
+            RoleManager<IdentityRole<Guid>> roleManager,
+            ApplicationUser applicationUser,
+            string role)
+        {
+            await EnsureRoleAsync(roleManager, role);
+
+            if (await userManager.IsInRoleAsync(applicationUser, role))
+            {
+                return;
+            }
+
+            var roleResult = await userManager.AddToRoleAsync(applicationUser, role);
+            if (!roleResult.Succeeded)
+            {
+                var errors = string.Join("; ", roleResult.Errors.Select(e => e.Description));
+                throw new InvalidOperationException($"Failed to assign role {role} to {applicationUser.UserName}: {errors}");
+            }
         }
     }
 }

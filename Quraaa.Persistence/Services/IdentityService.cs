@@ -142,6 +142,37 @@ namespace Quraaa.Persistence.Services
             return user is not null && await _userManager.IsInRoleAsync(user, role);
         }
 
+        public async Task<IdentityResultDto> AddUserToRoleAsync(Guid userId, string role)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user == null)
+            {
+                return IdentityResultDto.Failure(new[] { "User security identity was not found." });
+            }
+
+            if (!await _roleManager.RoleExistsAsync(role))
+            {
+                var createRoleResult = await _roleManager.CreateAsync(new IdentityRole<Guid> { Name = role });
+                if (!createRoleResult.Succeeded)
+                {
+                    return IdentityResultDto.Failure(createRoleResult.Errors.Select(e => e.Description));
+                }
+            }
+
+            if (await _userManager.IsInRoleAsync(user, role))
+            {
+                return IdentityResultDto.Success(user.PasswordHash ?? string.Empty);
+            }
+
+            var addRoleResult = await _userManager.AddToRoleAsync(user, role);
+            if (!addRoleResult.Succeeded)
+            {
+                return IdentityResultDto.Failure(addRoleResult.Errors.Select(e => e.Description));
+            }
+
+            return IdentityResultDto.Success(user.PasswordHash ?? string.Empty);
+        }
+
         public async Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber)
         {
             var user = await _userManager.FindByIdAsync(userId.ToString());

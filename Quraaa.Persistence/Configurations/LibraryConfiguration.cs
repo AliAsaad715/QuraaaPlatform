@@ -48,7 +48,8 @@ namespace Quraaa.Persistence.Configurations
 
                      builder.HasIndex(l => l.UserId)
                             .IsUnique();
-                     builder.HasIndex(l => l.Email);
+                     builder.HasIndex(l => l.Email)
+                            .IsUnique();
               }
        }
 }

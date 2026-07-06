@@ -276,6 +276,48 @@ namespace Quraaa.Persistence.Migrations
                     b.ToTable("Categories", (string)null);
                 });
 
+            modelBuilder.Entity("Quraaa.Domain.Favorites.FavoriteBookAggregate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeleationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "BookId")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
+
+                    b.ToTable("FavoriteBooks", (string)null);
+                });
+
             modelBuilder.Entity("Quraaa.Domain.Library.LibraryAggregate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -332,7 +374,8 @@ namespace Quraaa.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email");
+                    b.HasIndex("Email")
+                        .IsUnique();
 
                     b.HasIndex("UserId")
                         .IsUnique();
@@ -407,6 +450,115 @@ namespace Quraaa.Persistence.Migrations
                     b.ToTable("Listings", null, t =>
                         {
                             t.HasCheckConstraint("CK_Listing_ExactlyOneSeller", "(\"LibraryId\" IS NOT NULL AND \"UserId\" IS NULL) OR (\"LibraryId\" IS NULL AND \"UserId\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Purchases.BookPurchaseAggregate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeleationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ListingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookId");
+
+                    b.HasIndex("CreationTime");
+
+                    b.HasIndex("ListingId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("BookId", "CreationTime");
+
+                    b.ToTable("BookPurchases", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_BookPurchases_Quantity_Positive", "\"Quantity\" > 0");
+
+                            t.HasCheckConstraint("CK_BookPurchases_UnitPrice_NonNegative", "\"UnitPrice\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Ratings.BookRatingAggregate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeleationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RatingValue")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookId");
+
+                    b.HasIndex("CreationTime");
+
+                    b.HasIndex("RatingValue");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "BookId")
+                        .IsUnique();
+
+                    b.ToTable("BookRatings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_BookRatings_RatingValue_Range", "\"RatingValue\" >= 1 AND \"RatingValue\" <= 5");
                         });
                 });
 
@@ -613,6 +765,21 @@ namespace Quraaa.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
+            modelBuilder.Entity("Quraaa.Domain.Favorites.FavoriteBookAggregate", b =>
+                {
+                    b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
+                        .WithMany()
+                        .HasForeignKey("BookId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Quraaa.Domain.User.UserAggregate", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Quraaa.Domain.Library.LibraryAggregate", b =>
                 {
                     b.HasOne("Quraaa.Domain.User.UserAggregate", null)
@@ -639,6 +806,42 @@ namespace Quraaa.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Purchases.BookPurchaseAggregate", b =>
+                {
+                    b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
+                        .WithMany()
+                        .HasForeignKey("BookId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Quraaa.Domain.Marketplace.ListingAggregate", null)
+                        .WithMany()
+                        .HasForeignKey("ListingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Quraaa.Domain.User.UserAggregate", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Ratings.BookRatingAggregate", b =>
+                {
+                    b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
+                        .WithMany()
+                        .HasForeignKey("BookId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Quraaa.Domain.User.UserAggregate", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Quraaa.Domain.User.UserAggregate", b =>

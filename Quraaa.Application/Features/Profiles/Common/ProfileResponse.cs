@@ -1,3 +1,5 @@
+using Quraaa.Application.Features.Categories.Common;
+using Quraaa.Domain.Category;
 using Quraaa.Domain.User;
 using Quraaa.Domain.User.Enums;
 
@@ -12,15 +14,26 @@ namespace Quraaa.Application.Features.Profiles.Common
         Role Role,
         DateOnly DateOfBirth,
         string? ProfileImageUrl,
-        IReadOnlyCollection<Guid> Interests,
+        IReadOnlyCollection<CategoryResponse> Interests,
         DateTime? LastLoginDate,
         DateTime? PreviousLoginDate,
         DateTime CreationTime,
         DateTime? LastModificationTime
     )
     {
-        public static ProfileResponse FromUser(UserAggregate user)
+        public static ProfileResponse FromUser(UserAggregate user, IReadOnlyCollection<CategoryAggregate> interestCategories)
         {
+            var categoriesById = interestCategories.ToDictionary(category => category.Id);
+            var interests = new List<CategoryResponse>();
+
+            foreach (var categoryId in user.InterestedCategoryIds)
+            {
+                if (categoriesById.TryGetValue(categoryId, out var category))
+                {
+                    interests.Add(new CategoryResponse(category.Id, category.NameAr, category.NameEn));
+                }
+            }
+
             return new ProfileResponse(
                 user.Id,
                 user.FirstName,
@@ -30,7 +43,7 @@ namespace Quraaa.Application.Features.Profiles.Common
                 user.Role,
                 user.DateOfBirth,
                 user.ProfileImageUrl,
-                user.InterestedCategoryIds,
+                interests,
                 user.LastLoginDate,
                 user.PreviousLoginDate,
                 user.CreationTime,
