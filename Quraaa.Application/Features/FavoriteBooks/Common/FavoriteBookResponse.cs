@@ -7,7 +7,7 @@ namespace Quraaa.Application.Features.FavoriteBooks.Common
         string Author,
         string Description,
         string CoverImageUrl,
-        Guid CategoryId,
+        Guid? CategoryId,
         string Language,
         string? Isbn,
         DateTime FavoritedAt);
