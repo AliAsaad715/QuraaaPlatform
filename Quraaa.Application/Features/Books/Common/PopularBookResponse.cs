@@ -12,6 +12,5 @@ namespace Quraaa.Application.Features.Books.Common
         long PurchaseCount,
         int RatingCount,
         double? AverageRating,
-        int ActiveListingCount,
-        decimal? LowestPrice);
+        int ActiveListingCount);
 }
