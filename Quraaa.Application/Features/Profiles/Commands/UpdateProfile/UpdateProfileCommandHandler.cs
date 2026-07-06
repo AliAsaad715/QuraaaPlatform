@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
+using Quraaa.Application.Features.Categories.Interfaces;
 using Quraaa.Application.Features.Profiles.Common;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
@@ -11,13 +12,16 @@ namespace Quraaa.Application.Features.Profiles.Commands.UpdateProfile
     public class UpdateProfileCommandHandler : BaseApplicationService<UpdateProfileCommandHandler>, IRequestHandler<UpdateProfileCommand, AppResult<ProfileResponse>>
     {
         private readonly IUserRepository _userRepository;
+        private readonly ICategoryRepository _categoryRepository;
 
         public UpdateProfileCommandHandler(
             IUserRepository userRepository,
+            ICategoryRepository categoryRepository,
             ILogger<UpdateProfileCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _userRepository = userRepository;
+            _categoryRepository = categoryRepository;
         }
 
         public async Task<AppResult<ProfileResponse>> Handle(UpdateProfileCommand request, CancellationToken cancellationToken)
@@ -41,7 +45,9 @@ namespace Quraaa.Application.Features.Profiles.Commands.UpdateProfile
 
                 await _userRepository.SaveChangesAsync();
 
-                return ProfileResponse.FromUser(user);
+                var interestCategories = await _categoryRepository.GetByIdsAsync(user.InterestedCategoryIds.ToList(), cancellationToken);
+
+                return ProfileResponse.FromUser(user, interestCategories);
             }, "Profile updated successfully");
         }
     }

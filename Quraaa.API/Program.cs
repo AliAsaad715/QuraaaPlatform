@@ -55,6 +55,7 @@ using (var scope = app.Services.CreateScope())
     await AdminSeeder.SeedAsync(db, userManager, roleManager, passwordHasher, builder.Configuration);
     await UserSeeder.SeedAsync(db, userManager, roleManager, passwordHasher, builder.Configuration);
     await LibrarySeeder.SeedAsync(db);
+    await UserSeeder.EnsureApprovedLibraryOwnerRolesAsync(db, userManager, roleManager, CancellationToken.None);
     await EbookSeeder.SeedAsync(db);
     await BookSeeder.SeedAsync(db);
 }

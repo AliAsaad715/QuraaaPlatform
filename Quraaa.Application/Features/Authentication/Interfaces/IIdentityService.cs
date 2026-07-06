@@ -12,6 +12,7 @@ namespace Quraaa.Application.Features.Authentication.Interfaces
         Task<IdentityResultDto> ConfirmPhoneNumberAsync(Guid userId);
         Task<bool> CheckPasswordAsync(Guid userId, string password);
         Task<bool> IsInRoleAsync(Guid userId, string role);
+        Task<IdentityResultDto> AddUserToRoleAsync(Guid userId, string role);
         Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber);
         Task<SignInResultDto> CheckPasswordAndGenerateTokensAsync(string phoneNumber, string password);
     }

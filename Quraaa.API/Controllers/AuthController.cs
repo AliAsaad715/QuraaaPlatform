@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.Application.Features.Authentication.Commands.AdminLogin;
+using Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin;
 using Quraaa.Application.Features.Authentication.Commands.Login;
 using Quraaa.API.Requests.Authentication;
 using Quraaa.Application.Features.Authentication.Commands.Register;
@@ -57,6 +58,22 @@ namespace Quraaa.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Login([FromBody] LoginCommand command)
         {
+            var result = await Mediator.Send(command);
+            return HandleResult(result);
+        }
+
+
+        [AllowAnonymous]
+        [HttpPost("library/login")]
+        [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> LibraryOwnerLogin([FromBody] LibraryOwnerLoginRequest request)
+        {
+            var command = new LibraryOwnerLoginCommand(
+                request.Email,
+                request.Password,
+                GetClientIpAddress() ?? string.Empty);
+
             var result = await Mediator.Send(command);
             return HandleResult(result);
         }

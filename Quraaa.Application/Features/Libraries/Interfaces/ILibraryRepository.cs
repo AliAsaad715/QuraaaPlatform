@@ -6,6 +6,9 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
     public interface ILibraryRepository
     {
         Task<bool> ExistsByUserIdAsync(Guid userId);
+        Task<bool> ExistsByEmailAsync(string email, CancellationToken cancellationToken = default);
+        Task<bool> ExistsApprovedByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
+        Task<LibraryAggregate?> GetApprovedByEmailAsync(string email, CancellationToken cancellationToken = default);
         Task AddLibraryAsync(LibraryAggregate library);
         Task<(IReadOnlyCollection<LibraryAggregate> Items, int TotalCount)> GetPagedAsync(
             int pageNumber,

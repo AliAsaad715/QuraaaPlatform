@@ -60,7 +60,20 @@ namespace Quraaa.API.Controllers
                         title = "Conflict",
                         detail = LibraryErrorCodes.DuplicateLibraryForUserMessage
                     })
-
+                    : string.Equals(domainError.Message, LibraryErrorCodes.DuplicateLibraryEmail, StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = LibraryErrorCodes.DuplicateLibraryEmailMessage
+                    })
+                    : string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = "You have already applied for this job offer."
+                    })
                     : BadRequest(new
                     {
                         type = "DomainError",
@@ -83,7 +96,7 @@ namespace Quraaa.API.Controllers
             return result.Match(
                 // 200 OK / 201 Created (for created resources)
                 data => // data is Dto
-                    // ? StatusCode(StatusCodes.Status201Created, data)
+                        // ? StatusCode(StatusCodes.Status201Created, data)
                     Ok(data),
 
                 // 400 Bad Request (Validation)
@@ -117,6 +130,20 @@ namespace Quraaa.API.Controllers
                         type = "Conflict",
                         title = "Conflict",
                         detail = LibraryErrorCodes.DuplicateLibraryForUserMessage
+                    })
+                    : string.Equals(domainError.Message, LibraryErrorCodes.DuplicateLibraryEmail, StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = LibraryErrorCodes.DuplicateLibraryEmailMessage
+                    })
+                    : string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = "You have already applied for this job offer."
                     })
                     : BadRequest(new
                     {

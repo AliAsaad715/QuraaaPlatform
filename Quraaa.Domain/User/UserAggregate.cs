@@ -64,6 +64,17 @@ namespace Quraaa.Domain.User
             UpdateAudit(modifiedBy);
         }
 
+        public void BecomeLibraryOwner(Guid modifiedBy)
+        {
+            if (Role == Role.LibraryOwner)
+            {
+                return;
+            }
+
+            Role = Role.LibraryOwner;
+            UpdateAudit(modifiedBy);
+        }
+
         public void UpdateProfile(
             string firstName,
             string lastName,
