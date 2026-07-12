@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Shared.Results;
+using System.Security.Claims;
 
 namespace Quraaa.API.Controllers
 {
@@ -17,6 +18,25 @@ namespace Quraaa.API.Controllers
     {
         private IMediator? _mediator;
         protected IMediator Mediator => _mediator ??= HttpContext.RequestServices.GetRequiredService<IMediator>();
+
+        protected bool TryGetCurrentUserId(out Guid userId)
+        {
+            var claimValue = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("nameid")
+                ?? User.FindFirstValue("sub");
+
+            return Guid.TryParse(claimValue, out userId);
+        }
+
+        protected UnauthorizedObjectResult InvalidUserIdResult()
+        {
+            return Unauthorized(new
+            {
+                type = "Unauthorized",
+                title = "Invalid Authentication Token",
+                detail = "The authentication token does not contain a valid user id."
+            });
+        }
 
         /// <summary>
         /// Centralized Result Handler.

@@ -6,7 +6,6 @@ using Quraaa.Application.Features.FavoriteBooks.Commands.RemoveFavoriteBook;
 using Quraaa.Application.Features.FavoriteBooks.Common;
 using Quraaa.Application.Features.FavoriteBooks.Queries.GetFavoriteBooks;
 using Quraaa.Application.Shared.Results;
-using System.Security.Claims;
 
 namespace Quraaa.API.Controllers
 {
@@ -76,25 +75,6 @@ namespace Quraaa.API.Controllers
                 cancellationToken);
 
             return HandleResult(result);
-        }
-
-        private bool TryGetCurrentUserId(out Guid userId)
-        {
-            var claimValue = User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? User.FindFirstValue("nameid")
-                ?? User.FindFirstValue("sub");
-
-            return Guid.TryParse(claimValue, out userId);
-        }
-
-        private UnauthorizedObjectResult InvalidUserIdResult()
-        {
-            return Unauthorized(new
-            {
-                type = "Unauthorized",
-                title = "Invalid Authentication Token",
-                detail = "The authentication token does not contain a valid user id."
-            });
         }
     }
 }

@@ -3,12 +3,39 @@ using Microsoft.AspNetCore.Mvc;
 using Quraaa.API.Requests.Books;
 using Quraaa.Application.Features.Books.Common;
 using Quraaa.Application.Features.Books.Queries.GetMostPopularBooks;
+using Quraaa.Application.Features.Books.Queries.GetRecommendedBooks;
 using Quraaa.Application.Shared.Results;
 
 namespace Quraaa.API.Controllers
 {
     public class BooksController : ApiClientController
     {
+        [Authorize]
+        [HttpGet("recommended")]
+        [ProducesResponseType(typeof(PagedResult<PopularBookResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetRecommendedBooks(
+            [FromQuery] GetRecommendedBooksRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var query = new GetRecommendedBooksQuery(
+                userId,
+                request.Language,
+                request.PageNumber,
+                request.PageSize,
+                request.SearchTerm);
+
+            var result = await Mediator.Send(query, cancellationToken);
+            return HandleResult(result);
+        }
+
         [AllowAnonymous]
         [HttpGet("most-popular")]
         [ProducesResponseType(typeof(PagedResult<PopularBookResponse>), StatusCodes.Status200OK)]

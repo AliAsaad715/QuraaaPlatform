@@ -22,6 +22,7 @@ namespace Quraaa.Persistence.Repositories
         public async Task<UserAggregate?> GetUserByIdAsync(Guid id)
         {
             return await _context.UsersProfiles
+                .Include(u => u.Interests)
                 .FirstOrDefaultAsync(u => u.Id == id && !u.IsDeleted);
         }
 

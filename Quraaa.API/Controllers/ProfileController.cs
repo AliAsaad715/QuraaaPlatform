@@ -4,7 +4,6 @@ using Quraaa.API.Requests.Profiles;
 using Quraaa.Application.Features.Profiles.Commands.UpdateProfile;
 using Quraaa.Application.Features.Profiles.Common;
 using Quraaa.Application.Features.Profiles.Queries.GetMyProfile;
-using System.Security.Claims;
 
 namespace Quraaa.API.Controllers
 {
@@ -19,12 +18,7 @@ namespace Quraaa.API.Controllers
         {
             if (!TryGetCurrentUserId(out var userId))
             {
-                return Unauthorized(new
-                {
-                    type = "Unauthorized",
-                    title = "Invalid Authentication Token",
-                    detail = "The authentication token does not contain a valid user id."
-                });
+                return InvalidUserIdResult();
             }
 
             var result = await Mediator.Send(new GetMyProfileQuery(userId));
@@ -40,12 +34,7 @@ namespace Quraaa.API.Controllers
         {
             if (!TryGetCurrentUserId(out var userId))
             {
-                return Unauthorized(new
-                {
-                    type = "Unauthorized",
-                    title = "Invalid Authentication Token",
-                    detail = "The authentication token does not contain a valid user id."
-                });
+                return InvalidUserIdResult();
             }
 
             var command = new UpdateProfileCommand(
@@ -60,15 +49,6 @@ namespace Quraaa.API.Controllers
 
             var result = await Mediator.Send(command);
             return HandleResult(result);
-        }
-
-        private bool TryGetCurrentUserId(out Guid userId)
-        {
-            var claimValue = User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? User.FindFirstValue("nameid")
-                ?? User.FindFirstValue("sub");
-
-            return Guid.TryParse(claimValue, out userId);
         }
     }
 }

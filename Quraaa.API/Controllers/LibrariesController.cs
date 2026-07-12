@@ -7,7 +7,6 @@ using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraries;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Results;
-using System.Security.Claims;
 
 namespace Quraaa.API.Controllers
 {
@@ -23,12 +22,7 @@ namespace Quraaa.API.Controllers
         {
             if (!TryGetCurrentUserId(out var userId))
             {
-                return Unauthorized(new
-                {
-                    type = "Unauthorized",
-                    title = "Invalid Authentication Token",
-                    detail = "The authentication token does not contain a valid user id."
-                });
+                return InvalidUserIdResult();
             }
 
             var command = new RegisterLibraryCommand(
@@ -44,7 +38,7 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
-        [Authorize(Roles = "User,LibraryOwner")]
+        [AllowAnonymous]
         [HttpGet]
         [ProducesResponseType(typeof(PagedResult<PublicLibraryResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -52,15 +46,6 @@ namespace Quraaa.API.Controllers
         {
             var result = await Mediator.Send(query);
             return HandleResult(result);
-        }
-
-        private bool TryGetCurrentUserId(out Guid userId)
-        {
-            var claimValue = User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? User.FindFirstValue("nameid")
-                ?? User.FindFirstValue("sub");
-
-            return Guid.TryParse(claimValue, out userId);
         }
 
         /// <summary>
