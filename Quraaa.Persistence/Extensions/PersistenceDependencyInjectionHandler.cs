@@ -2,10 +2,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Books.Interfaces;
-using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
 using Quraaa.Application.Features.Ebooks.Interfaces;
-using Quraaa.Application.Features.FavoriteBooks.Interfaces;
 using Quraaa.Application.Features.FavoriteBooks.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;

@@ -23,6 +23,71 @@ namespace Quraaa.Persistence.Repositories
             bool includeUnranked,
             CancellationToken cancellationToken = default)
         {
+            var query = BuildPopularityQuery();
+
+            if (!includeUnranked)
+            {
+                query = query.Where(book => book.PurchaseCount > 0 || book.RatingCount > 0);
+            }
+
+            query = ApplySearch(query, searchTerm);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            query = ApplySorting(query, sortBy);
+
+            var items = await ToPagedResponseListAsync(query, pageNumber, pageSize, cancellationToken);
+
+            return (items, totalCount);
+        }
+
+        public async Task<(IReadOnlyCollection<PopularBookResponse> Items, int TotalCount)> GetRecommendedAsync(
+            IReadOnlyCollection<Guid> interestedCategoryIds,
+            string language,
+            int pageNumber,
+            int pageSize,
+            string? searchTerm,
+            CancellationToken cancellationToken = default)
+        {
+            var categoryIds = interestedCategoryIds
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToArray();
+
+            if (categoryIds.Length == 0)
+            {
+                return (Array.Empty<PopularBookResponse>(), 0);
+            }
+
+            var normalizedLanguage = language.Trim().ToLowerInvariant();
+
+            var query = BuildPopularityQuery()
+                .Where(book =>
+                    book.CategoryId.HasValue &&
+                    categoryIds.Contains(book.CategoryId.Value) &&
+                    book.Language.ToLower() == normalizedLanguage &&
+                    book.ActiveListingCount > 0);
+
+            query = ApplySearch(query, searchTerm);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            query = query
+                .OrderByDescending(book => book.PurchaseCount)
+                .ThenByDescending(book => book.RatingCount)
+                .ThenByDescending(book => book.AverageRating.HasValue)
+                .ThenByDescending(book => book.AverageRating)
+                .ThenByDescending(book => book.ActiveListingCount)
+                .ThenBy(book => book.Title)
+                .ThenBy(book => book.BookId);
+
+            var items = await ToPagedResponseListAsync(query, pageNumber, pageSize, cancellationToken);
+
+            return (items, totalCount);
+        }
+
+        private IQueryable<PopularBookFlatProjection> BuildPopularityQuery()
+        {
             var purchaseStats =
                 from purchase in _context.BookPurchases.AsNoTracking()
                 where !purchase.IsDeleted
@@ -54,7 +119,7 @@ namespace Quraaa.Persistence.Repositories
                     ActiveListingCount = (int?)listingGroup.Count()
                 };
 
-            var query =
+            return
                 from book in _context.Books.AsNoTracking()
                 where !book.IsDeleted
                 join purchase in purchaseStats
@@ -81,43 +146,21 @@ namespace Quraaa.Persistence.Repositories
                     AverageRating = rating.AverageRating,
                     ActiveListingCount = listing.ActiveListingCount ?? 0
                 };
+        }
 
-            if (!includeUnranked)
+        private static IQueryable<PopularBookFlatProjection> ApplySearch(
+            IQueryable<PopularBookFlatProjection> query,
+            string? searchTerm)
+        {
+            if (string.IsNullOrWhiteSpace(searchTerm))
             {
-                query = query.Where(book => book.PurchaseCount > 0 || book.RatingCount > 0);
+                return query;
             }
 
-            if (!string.IsNullOrWhiteSpace(searchTerm))
-            {
-                var normalized = searchTerm.Trim();
-                query = query.Where(book =>
-                    EF.Functions.ILike(book.Title, $"%{normalized}%") ||
-                    EF.Functions.ILike(book.Author, $"%{normalized}%"));
-            }
-
-            var totalCount = await query.CountAsync(cancellationToken);
-
-            query = ApplySorting(query, sortBy);
-
-            var items = await query
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .Select(book => new PopularBookResponse(
-                    book.BookId,
-                    book.Title,
-                    book.Author,
-                    book.Description,
-                    book.CoverImageUrl,
-                    book.CategoryId,
-                    book.Language,
-                    book.Isbn,
-                    book.PurchaseCount,
-                    book.RatingCount,
-                    book.AverageRating,
-                    book.ActiveListingCount))
-                .ToListAsync(cancellationToken);
-
-            return (items, totalCount);
+            var normalized = searchTerm.Trim();
+            return query.Where(book =>
+                EF.Functions.ILike(book.Title, $"%{normalized}%") ||
+                EF.Functions.ILike(book.Author, $"%{normalized}%"));
         }
 
         private static IQueryable<PopularBookFlatProjection> ApplySorting(
@@ -151,6 +194,31 @@ namespace Quraaa.Persistence.Repositories
                     .ThenByDescending(book => book.AverageRating)
                     .ThenBy(book => book.Title),
             };
+        }
+
+        private static Task<List<PopularBookResponse>> ToPagedResponseListAsync(
+            IQueryable<PopularBookFlatProjection> query,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken)
+        {
+            return query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(book => new PopularBookResponse(
+                    book.BookId,
+                    book.Title,
+                    book.Author,
+                    book.Description,
+                    book.CoverImageUrl,
+                    book.CategoryId,
+                    book.Language,
+                    book.Isbn,
+                    book.PurchaseCount,
+                    book.RatingCount,
+                    book.AverageRating,
+                    book.ActiveListingCount))
+                .ToListAsync(cancellationToken);
         }
 
         private sealed class PopularBookFlatProjection

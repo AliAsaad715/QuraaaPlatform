@@ -4,7 +4,6 @@ using Quraaa.API.Requests.Notifications;
 using Quraaa.Application.Features.Notifications.Commands.SendNotification;
 using Quraaa.Application.Features.Notifications.Commands.SendTestNotification;
 using Quraaa.Application.Features.Notifications.Common;
-using System.Security.Claims;
 
 namespace Quraaa.API.Controllers
 {
@@ -29,12 +28,7 @@ namespace Quraaa.API.Controllers
         {
             if (!TryGetCurrentUserId(out var userId))
             {
-                return Unauthorized(new
-                {
-                    type = "Unauthorized",
-                    title = "Invalid Authentication Token",
-                    detail = "The authentication token does not contain a valid user id."
-                });
+                return InvalidUserIdResult();
             }
 
             var command = new SendNotificationCommand(
@@ -73,15 +67,6 @@ namespace Quraaa.API.Controllers
 
             var result = await Mediator.Send(command);
             return HandleResult(result);
-        }
-
-        private bool TryGetCurrentUserId(out Guid userId)
-        {
-            var claimValue = User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? User.FindFirstValue("nameid")
-                ?? User.FindFirstValue("sub");
-
-            return Guid.TryParse(claimValue, out userId);
         }
 
         private bool IsTestEndpointEnabled()

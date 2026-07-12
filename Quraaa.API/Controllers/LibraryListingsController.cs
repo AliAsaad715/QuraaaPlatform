@@ -4,7 +4,6 @@ using Quraaa.API.Controllers;
 using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
 using Quraaa.Application.Features.Listings.Commands.UpdateListing;
 using Quraaa.Application.Features.Listings.Queries.GetListingById;
-using System.Security.Claims;
 
 namespace Quraaa.Presentation.Controllers
 {
@@ -36,8 +35,13 @@ namespace Quraaa.Presentation.Controllers
             [FromBody] AddPhysicalBookCommand command,
             CancellationToken cancellationToken = default)
         {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
             var result = await Mediator.Send(
-                command with { RequestingUserId = GetCurrentUserId() },
+                command with { RequestingUserId = userId },
                 cancellationToken);
 
             return HandleResult(result);
@@ -58,11 +62,16 @@ namespace Quraaa.Presentation.Controllers
             [FromBody] UpdateListingCommand command,
             CancellationToken cancellationToken = default)
         {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
             var result = await Mediator.Send(
                 command with
                 {
                     ListingId = listingId,
-                    RequestingUserId = GetCurrentUserId()
+                    RequestingUserId = userId
                 },
                 cancellationToken);
 
@@ -86,9 +95,5 @@ namespace Quraaa.Presentation.Controllers
 
             return HandleResult(result);
         }
-
-        // ─────────────────────────────────────────────────────────────────────
-        private Guid GetCurrentUserId() =>
-            Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
     }
 }

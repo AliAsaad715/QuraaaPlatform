@@ -11,5 +11,13 @@ namespace Quraaa.Application.Features.Books.Interfaces
             string sortBy,
             bool includeUnranked,
             CancellationToken cancellationToken = default);
+
+        Task<(IReadOnlyCollection<PopularBookResponse> Items, int TotalCount)> GetRecommendedAsync(
+            IReadOnlyCollection<Guid> interestedCategoryIds,
+            string language,
+            int pageNumber,
+            int pageSize,
+            string? searchTerm,
+            CancellationToken cancellationToken = default);
     }
 }
