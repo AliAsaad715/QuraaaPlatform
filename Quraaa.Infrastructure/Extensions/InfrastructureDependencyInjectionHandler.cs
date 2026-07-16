@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Otp.Interfaces;
@@ -17,6 +18,9 @@ namespace Quraaa.Infrastructure.Extensions
         {
             FirebaseExtensions.AddFirebaseConfiguration(services, configuration);
             AddOtpCache(services, configuration, isDevelopment);
+
+            services.Configure<StripeOptions>(configuration.GetSection("Stripe"));
+            services.AddScoped<IStripePaymentService, StripePaymentService>();
 
             services.AddScoped<IOtpCacheService, OtpCacheService>();
             services.AddScoped<IFirebaseSmsGateway, FirebaseSmsGateway>();

@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.Catalog;
+using Quraaa.Domain.Cart;
 using Quraaa.Domain.Category;
 using Quraaa.Domain.Favorites;
 using Quraaa.Domain.Library;
@@ -27,6 +28,7 @@ namespace Quraaa.Persistence.Data
         public DbSet<FavoriteBookAggregate> FavoriteBooks { get; set; }
         public DbSet<BookPurchaseAggregate> BookPurchases { get; set; }
         public DbSet<BookRatingAggregate> BookRatings { get; set; }
+        public DbSet<CartAggregate> Carts { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
