@@ -68,6 +68,12 @@ namespace Quraaa.Persistence.Configurations
                 pb.Property(p => p.CardBrand).HasMaxLength(20).HasColumnName("PaymentCardBrand");
                 pb.Property(p => p.LastFourDigits).HasMaxLength(4).HasColumnName("PaymentLastFourDigits");
             });
+
+            builder.OwnsOne(u => u.Location, loc =>
+            {
+                loc.Property(l => l.Latitude).HasColumnName("Latitude");
+                loc.Property(l => l.Longitude).HasColumnName("Longitude");
+            });
         }
     }
 }

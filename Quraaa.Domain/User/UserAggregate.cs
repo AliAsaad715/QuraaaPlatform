@@ -18,6 +18,7 @@ namespace Quraaa.Domain.User
         public DateTime? LastLoginDate { get; private set; }
         public DateTime? PreviousLoginDate { get; private set; }
         public PaymentMethodInfo? PaymentMethod { private set; get; }
+        public GeoLocation? Location { get; private set; }
 
         private readonly List<Interest> _interests = new();
         public IReadOnlyCollection<Interest> Interests => _interests.AsReadOnly();
@@ -95,5 +96,10 @@ namespace Quraaa.Domain.User
 
             UpdateAudit(modifiedBy);
         }
+
+        public void SetLocation(double latitude, double longitude) =>
+            Location = new GeoLocation(latitude, longitude);
+
+        public void ClearLocation() => Location = null;
     }
 }
