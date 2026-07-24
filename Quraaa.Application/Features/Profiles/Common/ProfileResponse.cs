@@ -15,6 +15,7 @@ namespace Quraaa.Application.Features.Profiles.Common
         DateOnly DateOfBirth,
         string? ProfileImageUrl,
         IReadOnlyCollection<CategoryResponse> Interests,
+        LocationResponse? Location,
         DateTime? LastLoginDate,
         DateTime? PreviousLoginDate,
         DateTime CreationTime,
@@ -44,6 +45,7 @@ namespace Quraaa.Application.Features.Profiles.Common
                 user.DateOfBirth,
                 user.ProfileImageUrl,
                 interests,
+                user.Location != null ? new LocationResponse(user.Location.Latitude, user.Location.Longitude) : null,
                 user.LastLoginDate,
                 user.PreviousLoginDate,
                 user.CreationTime,
@@ -52,3 +54,8 @@ namespace Quraaa.Application.Features.Profiles.Common
         }
     }
 }
+
+public record LocationResponse(
+    double Latitude,
+    double Longitude
+);

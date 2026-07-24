@@ -26,7 +26,7 @@ namespace Quraaa.Application.Features.Profiles.Queries.GetMyProfile
 
         public async Task<AppResult<ProfileResponse>> Handle(GetMyProfileQuery request, CancellationToken cancellationToken)
         {
-            return await ExecuteAsync<GetMyProfileQuery, ProfileResponse>(request, async () =>
+            return await ExecuteAsync(request, async () =>
             {
                 var user = await _userRepository.GetUserByIdAsync(request.UserId);
                 if (user == null)
