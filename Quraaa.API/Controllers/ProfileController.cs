@@ -53,7 +53,7 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
-        [HttpPost("upsert-location")]
+        [HttpPost("location")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> UpsertLocation([FromBody] UpsertLocationCommand command)
         {
@@ -65,7 +65,7 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
-        [HttpDelete("delete-location")]
+        [HttpDelete("location")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> DeleteLocation([FromBody] DeleteLocationCommand command)
         {

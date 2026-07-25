@@ -27,10 +27,16 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 
+builder.Services.Configure<RouteOptions>(options =>
+{
+    options.LowercaseUrls = true;
+});
+
 builder.Services.AddDatabaseConfiguration(builder.Configuration);
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddInfrastructureDependencies(builder.Configuration, builder.Environment.IsDevelopment());
 builder.Services.AddSwaggerConfiguration(builder.Configuration);
+
 
 var app = builder.Build();
 

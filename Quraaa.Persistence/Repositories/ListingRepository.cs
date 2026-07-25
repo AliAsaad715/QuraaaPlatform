@@ -1,8 +1,11 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Quraaa.Application.Features.Catalog.Common;
 using Quraaa.Application.Features.Categories.Common;
-using Quraaa.Application.Features.Listings.Common;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Features.Listings.Queries.GetListingById;
+using Quraaa.Domain.Catalog;
+using Quraaa.Domain.Category;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Persistence.Data;
@@ -60,11 +63,107 @@ namespace Quraaa.Persistence.Repositories
                 .AnyAsync(l => l.LibraryId == libraryId && l.BookId == bookId,
                     cancellationToken);
 
+        public async Task<bool> ExistsByUserAndBookAsync(
+            Guid userId,
+            Guid bookId,
+            CancellationToken cancellationToken = default) =>
+            await _context.Listings
+                .AnyAsync(l => l.UserId == userId && l.BookId == bookId,
+                    cancellationToken);
+
+        public async Task<(IReadOnlyCollection<ListingSummaryResponse> Items, int TotalCount)> GetUserBooksForSaleAsync(
+            Guid userId,
+            int pageNumber,
+            int pageSize,
+            string? searchTerm = null,
+            string? sortBy = null,
+            bool sortDescending = false,
+            CancellationToken cancellationToken = default)
+        {
+            var query = _context.Listings
+                .AsNoTracking()
+                .Where(lb => lb.UserId == userId && lb.SellerType == SellerType.User && lb.Status == ListingStatus.Active)
+                .Join(
+                    _context.Books.AsNoTracking(),
+                    lb => lb.BookId,
+                    b => b.Id,
+                    (lb, b) => new { Listing = lb, Book = b })
+                .GroupJoin(
+                    _context.Categories.AsNoTracking(),
+                    x => x.Book.CategoryId,
+                    c => c.Id,
+                    (x, categories) => new { x.Listing, x.Book, Categories = categories })
+                .SelectMany(
+                    x => x.Categories.DefaultIfEmpty(),
+                    (x, c) => new UserListingFlatProjection
+                    {
+                        Listing = x.Listing,
+                        Book = x.Book,
+                        Category = c
+                    });
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                var normalized = searchTerm.Trim();
+                query = query.Where(x =>
+                    EF.Functions.ILike(x.Book.Title, $"%{normalized}%") ||
+                    EF.Functions.ILike(x.Book.Author, $"%{normalized}%") ||
+                    EF.Functions.ILike(x.Book.Language, $"%{normalized}%"));
+            }
+
+            query = ApplySorting(query, sortBy, sortDescending);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(x => new ListingSummaryResponse(
+                    x.Listing.Id,
+                    x.Listing.Price,
+                    x.Listing.Stock,
+                    x.Listing.Condition,
+                    new BookDetails(
+                        x.Book.Id,
+                        x.Book.Title,
+                        x.Book.Author,
+                        x.Book.Description,
+                        x.Book.CoverImageUrl,
+                        x.Book.Language,
+                        x.Book.Isbn,
+                        x.Category == null
+                            ? null
+                            : new CategoryResponse(x.Category.Id, x.Category.NameEn, x.Category.NameAr))))
+                .ToListAsync(cancellationToken);
+
+            return (items, totalCount);
+        }
+
         public async Task AddAsync(
             ListingAggregate listing, CancellationToken cancellationToken = default) =>
             await _context.Listings.AddAsync(listing, cancellationToken);
 
         public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
             _context.SaveChangesAsync(cancellationToken);
+
+        private static IQueryable<UserListingFlatProjection> ApplySorting(
+            IQueryable<UserListingFlatProjection> query,
+            string? sortBy,
+            bool sortDescending)
+        {
+            return sortBy?.ToLowerInvariant() switch
+            {
+                "author" => sortDescending ? query.OrderByDescending(x => x.Book.Author) : query.OrderBy(x => x.Book.Author),
+                "quantity" => sortDescending ? query.OrderByDescending(x => x.Listing.Stock) : query.OrderBy(x => x.Listing.Stock),
+                _ => sortDescending ? query.OrderByDescending(x => x.Book.Title) : query.OrderBy(x => x.Book.Title),
+            };
+        }
+
+        private sealed class UserListingFlatProjection
+        {
+            public required ListingAggregate Listing { get; set; }
+            public required BookAggregate Book { get; set; }
+            public CategoryAggregate? Category { get; set; }
+        }
     }
 }

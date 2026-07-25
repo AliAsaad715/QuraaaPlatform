@@ -76,8 +76,7 @@ namespace Quraaa.Domain.Marketplace
             ListingFormat format,
             decimal price,
             BookCondition? condition = null,
-            string? digitalAssetUrl = null,
-            int? stock = null)
+            string? digitalAssetUrl = null)
         {
             if (price <= 0)
             {
@@ -90,11 +89,6 @@ namespace Quraaa.Domain.Marketplace
                 {
                     throw new DomainException("Condition is required for physical listings.");
                 }
-
-                if (stock is null or <= 0)
-                {
-                    throw new DomainException("Stock must be greater than zero for physical listings.");
-                }
             }
             else if (string.IsNullOrWhiteSpace(digitalAssetUrl))
             {
@@ -103,7 +97,7 @@ namespace Quraaa.Domain.Marketplace
 
             return new ListingAggregate(
                 id, bookId, format, SellerType.User,
-                null, userId, price, condition, digitalAssetUrl, stock);
+                null, userId, price, condition, digitalAssetUrl, 1);
         }
 
         public void Approve(Guid modifiedBy)
