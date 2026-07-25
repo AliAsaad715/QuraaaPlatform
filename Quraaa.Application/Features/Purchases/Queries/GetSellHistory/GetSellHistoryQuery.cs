@@ -5,8 +5,8 @@ namespace Quraaa.Application.Features.Purchases.Queries.GetSellHistory
 {
     public record GetSellHistoryQuery(
         Guid UserId,
-        int PageNumber = 1,
-        int PageSize = 20,
+        int PageNumber,
+        int PageSize,
         string? SearchTerm = null
     ) : IRequest<AppResult<PagedResult<SellHistoryItemResponse>>>;
 }

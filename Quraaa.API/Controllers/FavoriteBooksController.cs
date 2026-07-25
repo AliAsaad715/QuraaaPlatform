@@ -9,6 +9,7 @@ using Quraaa.Application.Shared.Results;
 
 namespace Quraaa.API.Controllers
 {
+    [Route("api/favorite-books")]
     [Authorize]
     public class FavoriteBooksController : ApiClientController
     {

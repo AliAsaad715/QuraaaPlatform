@@ -1,7 +1,9 @@
-﻿namespace Quraaa.API.Requests.Purchases
+﻿using Quraaa.Application.Shared.Requests;
+
+namespace Quraaa.API.Requests.Purchases
 {
-    public record GetBuyHistoryRequest(
-        int PageNumber = 1,
-        int PageSize = 20,
-        string? SearchTerm = null);
+    public record GetBuyHistoryRequest : PaginationRequestDTO
+    {
+        public string? SearchTerm { get; init; }
+    }
 }
