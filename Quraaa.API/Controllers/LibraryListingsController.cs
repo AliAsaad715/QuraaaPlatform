@@ -11,8 +11,7 @@ namespace Quraaa.Presentation.Controllers
     /// All endpoints require the caller to be an authenticated LibraryAdmin
     /// whose library is already approved.
     /// </summary>
-    //[Authorize(Roles = "LibraryAdmin")]
-    [Authorize(Roles = "User")]
+    [Authorize(Roles = "LibraryAdmin")]
     [ApiController]
     [Route("api/library-admin/listings")]
     public class LibraryListingsController : ApiClientController

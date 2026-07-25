@@ -1,4 +1,4 @@
-using Quraaa.Application.Features.Listings.Common;
+using Quraaa.Application.Features.Catalog.Common;
 using Quraaa.Domain.Marketplace.Enums;
 
 namespace Quraaa.Application.Features.Listings.Queries.GetLibraryBooks
