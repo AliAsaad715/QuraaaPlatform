@@ -15,10 +15,16 @@ namespace Quraaa.Persistence.Configurations
 
             builder.Property(x => x.UserId).IsRequired();
             builder.Property(x => x.Status).HasConversion<int>().IsRequired();
+            builder.Property(x => x.PendingOrderId);
             builder.Property(x => x.StripeCheckoutSessionId).HasMaxLength(200);
             builder.Property(x => x.StripePaymentIntentId).HasMaxLength(200);
+            builder.Property(x => x.LastModificationTime)
+                .IsConcurrencyToken();
 
             builder.HasIndex(x => new { x.UserId, x.Status });
+            builder.HasIndex(x => x.PendingOrderId)
+                .IsUnique()
+                .HasFilter("\"PendingOrderId\" IS NOT NULL");
             builder.HasIndex(x => x.StripeCheckoutSessionId);
 
             builder.HasMany(x => x.Items)

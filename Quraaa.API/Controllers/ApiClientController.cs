@@ -102,22 +102,26 @@ namespace Quraaa.API.Controllers
                     }),
 
                 // 409 Conflict
-                Conflict => StatusCode(StatusCodes.Status409Conflict, new
+                conflict => StatusCode(StatusCodes.Status409Conflict, new
                 {
                     type = "Conflict",
                     title = "Conflict",
-                    detail = "Conflict this resource."
+                    detail = conflict.Message
                 })
             );
         }
 
         protected IActionResult HandleResult<T>(AppResult<T> result)
         {
+            return HandleResult(result, data => Ok(data));
+        }
+
+        protected IActionResult HandleResult<T>(
+            AppResult<T> result,
+            Func<T, IActionResult> onSuccess)
+        {
             return result.Match(
-                // 200 OK / 201 Created (for created resources)
-                data => // data is Dto
-                        // ? StatusCode(StatusCodes.Status201Created, data)
-                    Ok(data),
+                onSuccess,
 
                 // 400 Bad Request (Validation)
                 validationFailed => BadRequest(new

@@ -65,6 +65,15 @@ namespace Quraaa.Persistence.Repositories
             CancellationToken cancellationToken = default) =>
             await _context.Libraries.AnyAsync(l => l.Id == libraryId, cancellationToken);
 
+        public async Task<LibraryAggregate?> GetByIdAsync(
+            Guid libraryId,
+            CancellationToken cancellationToken = default) =>
+            await _context.Libraries
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    l => l.Id == libraryId && !l.IsDeleted,
+                    cancellationToken);
+
         public async Task AddLibraryAsync(LibraryAggregate library) =>
             await _context.Libraries.AddAsync(library);
 

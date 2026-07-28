@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Domain.Cart;
 using Quraaa.Domain.Cart.Enums;
+using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -19,7 +20,20 @@ namespace Quraaa.Persistence.Repositories
         {
             return await _context.Set<CartAggregate>()
                 .Include(x => x.Items)
-                .FirstOrDefaultAsync(x => x.UserId == userId && x.Status != CartStatus.Paid && !x.IsDeleted, cancellationToken);
+                .FirstOrDefaultAsync(
+                    x => x.UserId == userId
+                        && (x.Status == CartStatus.Active || x.Status == CartStatus.PendingPayment)
+                        && !x.IsDeleted,
+                    cancellationToken);
+        }
+
+        public async Task<CartAggregate?> GetByIdAsync(
+            Guid cartId,
+            CancellationToken cancellationToken = default)
+        {
+            return await _context.Set<CartAggregate>()
+                .Include(x => x.Items)
+                .FirstOrDefaultAsync(x => x.Id == cartId && !x.IsDeleted, cancellationToken);
         }
 
         public async Task<CartAggregate?> GetByStripeSessionIdAsync(string stripeCheckoutSessionId, CancellationToken cancellationToken = default)
@@ -34,9 +48,17 @@ namespace Quraaa.Persistence.Repositories
             await _context.Set<CartAggregate>().AddAsync(cart, cancellationToken);
         }
 
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default)
+        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
-            return _context.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConflictException(
+                    "Cart changed concurrently. Reload it and retry the operation.");
+            }
         }
     }
 }

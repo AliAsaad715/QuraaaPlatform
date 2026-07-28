@@ -1,11 +1,14 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Otp.Interfaces;
+using Quraaa.Application.Features.Payments.Interfaces;
 using Quraaa.Infrastructure.Services;
 using StackExchange.Redis;
+using Stripe;
 
 namespace Quraaa.Infrastructure.Extensions
 {
@@ -19,8 +22,51 @@ namespace Quraaa.Infrastructure.Extensions
             FirebaseExtensions.AddFirebaseConfiguration(services, configuration);
             AddOtpCache(services, configuration, isDevelopment);
 
-            services.Configure<StripeOptions>(configuration.GetSection("Stripe"));
-            services.AddScoped<IStripePaymentService, StripePaymentService>();
+            services.AddOptions<StripeOptions>()
+                .Bind(configuration.GetSection("Stripe"))
+                .Validate(
+                    options => !string.IsNullOrWhiteSpace(options.SecretKey),
+                    "Stripe:SecretKey is required for order payments.")
+                .Validate(
+                    options =>
+                    {
+                        var expectedKeyPrefix =
+                            options.IsTestMode ? "sk_test_" : "sk_live_";
+
+                        return !string.IsNullOrWhiteSpace(options.SecretKey)
+                            && options.SecretKey.Trim().StartsWith(
+                                expectedKeyPrefix,
+                                StringComparison.Ordinal);
+                    },
+                    "Stripe:SecretKey must match the configured Stripe payment mode.")
+                .Validate(
+                    options =>
+                        !string.IsNullOrWhiteSpace(options.WebhookSecret)
+                        && options.WebhookSecret.Trim().StartsWith(
+                            "whsec_",
+                            StringComparison.Ordinal),
+                    "Stripe:WebhookSecret must be configured with a whsec_ signing secret.")
+                .Validate(
+                    options => string.Equals(
+                        options.Currency?.Trim(),
+                        "usd",
+                        StringComparison.OrdinalIgnoreCase),
+                    "Order payments currently support Stripe:Currency=usd only.")
+                .ValidateOnStart();
+
+            services.AddSingleton(serviceProvider =>
+            {
+                var stripeOptions = serviceProvider
+                    .GetRequiredService<IOptions<StripeOptions>>()
+                    .Value;
+
+                return new StripeClient(stripeOptions.SecretKey.Trim());
+            });
+            services.AddScoped<StripePaymentService>();
+            services.AddScoped<IPaymentGateway>(
+                serviceProvider => serviceProvider.GetRequiredService<StripePaymentService>());
+            services.AddScoped<IStripePaymentService>(
+                serviceProvider => serviceProvider.GetRequiredService<StripePaymentService>());
 
             services.AddScoped<IOtpCacheService, OtpCacheService>();
             services.AddScoped<IFirebaseSmsGateway, FirebaseSmsGateway>();

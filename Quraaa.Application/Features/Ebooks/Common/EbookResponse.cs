@@ -10,6 +10,5 @@ namespace Quraaa.Application.Features.Ebooks.Common
         Guid CategoryId,
         string Language,
         string? Isbn,
-        decimal Price,
-        string DigitalAssetUrl);
+        decimal Price);
 }

@@ -9,6 +9,10 @@ namespace Quraaa.Application.Features.Listings.Interfaces
         Task<ListingAggregate?> GetByIdAsync(Guid listingId,
             CancellationToken cancellationToken = default);
 
+        Task<ListingAggregate?> GetByIdForInventoryAsync(
+            Guid listingId,
+            CancellationToken cancellationToken = default);
+
         /// <summary>Joined projection used by the Get-by-ID query.</summary>
         Task<ListingDetailsResponse?> GetByIdWithDetailsAsync(Guid listingId,
             CancellationToken cancellationToken = default);

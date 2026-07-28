@@ -131,17 +131,27 @@ namespace Quraaa.Domain.Marketplace
 
         public void DecrementStock(Guid modifiedBy)
         {
+            ReserveStock(1, modifiedBy);
+        }
+
+        public void ReserveStock(int quantity, Guid modifiedBy)
+        {
             if (Format != ListingFormat.Physical || Stock is null)
             {
                 throw new DomainException("Only physical listings track stock.");
             }
 
-            if (Stock <= 0)
+            if (quantity <= 0)
             {
-                throw new DomainException("No stock remaining for this listing.");
+                throw new DomainException("Reserved stock quantity must be greater than zero.");
             }
 
-            Stock--;
+            if (Stock < quantity)
+            {
+                throw new DomainException("Insufficient stock remaining for this listing.");
+            }
+
+            Stock -= quantity;
 
             if (Stock == 0)
             {
@@ -153,6 +163,28 @@ namespace Quraaa.Domain.Marketplace
                 {
                     Status = ListingStatus.Sold;
                 }
+            }
+
+            UpdateAudit(modifiedBy);
+        }
+
+        public void ReleaseReservedStock(int quantity, Guid modifiedBy)
+        {
+            if (Format != ListingFormat.Physical || Stock is null)
+            {
+                throw new DomainException("Only physical listings track stock.");
+            }
+
+            if (quantity <= 0)
+            {
+                throw new DomainException("Released stock quantity must be greater than zero.");
+            }
+
+            Stock = checked(Stock.Value + quantity);
+
+            if (Status is ListingStatus.OutOfStock or ListingStatus.Sold)
+            {
+                Status = ListingStatus.Active;
             }
 
             UpdateAudit(modifiedBy);

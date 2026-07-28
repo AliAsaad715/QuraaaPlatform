@@ -15,6 +15,7 @@ namespace Quraaa.API.Extensions
         {
             services.AddJwtAuthentication(configuration);
             services.AddScoped<ILibraryImageStorageService, LibraryImageStorageService>();
+            services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
             PersistenceDependencyInjectionHandler.AddPersistenceDependencies(services, configuration);
             ApplicationPackagesRegisterExtensions.AddApplicationDependencies(services);
         }

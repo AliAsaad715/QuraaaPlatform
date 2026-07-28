@@ -39,8 +39,7 @@ namespace Quraaa.Persistence.Repositories
                     book.CategoryId,
                     book.Language,
                     book.Isbn,
-                    listing.Price,
-                    listing.DigitalAssetUrl
+                    listing.Price
                 };
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -68,8 +67,7 @@ namespace Quraaa.Persistence.Repositories
                     ebook.CategoryId ?? Guid.Empty,
                     ebook.Language,
                     ebook.Isbn,
-                    ebook.Price,
-                    ebook.DigitalAssetUrl!))
+                    ebook.Price))
                 .ToListAsync(cancellationToken);
 
             return (items, totalCount);
