@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json.Serialization;
 using Quraaa.API.Extensions;
+using Quraaa.Application.Features.AiAssistant.Interfaces;
 using Quraaa.Infrastructure.Extensions;
+using Quraaa.Infrastructure.Services;
 using Quraaa.Persistence.Data;
 using Quraaa.Persistence.Seed;
+using System.Text.Json.Serialization;
 
 DotNetEnv.Env.Load();
 
@@ -30,6 +32,13 @@ builder.Services.AddControllers()
 builder.Services.Configure<RouteOptions>(options =>
 {
     options.LowercaseUrls = true;
+});
+
+// في Program.cs
+builder.Services.AddHttpClient<IOpenAiService, OpenAiService>(client =>
+{
+    // تغيير الرابط ليشير إلى OpenRouter
+    client.BaseAddress = new Uri("https://openrouter.ai/api/v1/");
 });
 
 builder.Services.AddDatabaseConfiguration(builder.Configuration);

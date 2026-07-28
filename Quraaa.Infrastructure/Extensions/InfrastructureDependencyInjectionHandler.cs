@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Quraaa.Application.Features.AiAssistant.Interfaces;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Notifications.Interfaces;
@@ -25,13 +27,18 @@ namespace Quraaa.Infrastructure.Extensions
             services.AddScoped<IOtpCacheService, OtpCacheService>();
             services.AddScoped<IFirebaseSmsGateway, FirebaseSmsGateway>();
             services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
+            services.AddMemoryCache();
             services.AddHttpClient<IBookMetadataService, GoogleBooksService>(client =>
             {
                 client.BaseAddress = new Uri(configuration["GoogleBooks:BaseUrl"] ?? "https://www.googleapis.com/");
                 client.Timeout = TimeSpan.FromSeconds(10);
                 client.DefaultRequestHeaders.Add("User-Agent", "QuraaaPlatformApp/1.0");
             });
-
+            services.AddHttpClient<IOpenAiService, OpenAiService>(client =>
+            {
+                client.BaseAddress = new Uri("https://openrouter.ai/api/v1/");
+            });
+            services.AddSingleton<IAiUsageLimiterService, AiUsageLimiterService>();
             return services;
         }
 
