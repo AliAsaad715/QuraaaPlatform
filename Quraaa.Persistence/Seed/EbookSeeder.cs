@@ -88,8 +88,6 @@ namespace Quraaa.Persistence.Seed
                 price: 1.00m,
                 digitalAssetUrl: DigitalAssetUrl);
 
-            ebookListing.Approve(sellerUserId);
-
             await context.Listings.AddAsync(ebookListing, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }

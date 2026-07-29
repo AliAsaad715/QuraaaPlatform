@@ -8,23 +8,30 @@ using Quraaa.Application.Features.Listings.Queries.GetListingById;
 namespace Quraaa.Presentation.Controllers
 {
     /// <summary>
-    /// All endpoints require the caller to be an authenticated LibraryAdmin
+    /// All endpoints require the caller to be an authenticated LibraryOwner
     /// whose library is already approved.
     /// </summary>
-    [Authorize(Roles = "LibraryAdmin")]
+    [Authorize(Roles = "LibraryOwner")]
     [ApiController]
     [Route("api/library-admin/listings")]
     public class LibraryListingsController : ApiClientController
     {
         // ── POST /api/library-admin/listings ─────────────────────────────────
         /// <summary>
-        /// Add a physical book to the caller's library.
-        ///
-        /// Resolution order when ISBN is supplied:
-        ///   1. Books table (by ISBN)
-        ///   2. Google Books API
-        ///   
+        /// Adds a physical book to the current user's library.
         /// </summary>
+        /// <param name="command">The book data (ISBN, condition, etc.).</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The unique identifier (GUID) of the newly added listing.</returns>
+        /// <remarks>
+        /// ISBN lookup resolution order:
+        /// <list type="number">
+        /// <item><description>Local Books table (by ISBN).</description></item>
+        /// <item><description>Google Books API.</description></item>
+        /// </list>
+        /// Allowed values for <c>BookCondition</c>:
+        /// <c>New = 1, LikeNew = 2, Good = 3, Acceptable = 4.</c>
+        /// </remarks>
         [HttpPost]
         [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
