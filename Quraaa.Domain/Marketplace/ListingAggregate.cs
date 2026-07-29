@@ -41,7 +41,7 @@ namespace Quraaa.Domain.Marketplace
             Condition = condition;
             DigitalAssetUrl = digitalAssetUrl;
             Stock = stock;
-            Status = ListingStatus.PendingReview;
+            Status = ListingStatus.Active;
         }
 
         public static ListingAggregate CreateForLibrary(
@@ -99,18 +99,6 @@ namespace Quraaa.Domain.Marketplace
                 id, bookId, format, SellerType.User,
                 null, userId, price, condition, digitalAssetUrl, 1);
         }
-
-        public void Approve(Guid modifiedBy)
-        {
-            if (Status != ListingStatus.PendingReview)
-            {
-                throw new DomainException("Only listings pending review can be approved.");
-            }
-
-            Status = ListingStatus.Active;
-            UpdateAudit(modifiedBy);
-        }
-
 
         public void Remove(Guid modifiedBy)
         {
