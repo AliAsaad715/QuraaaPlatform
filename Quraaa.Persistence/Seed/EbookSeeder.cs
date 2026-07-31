@@ -14,7 +14,7 @@ namespace Quraaa.Persistence.Seed
         private const string Title = "Ebook One";
         private const string Author = "Quraaa Seed Data";
         private const string Language = "en";
-        private const string DigitalAssetUrl = "/uploads/books/book1.pdf";
+        private const string DigitalAssetUrl = "books/book1.pdf";
 
         public static async Task SeedAsync(ApplicationDbContext context, CancellationToken cancellationToken = default)
         {

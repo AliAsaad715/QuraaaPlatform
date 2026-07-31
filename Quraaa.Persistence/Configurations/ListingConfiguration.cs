@@ -46,6 +46,8 @@ namespace Quraaa.Persistence.Configurations
                    .HasMaxLength(500);
 
             builder.Property(l => l.Stock);
+            builder.Property(l => l.LastModificationTime)
+                   .IsConcurrencyToken();
 
             builder.HasOne<BookAggregate>()
                    .WithMany()

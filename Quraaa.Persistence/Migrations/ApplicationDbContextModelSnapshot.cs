@@ -170,9 +170,13 @@ namespace Quraaa.Persistence.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<DateTime?>("LastModificationTime")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PendingOrderId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Status")
@@ -191,7 +195,16 @@ namespace Quraaa.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PendingOrderId")
+                        .IsUnique()
+                        .HasFilter("\"PendingOrderId\" IS NOT NULL");
+
                     b.HasIndex("StripeCheckoutSessionId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Carts_UserId_Open")
+                        .HasFilter("\"IsDeleted\" = false AND \"Status\" IN (1, 2)");
 
                     b.HasIndex("UserId", "Status");
 
@@ -485,6 +498,7 @@ namespace Quraaa.Persistence.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<DateTime?>("LastModificationTime")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("LastModifiedBy")
@@ -524,6 +538,307 @@ namespace Quraaa.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Quraaa.Domain.Orders.Entities.OrderItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BookAuthorSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("BookCoverImageUrlSnapshot")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("BookId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BookTitleSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ConditionSnapshot")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DigitalAssetUrlSnapshot")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<int>("Format")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("FulfilledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("FulfillmentStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ListingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SellerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SellerNameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<int>("SellerType")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("TotalPriceMinor")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("UnitPriceMinor")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookId");
+
+                    b.HasIndex("ListingId");
+
+                    b.HasIndex("SellerId");
+
+                    b.HasIndex("OrderId", "ListingId")
+                        .IsUnique();
+
+                    b.HasIndex("SellerId", "FulfillmentStatus");
+
+                    b.HasIndex("SellerType", "SellerId");
+
+                    b.ToTable("OrderItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OrderItems_FormatSnapshot_Valid", "(\"Format\" = 1 AND \"DigitalAssetUrlSnapshot\" IS NOT NULL AND \"ConditionSnapshot\" IS NULL) OR (\"Format\" = 2 AND \"DigitalAssetUrlSnapshot\" IS NULL AND \"ConditionSnapshot\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_OrderItems_Quantity_Positive", "\"Quantity\" > 0");
+
+                            t.HasCheckConstraint("CK_OrderItems_SellerType_Valid", "\"SellerType\" IN (1, 2)");
+
+                            t.HasCheckConstraint("CK_OrderItems_TotalPriceMinor_Consistent", "\"TotalPriceMinor\" = \"UnitPriceMinor\" * \"Quantity\"");
+
+                            t.HasCheckConstraint("CK_OrderItems_TotalPriceMinor_Positive", "\"TotalPriceMinor\" > 0");
+
+                            t.HasCheckConstraint("CK_OrderItems_UnitPriceMinor_Positive", "\"UnitPriceMinor\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Orders.Entities.PaymentAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AmountMinor")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CancelUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("CheckoutSessionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("CheckoutUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("FailureMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PaymentIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Provider")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SuccessUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CheckoutSessionId")
+                        .IsUnique()
+                        .HasFilter("\"CheckoutSessionId\" IS NOT NULL");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("PaymentIntentId")
+                        .IsUnique()
+                        .HasFilter("\"PaymentIntentId\" IS NOT NULL");
+
+                    b.HasIndex("OrderId", "AttemptNumber")
+                        .IsUnique();
+
+                    b.HasIndex("OrderId", "Status");
+
+                    b.ToTable("OrderPaymentAttempts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OrderPaymentAttempts_AmountMinor_Positive", "\"AmountMinor\" > 0");
+
+                            t.HasCheckConstraint("CK_OrderPaymentAttempts_AttemptNumber_Positive", "\"AttemptNumber\" > 0");
+
+                            t.HasCheckConstraint("CK_OrderPaymentAttempts_CheckoutFields_Paired", "(\"CheckoutSessionId\" IS NULL AND \"CheckoutUrl\" IS NULL) OR (\"CheckoutSessionId\" IS NOT NULL AND \"CheckoutUrl\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Orders.OrderAggregate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BuyerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateTime?>("DeleationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("DiscountAmountMinor")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("ExpiredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OrderNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("PaidAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("PaymentStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("ShippingAmountMinor")
+                        .HasColumnType("bigint");
+
+                    b.Property<double?>("ShippingLatitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("ShippingLongitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<Guid>("SourceCartId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("SubtotalAmountMinor")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TotalAmountMinor")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderNumber")
+                        .IsUnique();
+
+                    b.HasIndex("PaidAtUtc");
+
+                    b.HasIndex("PaymentStatus");
+
+                    b.HasIndex("SourceCartId")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false AND \"Status\" IN (1, 2)");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("BuyerUserId", "CreationTime");
+
+                    b.HasIndex("BuyerUserId", "Status", "CreationTime");
+
+                    b.ToTable("Orders", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Orders_DiscountAmountMinor_NonNegative", "\"DiscountAmountMinor\" >= 0");
+
+                            t.HasCheckConstraint("CK_Orders_ShippingAmountMinor_NonNegative", "\"ShippingAmountMinor\" >= 0");
+
+                            t.HasCheckConstraint("CK_Orders_ShippingLocation_Valid", "(\"ShippingLatitude\" IS NULL AND \"ShippingLongitude\" IS NULL) OR (\"ShippingLatitude\" BETWEEN -90 AND 90 AND \"ShippingLongitude\" BETWEEN -180 AND 180)");
+
+                            t.HasCheckConstraint("CK_Orders_SubtotalAmountMinor_Positive", "\"SubtotalAmountMinor\" > 0");
+
+                            t.HasCheckConstraint("CK_Orders_TotalAmountMinor_Consistent", "\"TotalAmountMinor\" = \"SubtotalAmountMinor\" + \"ShippingAmountMinor\" - \"DiscountAmountMinor\"");
+
+                            t.HasCheckConstraint("CK_Orders_TotalAmountMinor_Positive", "\"TotalAmountMinor\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("Quraaa.Domain.Purchases.BookPurchaseAggregate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -553,6 +868,12 @@ namespace Quraaa.Persistence.Migrations
                     b.Property<Guid>("ListingId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OrderItemId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
@@ -570,12 +891,20 @@ namespace Quraaa.Persistence.Migrations
 
                     b.HasIndex("ListingId");
 
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("OrderItemId")
+                        .IsUnique()
+                        .HasFilter("\"OrderItemId\" IS NOT NULL");
+
                     b.HasIndex("UserId");
 
                     b.HasIndex("BookId", "CreationTime");
 
                     b.ToTable("BookPurchases", null, t =>
                         {
+                            t.HasCheckConstraint("CK_BookPurchases_OrderReferences_Paired", "(\"OrderId\" IS NULL AND \"OrderItemId\" IS NULL) OR (\"OrderId\" IS NOT NULL AND \"OrderItemId\" IS NOT NULL)");
+
                             t.HasCheckConstraint("CK_BookPurchases_Quantity_Positive", "\"Quantity\" > 0");
 
                             t.HasCheckConstraint("CK_BookPurchases_UnitPrice_NonNegative", "\"UnitPrice\" >= 0");
@@ -769,6 +1098,49 @@ namespace Quraaa.Persistence.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("Quraaa.Persistence.Data.ProcessedPaymentEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EventId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PaymentAttemptId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ProcessedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("PaymentAttemptId");
+
+                    b.HasIndex("ProcessedAtUtc");
+
+                    b.HasIndex("Provider", "EventId")
+                        .IsUnique();
+
+                    b.ToTable("ProcessedPaymentEvents", (string)null);
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
@@ -886,6 +1258,24 @@ namespace Quraaa.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Orders.Entities.OrderItem", b =>
+                {
+                    b.HasOne("Quraaa.Domain.Orders.OrderAggregate", null)
+                        .WithMany("Items")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Orders.Entities.PaymentAttempt", b =>
+                {
+                    b.HasOne("Quraaa.Domain.Orders.OrderAggregate", null)
+                        .WithMany("PaymentAttempts")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Quraaa.Domain.Purchases.BookPurchaseAggregate", b =>
@@ -1027,6 +1417,13 @@ namespace Quraaa.Persistence.Migrations
             modelBuilder.Entity("Quraaa.Domain.Cart.CartAggregate", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Orders.OrderAggregate", b =>
+                {
+                    b.Navigation("Items");
+
+                    b.Navigation("PaymentAttempts");
                 });
 #pragma warning restore 612, 618
         }

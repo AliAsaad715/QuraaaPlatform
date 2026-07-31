@@ -15,6 +15,10 @@ namespace Quraaa.Persistence.Configurations
             {
                 table.HasCheckConstraint("CK_BookPurchases_Quantity_Positive", "\"Quantity\" > 0");
                 table.HasCheckConstraint("CK_BookPurchases_UnitPrice_NonNegative", "\"UnitPrice\" >= 0");
+                table.HasCheckConstraint(
+                    "CK_BookPurchases_OrderReferences_Paired",
+                    "(\"OrderId\" IS NULL AND \"OrderItemId\" IS NULL) OR " +
+                    "(\"OrderId\" IS NOT NULL AND \"OrderItemId\" IS NOT NULL)");
             });
 
             builder.HasKey(p => p.Id);
@@ -30,6 +34,9 @@ namespace Quraaa.Persistence.Configurations
             builder.Property(p => p.ListingId)
                    .IsRequired();
 
+            builder.Property(p => p.OrderId);
+            builder.Property(p => p.OrderItemId);
+
             builder.Property(p => p.Quantity)
                    .IsRequired();
 
@@ -42,6 +49,10 @@ namespace Quraaa.Persistence.Configurations
             builder.HasIndex(p => p.BookId);
             builder.HasIndex(p => p.UserId);
             builder.HasIndex(p => p.ListingId);
+            builder.HasIndex(p => p.OrderId);
+            builder.HasIndex(p => p.OrderItemId)
+                   .IsUnique()
+                   .HasFilter("\"OrderItemId\" IS NOT NULL");
             builder.HasIndex(p => p.CreationTime);
             builder.HasIndex(p => new { p.BookId, p.CreationTime });
 

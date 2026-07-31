@@ -2,28 +2,45 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
+Last audited against the repository: **2026-07-31**.
+
 ## Project Overview
 
 `QuraaaPlatform` is a layered ASP.NET Core Web API solution targeting **.NET 10.0**. It is the backend for a book marketplace / library platform. The architecture follows a Clean Architecture / vertical-slice hybrid with five projects.
 
 Current implemented business capabilities:
 
-- Pending user registration starts through `POST /api/Auth/register`.
-- Registration phone verification completes through `POST /api/Auth/register/verify`.
-- User login through `POST /api/Auth/login`.
-- Authenticated password reset through `POST /api/Auth/reset-password`.
-- Unauthenticated forgot-password OTP send through `POST /api/Auth/forgot-password`.
-- Unauthenticated forgot-password OTP verification and password reset through `POST /api/Auth/forgot-password/verify`.
-- Authenticated profile retrieval through `GET /api/Profile/me`.
-- Authenticated profile update through `PUT /api/Profile/me`.
-- Library registration through `POST /api/Library/register`.
-- Public library listing through `GET /api/Library`.
-- Public ebook listing through `GET /api/Ebooks`.
-- Category management through `GET /api/Categories`, `GET /api/Categories/{categoryId}`, and `POST /api/Categories` (admin-only).
-- Standalone OTP send through `POST /api/Otp/send`.
-- Standalone OTP verification through `POST /api/Otp/verify`.
-- Authenticated push notification dispatch through `POST /api/Notifications/send`.
-- Development/test push notification dispatch through `POST /api/Notifications/test`.
+- Pending user registration starts through `POST /api/auth/register`.
+- Registration phone verification completes through `POST /api/auth/register/verify`.
+- User login through `POST /api/auth/login`.
+- Admin login uses a password-plus-OTP flow through `POST /api/auth/admin/login` and `POST /api/auth/admin/login/verify`.
+- Approved library owners can log in with their library email and Identity password through `POST /api/auth/library/login`.
+- Authenticated password reset through `POST /api/auth/reset-password`.
+- Unauthenticated forgot-password OTP send through `POST /api/auth/forgot-password`.
+- Unauthenticated forgot-password OTP verification and password reset through `POST /api/auth/forgot-password/verify`.
+- Authenticated profile retrieval through `GET /api/profile/me`.
+- Authenticated profile update through `PUT /api/profile/me`.
+- Authenticated profile location upsert/delete through `POST /api/profile/location` and `DELETE /api/profile/location`.
+- Library registration through `POST /api/libraries/register`.
+- Public, searchable library listing through `GET /api/libraries`.
+- Paged/searchable/sortable active physical-book listing by library through `GET /api/libraries/{libraryId}/books`.
+- Public ebook listing through `GET /api/ebooks`.
+- Public most-popular book discovery through `GET /api/books/most-popular`.
+- Interest/category/language-based authenticated recommendations through `GET /api/books/recommended`.
+- Authenticated favorite-book list/add/remove through `/api/favorite-books`.
+- User physical-book listing creation and current-user listing retrieval through `/api/listings`.
+- Library inventory listing create/update/detail operations through `/api/library-admin/listings`.
+- User cart retrieval/mutation through `/api/cart`, with one open cart per user, Stripe-compatible line/quantity limits, and cumulative physical-stock validation.
+- Order-driven Stripe Checkout through `POST /api/orders`: the order, cart lock, physical-stock reservations, and payment attempt are persisted before Stripe is called.
+- Buyer order listing/detail, shipping update, checkout recovery, cancellation, archive, and paid-ebook download through `/api/orders`.
+- Seller paid-physical-item queues and processing/fulfillment transitions through `/api/seller/orders`.
+- Stripe webhook processing through `POST /api/payments/stripe/webhook`; paid events and authoritative expired-attempt reconciliation share order/cart/purchase finalization, while confirmed failure/expiry paths release reservations and reopen the cart.
+- Authenticated user buy/sell history through `/api/purchases/me/buy-history` and `/api/purchases/me/sell-history`.
+- Category management through `GET /api/categories`, `GET /api/categories/{categoryId}`, and `POST /api/categories` (admin-only).
+- Standalone OTP send through `POST /api/otp/send`.
+- Standalone OTP verification through `POST /api/otp/verify`.
+- Authenticated push notification dispatch through `POST /api/notifications/send`.
+- Development/test push notification dispatch through `POST /api/notifications/test`.
 
 Domain aggregates already modeled but only partially exposed via HTTP:
 
@@ -32,6 +49,11 @@ Domain aggregates already modeled but only partially exposed via HTTP:
 - `CategoryAggregate` — book interest categories, seeded at startup.
 - `BookAggregate` — catalog books.
 - `ListingAggregate` — marketplace listings for physical or digital books.
+- `FavoriteBookAggregate` — one active favorite per user/book pair.
+- `BookRatingAggregate` — one 1–5 rating per user/book pair; modeled and used by popularity queries but not exposed by a rating endpoint.
+- `BookPurchaseAggregate` — immutable purchase facts created for paid orders, correlated by optional `OrderId`/`OrderItemId`, and used by popularity/history queries.
+- `CartAggregate` with owned `CartItem` entities — active/pending-payment/paid cart state, pending-order correlation, and Stripe identifiers.
+- `OrderAggregate` with child `OrderItem` and `PaymentAttempt` entities — immutable checkout snapshots, payment lifecycle, cancellation/expiry, digital fulfillment, and physical seller fulfillment.
 
 Core technologies:
 
@@ -44,6 +66,8 @@ Core technologies:
 - libphonenumber-csharp for international phone validation/formatting
 - Firebase Admin SDK for FCM push notifications and OTP SMS gateway data messages
 - `IDistributedCache`, with Redis support for production OTP cache and in-memory cache for local/development fallback
+- Stripe.net for Checkout session creation and signed webhook parsing
+- Typed `HttpClient` integration with Google Books for ISBN metadata lookup
 - DotNetEnv plus environment variables for runtime secrets/configuration
 - OpenAPI 3.0 / Swagger UI in development
 
@@ -68,12 +92,21 @@ Quraaa.API/
   Controllers/
     ApiClientController.cs
     AuthController.cs
+    BooksController.cs
+    CartController.cs
     CategoriesController.cs
     EbooksController.cs
-    LibraryController.cs
+    FavoriteBooksController.cs
+    LibrariesController.cs
+    LibraryListingsController.cs
     NotificationsController.cs
     OtpController.cs
+    OrdersController.cs
+    PaymentsController.cs
     ProfileController.cs
+    PurchaseHistoryController.cs
+    SellerOrdersController.cs
+    UserListingsController.cs
   DesignTime/
     ApplicationDbContextFactory.cs
   Extensions/
@@ -82,16 +115,23 @@ Quraaa.API/
     SwaggerExtensions.cs
   Requests/
     Authentication/
+    Books/
+    FavoriteBooks/
     Files/
     Libraries/
+    Listings/
     Notifications/
     Otp/
+    Orders/
     Profiles/
+    Purchases/
   Services/
+    ExpiredOrderPaymentReconciliationService.cs
     LibraryImageStorageService.cs
   storage/firebase/       # Firebase service-account JSON files (ignored by git)
+  storage/books/          # Private ebook PDFs copied into build/publish output
   wwwroot/uploads/libraries/  # Uploaded library images
-  wwwroot/uploads/books/      # Uploaded/seeded ebook PDF files and book media
+  wwwroot/uploads/books/      # Public book media; PDF requests are blocked
 
 Quraaa.Application/
   Quraaa.Application.csproj
@@ -99,8 +139,11 @@ Quraaa.Application/
     ApplicationPackagesRegisterExtensions.cs
   Features/
     Authentication/
+      Commands/AdminLogin/
+      Commands/LibraryOwnerLogin/
       Commands/Register/
       Commands/VerifyRegisterOtp/
+      Commands/VerifyAdminLoginOtp/
       Commands/Login/
       Commands/ResetPassword/
       Commands/ForgotPassword/
@@ -108,6 +151,21 @@ Quraaa.Application/
       Common/
       Interfaces/
       Helpers/
+    Books/
+      Queries/GetMostPopularBooks/
+      Queries/GetRecommendedBooks/
+      Common/
+      Interfaces/
+    Carts/
+      Commands/AddCartItem/
+      Commands/UpdateCartItemQuantity/
+      Commands/RemoveCartItem/
+      Commands/ClearCart/
+      Commands/CreateCheckoutSession/
+      Commands/ProcessStripeWebhook/
+      Queries/GetMyCart/
+      Common/
+      Interfaces/
     Categories/
       Commands/CreateCategory/
       Queries/GetAllCategories/
@@ -118,11 +176,24 @@ Quraaa.Application/
       Queries/GetEbooks/
       Common/
       Interfaces/
+    FavoriteBooks/
+      Commands/AddFavoriteBook/
+      Commands/RemoveFavoriteBook/
+      Queries/GetFavoriteBooks/
+      Common/
+      Interfaces/
     Libraries/
       Commands/RegisterLibrary/
-      Commands/AddPhysicalBook/
       Queries/GetLibraries/
       Common/
+      Interfaces/
+    Listings/
+      Commands/AddPhysicalBook/
+      Commands/AddUserPhysicalBook/
+      Commands/UpdateListing/
+      Queries/GetLibraryBooks/
+      Queries/GetListingById/
+      Queries/GetMyListings/
       Interfaces/
     Notifications/
       Commands/SendNotification/
@@ -133,13 +204,31 @@ Quraaa.Application/
       Commands/SendOtp/
       Commands/VerifyOtp/
       Interfaces/
+    Orders/
+      Commands/
+      Queries/
+      Common/
+      Interfaces/
+      Services/
+    Payments/
+      Commands/ProcessPaymentWebhook/
+      Common/
+      Exceptions/
+      Interfaces/
     Profiles/
+      Commands/UpsertLocation/
+      Commands/DeleteLocation/
       Commands/UpdateProfile/
       Queries/GetMyProfile/
       Common/
+    Purchases/
+      Queries/GetBuyHistory/
+      Queries/GetSellHistory/
+      Interfaces/
   Shared/
     Exceptions/
     Files/
+    Requests/
     Results/
     Services/
 
@@ -147,8 +236,14 @@ Quraaa.Domain/
   Quraaa.Domain.csproj
   Catalog/
     BookAggregate.cs
+  Cart/
+    CartAggregate.cs
+    Entities/CartItem.cs
+    Enums/CartStatus.cs
   Category/
     CategoryAggregate.cs
+  Favorites/
+    FavoriteBookAggregate.cs
   Library/
     LibraryAggregate.cs
     Enums/LibraryApprovalStatus.cs
@@ -158,6 +253,15 @@ Quraaa.Domain/
     Enums/ListingFormat.cs
     Enums/ListingStatus.cs
     Enums/SellerType.cs
+  Orders/
+    OrderAggregate.cs
+    Entities/OrderItem.cs
+    Entities/PaymentAttempt.cs
+    Enums/
+  Purchases/
+    BookPurchaseAggregate.cs
+  Ratings/
+    BookRatingAggregate.cs
   Shared/
     Entities/
     Errors/
@@ -167,18 +271,26 @@ Quraaa.Domain/
     Entities/Interest.cs
     Enums/Gender.cs
     Enums/Role.cs
+    ValueObjects/GeoLocation.cs
     ValueObjects/PaymentMethodInfo.cs
 
 Quraaa.Persistence/
   Quraaa.Persistence.csproj
   Configurations/
+    OrderConfiguration.cs
+    OrderItemConfiguration.cs
+    OrderPaymentAttemptConfiguration.cs
+    ProcessedPaymentEventConfiguration.cs
   Data/
     ApplicationDbContext.cs
     ApplicationUser.cs
+    ProcessedPaymentEvent.cs
   Extensions/
     PersistenceDependencyInjectionHandler.cs
   Migrations/
   Repositories/
+    OrderRepository.cs
+    PaymentEventInboxRepository.cs
   Seed/
   Services/
 
@@ -194,6 +306,7 @@ Quraaa.Infrastructure/
     FirebaseSmsGateway.cs
     GoogleBooksService.cs
     OtpCacheService.cs
+    StripePaymentService.cs
 ```
 
 Ignore generated build output:
@@ -227,6 +340,8 @@ Consolidated NuGet packages by project:
 | `Microsoft.Extensions.Caching.Abstractions`         | 10.0.9  | `Quraaa.Infrastructure`                    |
 | `Microsoft.Extensions.Caching.Memory`               | 10.0.8  | `Quraaa.Infrastructure`                    |
 | `Microsoft.Extensions.Caching.StackExchangeRedis`   | 10.0.8  | `Quraaa.Infrastructure`                    |
+| `Microsoft.Extensions.Http`                         | 10.0.9  | `Quraaa.Infrastructure`                    |
+| `Stripe.net`                                        | 52.1.0  | `Quraaa.Infrastructure`                    |
 | `Microsoft.EntityFrameworkCore.SqlServer`           | 10.0.8  | `Quraaa.Persistence`                       |
 | `Npgsql.EntityFrameworkCore.PostgreSQL`             | 10.0.2  | `Quraaa.Persistence`                       |
 
@@ -252,12 +367,14 @@ Layer responsibilities:
 - `Quraaa.Domain`: entities, aggregates, value objects, enums, business invariants. No HTTP, EF Core, PostgreSQL/Npgsql, Identity, Swagger, or external provider SDK logic belongs here.
 - `Quraaa.Application`: use cases, commands/queries, handlers, validators, interfaces, DTOs, result types.
 - `Quraaa.Persistence`: EF Core `DbContext`, table mapping, migrations, repositories, ASP.NET Identity implementation.
-- `Quraaa.Infrastructure`: external provider implementations such as Firebase FCM, Redis caching, and future SMS/payments/files/search integrations.
+- `Quraaa.Infrastructure`: external provider implementations such as Firebase FCM, Redis caching, Stripe payments, and Google Books metadata lookup.
 - `Quraaa.API`: HTTP controllers, startup, middleware, Swagger, environment configuration.
 
-Do not model aggregate-to-aggregate relationships in EF Core mappings. Across aggregate boundaries, keep the domain model and EF configuration to scalar identity references such as `UserId`. If referential integrity is required between aggregate tables, enforce it as a database concern through migrations or database constraints, not through `HasOne<TAggregate>()`, navigation properties, or tracked aggregate relationships.
+Across aggregate boundaries, domain types expose scalar identity references such as `UserId`, `BookId`, `ListingId`, and `LibraryId`; do not add aggregate navigation properties or make business logic depend on tracked cross-aggregate graphs. The current Persistence mappings do use navigationless `HasOne<TAggregate>()` calls to create database foreign keys for books/listings, libraries/users, favorites, purchases, and ratings. Treat those as database integrity mappings only.
 
-The user-to-library ownership rule is one-to-one from user profile to library, but it still follows the aggregate boundary rule: `LibraryAggregate` stores only scalar `UserId`; `LibraryConfiguration` uses a unique index on `UserId`; the migration enforces the database unique index; application code checks for an existing library before creating another one.
+The user-to-library ownership rule is one-to-one: `LibraryAggregate` stores only scalar `UserId`; `LibraryConfiguration` uses a navigationless one-to-one mapping plus a unique index on `UserId`; the migration enforces the unique index; and application code checks for an existing library before creating another one. Library email is also unique.
+
+The open-cart rule is also one-to-one per user. `CartConfiguration` defines the partial unique index `IX_Carts_UserId_Open` on `UserId` for non-deleted `Active` or `PendingPayment` carts, `CartRepository` translates a concurrent unique-index violation to `409 Conflict`, and historical `Paid`/`Abandoned` carts remain unrestricted.
 
 ## Build, Run & Test Commands
 
@@ -267,6 +384,8 @@ The user-to-library ownership rule is one-to-one from user profile to library, b
 - PostgreSQL server (local or remote)
 - Redis (optional; in-memory cache is allowed in Development via configuration)
 - Firebase service-account credentials (for FCM features; optional for basic HTTP testing)
+- Stripe secret/webhook keys for checkout and payment completion testing
+- Google Books API access for ISBNs that are not already present in the local catalog
 
 ### Restore packages
 
@@ -352,24 +471,22 @@ There are currently **no test projects** in the repository. No MSTest, NUnit, or
 
 ## Configuration & Secrets
 
-Configuration is layered in this order:
-
-1. `DotNetEnv.Env.Load()` at startup loads root `.env` and `Quraaa.API/.env` if present.
-2. `builder.Configuration.AddEnvironmentVariables()`
-3. `appsettings.json` and `appsettings.{Environment}.json`
+Startup calls `DotNetEnv.Env.Load()` before creating the builder, then also loads `Quraaa.API/.env` when that file exists. `WebApplication.CreateBuilder` loads the normal ASP.NET Core sources (`appsettings.json`, environment-specific appsettings, environment variables, and command-line arguments), and `AddEnvironmentVariables()` is called again. Environment variables therefore override appsettings values; use double underscores for nested keys in deployment environments.
 
 ### Required / commonly used configuration keys
 
-| Concern       | Keys                                                                                                                                          |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| PostgreSQL    | `ConnectionStrings:DefaultConnection`                                                                                                         |
-| JWT           | `JWT_SECRET_KEY` (required), `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_DURATION_IN_MINUTES`                                                          |
-| Admin seed    | `ADMIN_PHONE_NUMBER`, `ADMIN_PASSWORD`                                                                                                        |
-| Firebase      | `Firebase:CredentialsPath`, `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_CREDENTIALS_JSON`                                                     |
-| OTP cache     | `REDIS_URL`, `REDIS_TLS_URL`, `Redis:ConnectionString`, `ConnectionStrings:Redis`, `Redis:InstanceName`, `Otp:AllowInMemoryCacheInProduction` |
-| OTP gateway   | `OTP_DEVICE_TOKEN`                                                                                                                            |
-| Notifications | `Notifications:AllowTestEndpoint` / `Notifications__AllowTestEndpoint`                                                                        |
-| Swagger       | `Swagger:ServerUrl`                                                                                                                           |
+| Concern          | Keys                                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL       | `ConnectionStrings:DefaultConnection`                                                                                                         |
+| JWT              | `JWT_SECRET_KEY` (required), `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_DURATION_IN_MINUTES`                                                          |
+| Admin seed       | `ADMIN_PHONE_NUMBER`, `ADMIN_PASSWORD`                                                                                                        |
+| Firebase         | `Firebase:CredentialsPath`, `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_CREDENTIALS_JSON`                                                     |
+| OTP cache        | `REDIS_URL`, `REDIS_TLS_URL`, `Redis:ConnectionString`, `ConnectionStrings:Redis`, `Redis:InstanceName`, `Otp:AllowInMemoryCacheInProduction` |
+| OTP gateway      | `OTP_DEVICE_TOKEN`                                                                                                                            |
+| Notifications    | `Notifications:AllowTestEndpoint` / `Notifications__AllowTestEndpoint`                                                                        |
+| Stripe           | `Stripe:SecretKey`, `Stripe:WebhookSecret`, `Stripe:Currency`, `Stripe:IsTestMode`                                                            |
+| Google Books     | `GoogleBooks:ApiKey`, `GoogleBooks:BaseUrl` (defaults to `https://www.googleapis.com/`)                                                       |
+| Swagger          | `Swagger:ServerUrl`                                                                                                                           |
 
 `JWT_SECRET_KEY` is required by `IdentityService.GenerateAuthTokensAsync` and by `ServiceCollectionExtensions.AddJwtAuthentication`. If it is missing, the application throws `InvalidOperationException` at startup.
 
@@ -388,13 +505,21 @@ OTP cache configuration:
 - If Redis is missing, in-memory cache is allowed only in Development or when `Otp:AllowInMemoryCacheInProduction=true`.
 - `Otp:AllowInMemoryCacheInProduction=true` is for temporary testing only; OTPs are lost on dyno/app restart and are not shared across multiple instances.
 
-`OTP_DEVICE_TOKEN` is the FCM registration token for the secondary Android SMS gateway app that has SMS permission. It is server-side configuration and is not accepted in the `POST /api/Otp/send` request body.
+`OTP_DEVICE_TOKEN` is the FCM registration token for the secondary Android SMS gateway app that has SMS permission. It is server-side configuration and is not accepted in the `POST /api/otp/send` request body.
+
+Stripe/Google Books notes:
+
+- Infrastructure creates an injected `StripeClient` from `Stripe:SecretKey`; it does not set Stripe's global API key. `StripePaymentService` verifies webhook signatures with `Stripe:WebhookSecret`.
+- Startup requires a secret key matching `Stripe:IsTestMode` (`sk_test_` or `sk_live_`), a `whsec_` webhook secret, and `Stripe:Currency=usd`. Order payments currently support USD only.
+- `.env.example` contains non-secret placeholders for the required Stripe settings.
+- `GoogleBooksService` removes hyphens from ISBNs, calls `books/v1/volumes?q=isbn:{isbn}`, and returns `null` on provider/network/deserialization failures.
+- Neither Stripe nor Google Books keys are present in the committed appsettings files; provide them through secret configuration.
 
 Secrets handling:
 
 - `.env` is listed in `.gitignore` and must not be committed.
 - Firebase service-account JSON files under `Quraaa.API/storage/firebase/*.json` are `.gitignore`d and must not be committed.
-- `appsettings.Development.json` currently contains a plaintext local PostgreSQL password. Rotate it for shared environments.
+- Stripe, Google Books, PostgreSQL, Redis, JWT, admin, and Firebase credentials must remain outside committed configuration.
 
 ## Database & Migrations
 
@@ -409,6 +534,12 @@ DbSets:
 - `Books` (`BookAggregate`)
 - `Listings` (`ListingAggregate`)
 - `Categories` (`CategoryAggregate`)
+- `FavoriteBooks` (`FavoriteBookAggregate`)
+- `BookPurchases` (`BookPurchaseAggregate`)
+- `BookRatings` (`BookRatingAggregate`)
+- `Carts` (`CartAggregate`; `CartItem` is mapped as a child entity)
+- `Orders` (`OrderAggregate`; `OrderItem` and `PaymentAttempt` are mapped as child entities)
+- `ProcessedPaymentEvents` (`ProcessedPaymentEvent`; the Stripe webhook idempotency inbox)
 
 It applies all `IEntityTypeConfiguration` classes from the Persistence assembly and adds a global query filter for active categories only:
 
@@ -426,6 +557,17 @@ Located in `Quraaa.Persistence/Migrations/`:
 4. `20260619195202_FixRelationBetwenInterestsAndCategroies`
 5. `20260619210624_EnforceOneLibraryPerUser`
 6. `20260620152744_DeleteColumnAndFixInterests`
+7. `20260703183738_MakeNullabeBookCatgoryId`
+8. `20260705153710_AddFavoriteBooks`
+9. `20260705161224_AddBookPopularityMetrics`
+10. `20260706133527_FixLibraryEmailAndEngagementConstraints`
+11. `20260706150706_MergeModelSnapshot`
+12. `20260716101943_AddCartsAndCartItemsTables`
+13. `20260724134444_AddLocationToUsers`
+14. `20260726145336_AddOrdersAndPaymentTracking`
+15. `20260731131240_EnforceSingleOpenCartPerUser`
+
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, and processed-payment-event storage; add library/favorite uniqueness and engagement foreign keys; add nullable latitude/longitude columns to `UsersProfiles`; add `Carts.PendingOrderId`; correlate purchases to orders/items; and add the partial unique `IX_Carts_UserId_Open` index that permits at most one non-deleted `Active`/`PendingPayment` cart per user. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
 `Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
 
@@ -434,10 +576,12 @@ Located in `Quraaa.Persistence/Migrations/`:
 `Program.cs` runs the following seeders after migrating:
 
 - `CategorySeeder.SeedAsync` — seeds categories if none exist.
-- `AdminSeeder.SeedAsync` — creates an admin user from `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`.
-- `UserSeeder.SeedAsync` — seeds a default user and deterministic library-owner users.
-- `LibrarySeeder.SeedAsync` — seeds libraries linked to the owner users.
-- `EbookSeeder.SeedAsync` — seeds one catalog ebook and one active digital listing. The seeded listing stores `DigitalAssetUrl = "/uploads/books/book1.pdf"`, so the PDF should be stored at `Quraaa.API/wwwroot/uploads/books/book1.pdf`.
+- `AdminSeeder.SeedAsync` — creates or synchronizes the admin Identity/profile, role, confirmed-phone state, and password from `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`.
+- `UserSeeder.SeedAsync` — seeds the default user (`+963912345678`, password `User@12345`) plus up to 100 deterministic library-owner identities when libraries do not already exist.
+- `LibrarySeeder.SeedAsync` — seeds up to 100 libraries linked one-to-one with those owners; three out of every four are approved.
+- `UserSeeder.EnsureApprovedLibraryOwnerRolesAsync` — promotes profiles behind approved libraries to the `LibraryOwner` domain role and ensures their Identity users retain `User` and gain `LibraryOwner`.
+- `EbookSeeder.SeedAsync` — seeds one catalog ebook and one active digital listing. The listing stores the private logical path `books/book1.pdf`; place the PDF at `Quraaa.API/storage/books/book1.pdf`.
+- `BookSeeder.SeedAsync` — seeds 60 Arabic/English catalog books and approved physical listings in one seeded library.
 
 ## Code Style & Conventions
 
@@ -473,8 +617,8 @@ Located in `Quraaa.Persistence/Migrations/`:
 `Quraaa.Application/Shared/Results/AppResult.cs` uses OneOf:
 
 ```csharp
-public class AppResult : OneOfBase<Success, ValidationFailed, NotFound, Forbidden, DomainError>
-public class AppResult<TData> : OneOfBase<TData, ValidationFailed, NotFound, Forbidden, DomainError>
+public class AppResult : OneOfBase<Success, ValidationFailed, NotFound, Forbidden, DomainError, Conflict>
+public class AppResult<TData> : OneOfBase<TData, ValidationFailed, NotFound, Forbidden, DomainError, Conflict>
 ```
 
 `ApiClientController.HandleResult` maps these to HTTP status codes:
@@ -483,7 +627,8 @@ public class AppResult<TData> : OneOfBase<TData, ValidationFailed, NotFound, For
 - Validation failure → `400 Bad Request`
 - Not found → `404 Not Found`
 - Forbidden → `403 Forbidden`
-- `LibraryErrorCodes.DuplicateLibraryForUser` or `"DUPLICATE_APPLICATION"` → `409 Conflict`
+- `ConflictException` / `Conflict` → `409 Conflict`
+- `LibraryErrorCodes.DuplicateLibraryForUser`, `LibraryErrorCodes.DuplicateLibraryEmail`, or `"DUPLICATE_APPLICATION"` domain errors → `409 Conflict`
 - Other domain errors → `400 Bad Request`
 
 ### User ID extraction from JWT
@@ -510,13 +655,18 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 - Passwords are hashed by ASP.NET Core Identity.
 - Phone numbers are used as usernames; emails are synthesized as `{phone}@quraaa.com`.
 - Phone numbers are normalized to E.164 where possible using `libphonenumber-csharp`.
+- New registration is intentionally limited by `RegisterCommandValidator` to valid Syrian (`+963`) phone numbers; login/forgot-password/admin/standalone OTP validators currently accept any valid international number.
 - The forgot-password endpoint returns a generic success even if the phone number is not registered, to avoid leaking registration status.
 - OTP send and verify endpoints implement rate limiting and failed-attempt lockouts via `IDistributedCache`.
+- Admin login requires valid admin credentials followed by a six-digit OTP. Credential attempts, OTP sends, and OTP verification are rate-limited by phone and client IP.
+- Library-owner login only resolves approved libraries by normalized library email and locks credential attempts by email/client IP after repeated failures.
+- The Stripe webhook is anonymous by design but authenticates the payload with the `Stripe-Signature` header and configured webhook secret. Do not expose a webhook secret or process unsigned payloads.
+- Ebook PDF paths are omitted from public ebook responses. `/uploads/books/*.pdf` is blocked, and paid buyers receive PDFs only through the authenticated order-item download route.
 - Firebase service-account credentials and `.env` secrets must never be committed.
 - `Notifications:AllowTestEndpoint` is enabled in `appsettings.json` and `appsettings.Development.json`. Disable it in production unless you intend to allow unauthenticated test notification dispatch.
 - `Otp:AllowInMemoryCacheInProduction` is set to `true` in `appsettings.json`. This is acceptable only for temporary single-instance testing; production should use Redis.
 - HTTPS redirection and forwarded headers are enabled in the middleware pipeline. Configure `KnownProxies`/`KnownIPNetworks` appropriately if you deploy behind a reverse proxy.
-- The `AdminSeeder` creates an admin user from environment variables on every startup if the user does not already exist. Ensure `ADMIN_PHONE_NUMBER` and `ADMIN_PASSWORD` are strong and kept secret.
+- `AdminSeeder` creates or synchronizes the configured admin Identity/profile, role, confirmed-phone state, and password on startup. Ensure `ADMIN_PHONE_NUMBER` and `ADMIN_PASSWORD` are strong and kept secret; changing the configured password resets the seeded admin password.
 
 ## Testing Strategy
 
@@ -528,6 +678,8 @@ There is no automated test suite in the repository. Manual testing workflow:
 4. Open `https://localhost:7260/docs` or `http://localhost:5153/docs`.
 5. Use the Swagger UI or an HTTP client (Postman, curl, etc.) to exercise endpoints.
 6. For OTP/forgot-password flows, configure `OTP_DEVICE_TOKEN` and Firebase credentials.
+7. For checkout, configure Stripe keys and forward signed `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, and `checkout.session.expired` events to `/api/payments/stripe/webhook`.
+8. For an ISBN not already seeded, configure Google Books and allow outbound access.
 
 Recommended additions (TODO):
 
@@ -586,35 +738,84 @@ All controllers inherit from `ApiClientController`:
 Current endpoints:
 
 ```text
-POST /api/Auth/register
-POST /api/Auth/register/verify
-POST /api/Auth/login
-POST /api/Auth/reset-password
-POST /api/Auth/forgot-password
-POST /api/Auth/forgot-password/verify
-GET /api/Profile/me
-PUT /api/Profile/me
-POST /api/Library/register
-GET /api/Library
-GET /api/Ebooks
-GET /api/Categories
-GET /api/Categories/{categoryId}
-POST /api/Categories
-POST /api/Otp/send
-POST /api/Otp/verify
-POST /api/Notifications/send
-POST /api/Notifications/test
+POST   /api/auth/register                         anonymous
+POST   /api/auth/register/verify                  anonymous
+POST   /api/auth/login                            anonymous by controller configuration
+POST   /api/auth/library/login                    anonymous
+POST   /api/auth/admin/login                      anonymous
+POST   /api/auth/admin/login/verify               anonymous
+POST   /api/auth/reset-password                   authenticated
+POST   /api/auth/forgot-password                  anonymous
+POST   /api/auth/forgot-password/verify           anonymous
+
+GET    /api/profile/me                            authenticated
+PUT    /api/profile/me                            authenticated
+POST   /api/profile/location                      authenticated
+DELETE /api/profile/location                      authenticated
+
+POST   /api/libraries/register                    authenticated
+GET    /api/libraries                             anonymous
+GET    /api/libraries/{libraryId}/books           User or LibraryOwner
+
+GET    /api/ebooks                                anonymous
+GET    /api/books/most-popular                    anonymous
+GET    /api/books/recommended                     authenticated
+
+GET    /api/favorite-books                        authenticated
+POST   /api/favorite-books/{bookId}               authenticated
+DELETE /api/favorite-books/{bookId}               authenticated
+
+POST   /api/library-admin/listings                LibraryAdmin
+PUT    /api/library-admin/listings/{listingId}    LibraryAdmin
+GET    /api/library-admin/listings/{listingId}    LibraryAdmin
+
+GET    /api/listings/me                           User
+POST   /api/listings/me/physical                  User
+
+GET    /api/cart/me                               User
+POST   /api/cart/items                            User
+PUT    /api/cart/items/{listingId}                User
+DELETE /api/cart/items/{listingId}                User
+DELETE /api/cart/me                               User
+
+POST   /api/orders                                User
+GET    /api/orders/me                             User
+GET    /api/orders/{orderId}                      User
+PUT    /api/orders/{orderId}/shipping-location    User
+POST   /api/orders/{orderId}/checkout-session     User
+POST   /api/orders/{orderId}/cancel               User
+DELETE /api/orders/{orderId}                      User
+GET    /api/orders/{orderId}/items/{orderItemId}/download  User; paid digital item only
+
+GET    /api/seller/orders                         User or LibraryOwner
+POST   /api/seller/orders/{orderId}/items/{orderItemId}/processing  User or LibraryOwner
+POST   /api/seller/orders/{orderId}/items/{orderItemId}/fulfilled   User or LibraryOwner
+
+POST   /api/payments/stripe/webhook               anonymous (Stripe signature)
+
+GET    /api/purchases/me/buy-history              User
+GET    /api/purchases/me/sell-history             User
+
+GET    /api/categories                            anonymous by controller configuration
+GET    /api/categories/{categoryId}               anonymous by controller configuration
+POST   /api/categories                            Admin
+POST   /api/otp/send                              anonymous
+POST   /api/otp/verify                            anonymous
+POST   /api/notifications/send                    authenticated
+POST   /api/notifications/test                    anonymous when enabled
 ```
+
+`Program.cs` sets `RouteOptions.LowercaseUrls = true`; incoming ASP.NET Core routes are case-insensitive, but use the lowercase forms above in examples and generated links. `LibraryListingsController`, `OrdersController`, `PurchaseHistoryController`, `SellerOrdersController`, and `UserListingsController` have explicit route templates; the other controllers normally inherit `api/[controller]`.
 
 ### Authentication
 
-`POST /api/Auth/register` request body:
+`POST /api/auth/register` request body:
 
 ```json
 {
   "firstName": "Ali",
   "lastName": "Hassan",
-  "phoneNumber": "+9647XXXXXXXXX",
+  "phoneNumber": "+9639XXXXXXXX",
   "password": "abc123",
   "gender": 1,
   "dateOfBirth": "2000-01-01",
@@ -631,11 +832,11 @@ POST /api/Notifications/test
 
 `interests` are category IDs (`Guid`); each value must match an existing `CategoryAggregate.Id`.
 
-Successful registration start returns a generic success message after sending an OTP. `POST /api/Auth/register/verify` request body:
+Successful registration start returns a generic success message after sending an OTP. `POST /api/auth/register/verify` request body:
 
 ```json
 {
-  "phoneNumber": "+9647XXXXXXXXX",
+  "phoneNumber": "+9639XXXXXXXX",
   "otpCode": "123456"
 }
 ```
@@ -644,23 +845,53 @@ Successful registration verification response is `AuthResponse`:
 
 ```json
 {
-  "userId": "guid",
   "accessToken": "jwt",
   "refreshToken": "secure-random-base64",
   "accessTokenExpiration": "utc-date-time"
 }
 ```
 
-`POST /api/Auth/login` request body:
+`POST /api/auth/login` request body:
 
 ```json
 {
-  "phoneNumber": "+9647XXXXXXXXX",
+  "phoneNumber": "+9639XXXXXXXX",
   "password": "abc123"
 }
 ```
 
 Successful login response is also `AuthResponse`.
+
+`POST /api/auth/admin/login` validates the supplied admin phone/password and sends an OTP rather than returning tokens:
+
+```json
+{
+  "phoneNumber": "+9639XXXXXXXX",
+  "password": "Admin@12345"
+}
+```
+
+`POST /api/auth/admin/login/verify` completes the flow:
+
+```json
+{
+  "phoneNumber": "+9639XXXXXXXX",
+  "otpCode": "123456"
+}
+```
+
+Admin credentials are checked against both the `UserAggregate.Role == Admin` value and the Identity `Admin` role. The credential and OTP stages each lock after five failed attempts in a five-minute window; the lock lasts five minutes, and OTP sends are throttled for 60 seconds.
+
+`POST /api/auth/library/login` logs in the owner of an approved library by normalized library email:
+
+```json
+{
+  "email": "info.lib1@quraaa.com",
+  "password": "User@12345"
+}
+```
+
+The library must be approved, its owner profile must have `Role.LibraryOwner`, the Identity account must be confirmed and in the `LibraryOwner` role, and the supplied password is still the owner's Identity password. Five failed credential attempts within five minutes trigger a five-minute lock by email and client IP.
 
 Password reset request body maps to `ResetPasswordRequest`; the controller creates `ResetPasswordCommand` after reading `UserId` from the authenticated JWT:
 
@@ -691,9 +922,9 @@ Forgot-password verify request body:
 
 ### Profile
 
-`GET /api/Profile/me` has no request body. `ProfileController` reads the user id from JWT claims and sends `GetMyProfileQuery`.
+`GET /api/profile/me` has no request body. `ProfileController` reads the user id from JWT claims and sends `GetMyProfileQuery`.
 
-`PUT /api/Profile/me` request body maps to `UpdateProfileRequest`:
+`PUT /api/profile/me` request body maps to `UpdateProfileRequest`:
 
 ```json
 {
@@ -702,23 +933,35 @@ Forgot-password verify request body:
   "gender": 1,
   "dateOfBirth": "2000-01-01",
   "profileImageUrl": "/uploads/profiles/user.jpg",
-  "interests": ["science", "history"]
+  "interests": [
+    "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+  ]
 }
 ```
 
-Successful profile responses use `ProfileResponse` and do not expose `PasswordHash`:
+`interests` are category GUIDs. Successful profile responses use `ProfileResponse`, include expanded category objects and optional coordinates, and do not expose `PasswordHash`:
 
 ```json
 {
   "userId": "guid",
   "firstName": "Ali",
   "lastName": "Hassan",
-  "phoneNumber": "+9647XXXXXXXXX",
-  "gender": 1,
-  "role": 1,
+  "phoneNumber": "+9639XXXXXXXX",
+  "gender": "Male",
+  "role": "User",
   "dateOfBirth": "2000-01-01",
   "profileImageUrl": "/uploads/profiles/user.jpg",
-  "interests": ["science", "history"],
+  "interests": [
+    {
+      "id": "guid",
+      "nameAr": "علوم",
+      "nameEn": "Science"
+    }
+  ],
+  "location": {
+    "latitude": 33.3152,
+    "longitude": 44.3661
+  },
   "lastLoginDate": null,
   "previousLoginDate": null,
   "creationTime": "utc-date-time",
@@ -726,9 +969,20 @@ Successful profile responses use `ProfileResponse` and do not expose `PasswordHa
 }
 ```
 
+`POST /api/profile/location` upserts the authenticated user's owned `GeoLocation`:
+
+```json
+{
+  "latitude": 33.3152,
+  "longitude": 44.3661
+}
+```
+
+`DELETE /api/profile/location` clears it. The current action binds a `DeleteLocationCommand` from the body even though its only property is JWT-sourced and `[JsonIgnore]`, so clients should currently send an empty JSON object (`{}`). Latitude/longitude are stored as nullable columns on `UsersProfiles`.
+
 ### Library
 
-`POST /api/Library/register` uses `multipart/form-data`:
+`POST /api/libraries/register` uses `multipart/form-data`:
 
 ```text
 libraryName: Central Library
@@ -738,13 +992,23 @@ headerImage: uploaded image file
 email: library@example.com
 ```
 
-The request does not accept `userId`; `LibraryController` reads it from the JWT. New libraries are created with `ApprovalStatus = Pending`.
+The request does not accept `userId`; `LibrariesController` reads it from the JWT. New libraries are created with `ApprovalStatus = Pending`. Both owner and email are unique; duplicate owner/email errors map to `409 Conflict`.
 
-`GET /api/Library` returns a paged list of approved libraries. It accepts `[Authorize(Roles = "User")]` and query parameters for paging through `GetLibrariesQuery`.
+`GET /api/libraries` is anonymous and returns approved libraries only. It supports `pageNumber`, `pageSize`, and `searchTerm` (library name/location). `GetLibrariesQuery` inherits `PaginationRequestDTO`, which coerces non-positive page numbers to `1` and any page size outside `1..20` to `10`.
+
+`GET /api/libraries/{libraryId}/books` requires `User` or `LibraryOwner`. It returns active listings in that library and supports:
+
+```text
+pageNumber: default 1
+pageSize: default 20 in the API request, but values above 20 are coerced to 10 by PaginationRequestDTO
+searchTerm: title, author, or language
+sortBy: title (default), author, or quantity
+sortDescending: default false
+```
 
 ### Ebooks
 
-`GET /api/Ebooks` returns a paged public list of active digital listings joined with their catalog book metadata. It allows anonymous access and accepts these optional query parameters through `GetEbooksQuery`:
+`GET /api/ebooks` returns a paged public list of active digital listings joined with their catalog book metadata. It allows anonymous access and accepts these optional query parameters through `GetEbooksQuery`:
 
 ```text
 pageNumber: int (default 1)
@@ -767,8 +1031,7 @@ Successful responses use `PagedResult<EbookResponse>`:
       "categoryId": "guid",
       "language": "en",
       "isbn": null,
-      "price": 1.0,
-      "digitalAssetUrl": "/uploads/books/book1.pdf"
+      "price": 1.0
     }
   ],
   "pageNumber": 1,
@@ -780,17 +1043,178 @@ Successful responses use `PagedResult<EbookResponse>`:
 }
 ```
 
+### Book discovery
+
+`GET /api/books/most-popular` is anonymous and aggregates purchase quantity, rating count/average, and active-listing count without storing denormalized counters:
+
+```text
+pageNumber: default 1
+pageSize: default 20, valid 1..100
+searchTerm: optional title/author search, max 100 characters
+sortBy: popular (default), purchases, ratings, or averageRating
+includeUnranked: default true; false excludes books with no purchases and no ratings
+```
+
+`GET /api/books/recommended` requires authentication and uses:
+
+```text
+language: required, max 20 characters
+pageNumber: default 1
+pageSize: default 20, valid 1..100
+searchTerm: optional title/author search, max 100 characters
+```
+
+Recommendations require a book to be in one of the authenticated user's interest category IDs, have an exact case-insensitive language match, and have at least one active listing. A user with no interests receives an empty page.
+
+Both routes return `PagedResult<PopularBookResponse>`. Each item includes `bookId`, catalog metadata, `purchaseCount`, `ratingCount`, `averageRating`, and `activeListingCount`.
+
+### Favorite books
+
+All favorite routes are authenticated and derive `UserId` from JWT:
+
+```text
+GET    /api/favorite-books
+POST   /api/favorite-books/{bookId}
+DELETE /api/favorite-books/{bookId}
+```
+
+The list accepts `pageNumber` (default `1`), `pageSize` (default `20`, max `100`), and an optional title/author `searchTerm`. Adds are idempotent at the handler level and protected by a filtered unique index on active `(UserId, BookId)` pairs. Removal soft-deletes the favorite. `FavoriteBookResponse` contains `favoriteId`, catalog metadata, and `favoritedAt`.
+
+### Marketplace listings
+
+Library inventory management is routed explicitly under `/api/library-admin/listings`:
+
+```text
+POST /api/library-admin/listings
+{
+  "price": 12.5,
+  "quantity": 4,
+  "condition": "Good",
+  "isbn": "9783161484100"
+}
+
+PUT /api/library-admin/listings/{listingId}
+{
+  "price": 14.0,
+  "stock": 6,
+  "condition": "LikeNew"
+}
+
+GET /api/library-admin/listings/{listingId}
+```
+
+Add resolves the caller's approved library, then resolves a book by local ISBN or Google Books metadata, rejects duplicate library/book listings, and creates a physical listing in `PendingReview`. Update is partial but requires at least one of price/stock/condition and checks library ownership. For an active listing, stock changes return `409 Conflict` while an unpaid pending order reserves it; price/condition changes remain allowed, and optimistic concurrency closes the check-versus-reservation race. Detail joins listing, book, and optional category.
+
+These controller actions currently require the literal Identity role `LibraryAdmin`, while the domain/seeder/login implementation defines and grants `LibraryOwner`. No seeded/current identity receives `LibraryAdmin`; see Known Gaps.
+
+User listing routes require the `User` role:
+
+```text
+GET  /api/listings/me?searchTerm=&sortBy=title&sortDescending=false
+POST /api/listings/me/physical
+{
+  "price": 9.99,
+  "condition": "Good",
+  "isbn": "9783161484100"
+}
+```
+
+The public response intentionally omits the digital asset path. A buyer can download a purchased ebook only from `GET /api/orders/{orderId}/items/{orderItemId}/download` after the order is paid.
+
+User physical listing creation uses the same local-then-Google ISBN resolution and rejects duplicate user/book listings. It creates one-unit `PendingReview` listings. `GET /api/listings/me` returns only the caller's active user listings, can search title/author/language, and sorts by `title`, `author`, or `quantity`. The current request DTO omits page fields even though the query inherits `PaginationRequestDTO`, so this route currently always returns page `1`, size `10`.
+
+### Cart, orders, checkout, fulfillment, and payments
+
+`CartController` requires the `User` role and always derives `UserId` from JWT:
+
+```text
+GET    /api/cart/me
+POST   /api/cart/items
+PUT    /api/cart/items/{listingId}
+DELETE /api/cart/items/{listingId}
+DELETE /api/cart/me
+```
+
+Add/update bodies:
+
+```json
+{
+  "listingId": "guid",
+  "quantity": 1
+}
+```
+
+```json
+{
+  "quantity": 2
+}
+```
+
+`GET /api/cart/me` returns an empty `CartResponse` when no open cart exists. Cart responses contain `cartId`, string `status`, items with snapshotted unit prices and line totals, `totalAmount`, `itemCount`, and an optional Stripe session ID. Only active listings can be added. Add/update quantities are limited to Stripe's `1..999,999` range; adding an existing item validates the resulting cumulative quantity against available stock; and a cart can contain at most 100 distinct listings. Order creation re-checks those limits before per-listing work so legacy/invalid carts fail early. Cart mutations are rejected while the cart is locked for a pending order. A partial unique database index enforces at most one non-deleted `Active`/`PendingPayment` cart per user, including under concurrent first-add requests.
+
+`POST /api/orders` is the primary checkout entry point. It accepts:
+
+```json
+{
+  "successUrl": "https://client.example/checkout/success",
+  "cancelUrl": "https://client.example/checkout/cancel",
+  "shippingLocation": {
+    "latitude": 33.5138,
+    "longitude": 36.2765
+  }
+}
+```
+
+Order creation validates the cart, seller ownership, active listings, and current stock; snapshots book, seller, price, fulfillment, and digital-asset data into order items; creates an `OrderAggregate`; reserves physical stock by decrementing the available listing stock; locks the cart with `PendingOrderId`; and creates a payment attempt. The order, reservation, cart lock, and stable payment inputs are saved before the external Stripe Checkout request. The response is an `OrderCheckoutResponse` containing the order, payment-attempt ID, session ID/URL, and expiry.
+
+Buyer order routes:
+
+```text
+GET    /api/orders/me
+GET    /api/orders/{orderId}
+PUT    /api/orders/{orderId}/shipping-location
+POST   /api/orders/{orderId}/checkout-session
+POST   /api/orders/{orderId}/cancel
+DELETE /api/orders/{orderId}
+GET    /api/orders/{orderId}/items/{orderItemId}/download
+```
+
+Shipping can change only while the order is unpaid. Checkout-session creation resumes or attaches the active idempotent attempt. Cancelling an unpaid pending order expires any attached Stripe session, releases its physical-stock reservations, and reopens the cart. Only terminal orders can be archived. A paid buyer can download their own digital order item as a private PDF; the public ebook listing never exposes its storage path.
+
+`POST /api/payments/stripe/webhook` verifies `Stripe-Signature`, provider mode, order/payment-attempt correlation, session, amount, currency, and payment intent. A durable `ProcessedPaymentEvent` inbox makes provider events idempotent. Paid `checkout.session.completed` and `checkout.session.async_payment_succeeded` events use the shared order-payment finalizer to mark the order/cart paid and create order-linked `BookPurchaseAggregate` rows; physical stock is not decremented again because it was reserved before Stripe. `checkout.session.async_payment_failed` and `checkout.session.expired` release reserved stock and reopen the cart. A hosted reconciler runs every minute and, after a two-minute webhook grace period, reconciles expired pending attempts. For a local `Created` attempt, it replays the exact persisted Checkout request with `checkout:{attempt.Id:N}`, attaches any recovered Session, retrieves Stripe's authoritative state, and invokes the same paid finalizer when a paid webhook was missed. Inventory is released only after Stripe confirms an unpaid expired Session or, within a conservative 23-hour idempotency-retention window, the replay proves no Session was created; older unattached attempts require manual reconciliation. A complete-but-unpaid asynchronous payment remains pending, and the reconciler keyset-scans each fixed-cutoff candidate set so removed rows cannot shift later work and deferred attempts are retried on the next scan.
+
+Seller fulfillment routes allow `User` or `LibraryOwner`:
+
+```text
+GET  /api/seller/orders?fulfillmentStatus=&pageNumber=1&pageSize=20
+POST /api/seller/orders/{orderId}/items/{orderItemId}/processing
+POST /api/seller/orders/{orderId}/items/{orderItemId}/fulfilled
+```
+
+The seller queue contains paid physical items owned directly by the current user or by their library. Only physical items transition through `Pending` → `Processing` → `Fulfilled`; an order becomes completed after every order item is fulfilled. Paid digital items are fulfilled automatically.
+
+### Purchase history
+
+Both routes require the `User` role and support `pageNumber`, `pageSize`, and title/author `searchTerm`. `PaginationRequestDTO` defaults to page `1`, size `10`, and coerces sizes outside `1..20` to `10`.
+
+```text
+GET /api/purchases/me/buy-history
+GET /api/purchases/me/sell-history
+```
+
+Buy history returns the authenticated user's Stripe-created purchases with book/category metadata, quantity, unit price, total price, and purchase time. Sell history returns purchases whose original listing has `SellerType.User` and belongs to the authenticated seller; it additionally returns `buyerUserId` and `totalEarned`. Library sales are not included by the sell-history query.
+
 ### Categories
 
-`GET /api/Categories` returns all active categories.
+`GET /api/categories` returns all active categories.
 
-`GET /api/Categories/{categoryId}` returns a single category.
+`GET /api/categories/{categoryId}` returns a single category.
 
-`POST /api/Categories` is admin-only (`[Authorize(Roles = "Admin")]`) and creates a new category.
+`POST /api/categories` is admin-only (`[Authorize(Roles = "Admin")]`) and creates a new category.
 
 ### OTP
 
-`POST /api/Otp/send` request body:
+`POST /api/otp/send` request body:
 
 ```json
 {
@@ -798,7 +1222,7 @@ Successful responses use `PagedResult<EbookResponse>`:
 }
 ```
 
-`POST /api/Otp/verify` request body:
+`POST /api/otp/verify` request body:
 
 ```json
 {
@@ -809,7 +1233,7 @@ Successful responses use `PagedResult<EbookResponse>`:
 
 ### Notifications
 
-`POST /api/Notifications/send` request body:
+`POST /api/notifications/send` request body:
 
 ```json
 {
@@ -822,7 +1246,7 @@ Successful responses use `PagedResult<EbookResponse>`:
 }
 ```
 
-`POST /api/Notifications/test` has the same shape (with optional fields) and is allowed anonymously in Development or when `Notifications:AllowTestEndpoint=true`.
+`POST /api/notifications/test` has the same shape (with optional fields) and is allowed anonymously in Development or when `Notifications:AllowTestEndpoint=true`.
 
 ## Feature Flows
 
@@ -850,8 +1274,8 @@ Quraaa.Domain/User/UserAggregate.cs
 Routes:
 
 ```text
-POST /api/Auth/register
-POST /api/Auth/register/verify
+POST /api/auth/register
+POST /api/auth/register/verify
 ```
 
 Authentication:
@@ -864,17 +1288,17 @@ Validation rules:
 
 - `FirstName`: required, max 50 characters.
 - `LastName`: required, max 50 characters.
-- `PhoneNumber`: required, must start with `+`, must be valid according to libphonenumber.
+- `PhoneNumber`: required, must start with `+963`, and must be valid for the Syrian `SY` region according to libphonenumber.
 - `Password`: required, at least 6 characters, must contain at least one digit.
 - `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
 - `Gender`: must be a valid enum value.
 - `Interests`: required and not empty; each value must be an existing `CategoryAggregate.Id`.
-- `POST /api/Auth/register/verify` additionally requires `OtpCode`, exactly 6 digits.
+- `POST /api/auth/register/verify` additionally requires `OtpCode`, exactly 6 digits.
 
 Flow:
 
 ```text
-HTTP POST /api/Auth/register
+HTTP POST /api/auth/register
   -> AuthController.Register(body request)
   -> [AllowAnonymous]
   -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
@@ -895,7 +1319,7 @@ HTTP POST /api/Auth/register
   -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends an FCM data message to the gateway device token
   -> Success, no tokens yet
 
-HTTP POST /api/Auth/register/verify
+HTTP POST /api/auth/register/verify
   -> AuthController.VerifyRegisterOtp(body request)
   -> [AllowAnonymous]
   -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
@@ -918,7 +1342,7 @@ Important registration details:
 - The same generated `Guid` is used as the ASP.NET Identity user ID and the domain `UserAggregate.Id`.
 - `ApplicationUser.UserName` is the normalized E.164 phone number.
 - `ApplicationUser.Email` is synthesized as `{phoneNumber}@quraaa.com`.
-- Email is marked confirmed at registration start; phone is marked confirmed only after `POST /api/Auth/register/verify`.
+- Email is marked confirmed at registration start; phone is marked confirmed only after `POST /api/auth/register/verify`.
 - `UserAggregate.PhoneNumber` is formatted to E.164.
 - `UserAggregate.PasswordHash` stores the Identity password hash.
 - New users receive `Role.User`.
@@ -931,7 +1355,7 @@ Important registration details:
 
 - `FirstName`: required, max 50 characters.
 - `LastName`: required, max 50 characters.
-- `PhoneNumber`: required, must start with `+`, must be valid according to libphonenumber.
+- `PhoneNumber`: required, must start with `+963`, and must be valid for the Syrian `SY` region according to libphonenumber.
 - `Password`: required, at least 6 characters, must contain at least one digit.
 - `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
 - `Gender`: must be a valid enum value.
@@ -955,7 +1379,7 @@ Quraaa.Persistence/Repositories/UserRepository.cs
 Flow:
 
 ```text
-HTTP POST /api/Auth/login
+HTTP POST /api/auth/login
   -> AuthController.Login(command)
   -> Mediator.Send(command)
   -> LoginCommandHandler.Handle(...)
@@ -966,6 +1390,56 @@ HTTP POST /api/Auth/login
   -> IIdentityService.GenerateAuthTokensAsync(id, phone)
   -> AuthResponse
 ```
+
+### Admin and Library-Owner Login Flows
+
+Files:
+
+```text
+Quraaa.API/Controllers/AuthController.cs
+Quraaa.API/Requests/Authentication/AdminLoginRequest.cs
+Quraaa.API/Requests/Authentication/VerifyAdminLoginOtpRequest.cs
+Quraaa.API/Requests/Authentication/LibraryOwnerLoginRequest.cs
+Quraaa.Application/Features/Authentication/Commands/AdminLogin/
+Quraaa.Application/Features/Authentication/Commands/VerifyAdminLoginOtp/
+Quraaa.Application/Features/Authentication/Commands/LibraryOwnerLogin/
+Quraaa.Persistence/Services/IdentityService.cs
+Quraaa.Persistence/Repositories/LibraryRepository.cs
+Quraaa.Persistence/Seed/UserSeeder.cs
+```
+
+Admin flow:
+
+```text
+POST /api/auth/admin/login
+  -> validate/normalize phone and password
+  -> enforce credential lockout by phone and client IP
+  -> require matching admin profile plus Identity Admin role
+  -> generate/store five-minute OTP in `admin-login-otp`
+  -> throttle sends for 60 seconds and dispatch through FirebaseSmsGateway
+
+POST /api/auth/admin/login/verify
+  -> fixed-time OTP comparison with five-attempt/five-minute lockout
+  -> re-check profile and Identity Admin roles
+  -> confirm the phone if necessary
+  -> clear OTP/attempt state
+  -> return AuthResponse
+```
+
+Library-owner flow:
+
+```text
+POST /api/auth/library/login
+  -> normalize email
+  -> enforce credential lockout by email and client IP
+  -> resolve an Approved library by email
+  -> resolve its UserAggregate and Identity user
+  -> require confirmed phone, valid password, domain LibraryOwner role, and Identity LibraryOwner role
+  -> clear credential state
+  -> return AuthResponse
+```
+
+The library-owner endpoint does not use a separate library password: it checks the password of the Identity account referenced by `LibraryAggregate.UserId`.
 
 ### Password Reset Flow
 
@@ -986,7 +1460,7 @@ Quraaa.Domain/User/UserAggregate.cs
 Route:
 
 ```text
-POST /api/Auth/reset-password
+POST /api/auth/reset-password
 ```
 
 Authentication:
@@ -1004,7 +1478,7 @@ Validation rules:
 Flow:
 
 ```text
-HTTP POST /api/Auth/reset-password
+HTTP POST /api/auth/reset-password
   -> AuthController.ResetPassword(body request)
   -> [Authorize] validates JWT bearer token
   -> AuthController extracts UserId from token claims
@@ -1049,8 +1523,8 @@ Quraaa.Domain/User/UserAggregate.cs
 Routes:
 
 ```text
-POST /api/Auth/forgot-password
-POST /api/Auth/forgot-password/verify
+POST /api/auth/forgot-password
+POST /api/auth/forgot-password/verify
 ```
 
 Authentication:
@@ -1069,7 +1543,7 @@ Validation rules:
 Flow:
 
 ```text
-HTTP POST /api/Auth/forgot-password
+HTTP POST /api/auth/forgot-password
   -> AuthController.ForgotPassword(body request)
   -> [AllowAnonymous]
   -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
@@ -1084,7 +1558,7 @@ HTTP POST /api/Auth/forgot-password
   -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp)
   -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends an FCM data message to the gateway device token
 
-HTTP POST /api/Auth/forgot-password/verify
+HTTP POST /api/auth/forgot-password/verify
   -> AuthController.VerifyForgotPassword(body request)
   -> [AllowAnonymous]
   -> AuthController reads clientIp from HttpContext.Connection.RemoteIpAddress
@@ -1120,6 +1594,7 @@ Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommand
 Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommandValidator.cs
 Quraaa.Application/Features/Profiles/Commands/UpdateProfile/UpdateProfileCommandHandler.cs
 Quraaa.Application/Features/Authentication/Interfaces/IUserRepository.cs
+Quraaa.Application/Features/Categories/Interfaces/ICategoryRepository.cs
 Quraaa.Persistence/Repositories/UserRepository.cs
 Quraaa.Domain/User/UserAggregate.cs
 ```
@@ -1127,8 +1602,8 @@ Quraaa.Domain/User/UserAggregate.cs
 Routes:
 
 ```text
-GET /api/Profile/me
-PUT /api/Profile/me
+GET /api/profile/me
+PUT /api/profile/me
 ```
 
 Authentication:
@@ -1146,12 +1621,12 @@ Validation rules:
 - `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
 - `ProfileImageUrl`: optional, max 500 characters.
 - `Interests`: required and not empty.
-- Each interest code must exist as a `CategoryAggregate.Code`.
+- Each interest GUID must exist as a `CategoryAggregate.Id`.
 
 Read flow:
 
 ```text
-HTTP GET /api/Profile/me
+HTTP GET /api/profile/me
   -> ProfileController.GetMyProfile()
   -> [Authorize] validates JWT bearer token
   -> ProfileController extracts UserId from token claims
@@ -1161,14 +1636,15 @@ HTTP GET /api/Profile/me
   -> BaseApplicationService validates GetMyProfileQuery
   -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
   -> handler throws NotFoundException if the user profile is null
-  -> ProfileResponse.FromUser(user)
+  -> ICategoryRepository.GetByIdsAsync(user.InterestedCategoryIds)
+  -> ProfileResponse.FromUser(user, interestCategories) expands categories and optional location
   -> ProfileResponse
 ```
 
 Update flow:
 
 ```text
-HTTP PUT /api/Profile/me
+HTTP PUT /api/profile/me
   -> ProfileController.UpdateMyProfile(body request)
   -> [Authorize] validates JWT bearer token
   -> ProfileController extracts UserId from token claims
@@ -1180,15 +1656,48 @@ HTTP PUT /api/Profile/me
   -> handler throws NotFoundException if the user profile is null
   -> UserAggregate.UpdateProfile(...)
   -> IUserRepository.SaveChangesAsync()
+  -> ICategoryRepository.GetByIdsAsync(user.InterestedCategoryIds)
   -> ProfileResponse
 ```
+
+### Profile Location Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/ProfileController.cs
+Quraaa.Application/Features/Profiles/Commands/UpsertLocation/
+Quraaa.Application/Features/Profiles/Commands/DeleteLocation/
+Quraaa.Domain/User/ValueObjects/GeoLocation.cs
+Quraaa.Persistence/Configurations/UserConfiguration.cs
+Quraaa.Persistence/Migrations/20260724134444_AddLocationToUsers.cs
+```
+
+Flow:
+
+```text
+POST /api/profile/location
+  -> [Authorize] and JWT UserId extraction
+  -> UpsertLocationCommand with token-derived UserId
+  -> validate latitude/longitude
+  -> UserAggregate.SetLocation(...)
+  -> persist owned GeoLocation to UsersProfiles.Latitude/Longitude
+
+DELETE /api/profile/location
+  -> [Authorize] and JWT UserId extraction
+  -> DeleteLocationCommand with token-derived UserId
+  -> UserAggregate.ClearLocation()
+  -> persist null coordinates
+```
+
+`GetMyProfile` and `UpdateProfile` now return a nullable `LocationResponse`. Current implementation caveats: the location validator's `.NotEmpty()` rejects numeric zero even though zero is geographically valid, both handlers null-forgive a missing user instead of returning `404`, and the DELETE action currently expects an empty JSON request body.
 
 ### Library Registration Flow
 
 Files:
 
 ```text
-Quraaa.API/Controllers/LibraryController.cs
+Quraaa.API/Controllers/LibrariesController.cs
 Quraaa.API/Requests/Files/FormFileUploadedFile.cs
 Quraaa.API/Services/LibraryImageStorageService.cs
 Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommand.cs
@@ -1205,7 +1714,7 @@ Quraaa.Domain/Library/LibraryAggregate.cs
 Route:
 
 ```text
-POST /api/Library/register
+POST /api/libraries/register
 ```
 
 Authentication:
@@ -1226,13 +1735,13 @@ headerImage: uploaded image file
 email: library@example.com
 ```
 
-The request does not accept `userId`. `LibraryController` reads the user id from JWT claims and sends that value to the application command.
+The request does not accept `userId`. `LibrariesController` reads the user id from JWT claims and sends that value to the application command.
 
 The successful `LibraryResponse` does not expose `UserId`; ownership stays internal and token-derived.
 
-Library ownership is one-to-one: one authenticated user profile can register at most one library. `RegisterLibraryCommandHandler` checks `ILibraryRepository.ExistsByUserIdAsync(userId)` before storing uploaded images. If a library already exists for that user, the handler returns an application business error.
+Library ownership is one-to-one: one authenticated user profile can register at most one library. `RegisterLibraryCommandHandler` checks `ILibraryRepository.ExistsByUserIdAsync(userId)` before storing uploaded images. Library email is normalized to lowercase and must also be unique. Duplicate owner or email errors map to `409 Conflict`.
 
-The image fields are uploaded files. `LibraryController` wraps ASP.NET `IFormFile` values in the application-level `IUploadedFile` abstraction. `RegisterLibraryCommandValidator` validates the uploaded files before storage. After validation succeeds, `RegisterLibraryCommandHandler` stores them through `ILibraryImageStorageService`; the API implementation writes files under `wwwroot/uploads/libraries` with generated file names. The database stores the path strings, for example `/uploads/libraries/<generated-name>.jpg`.
+The image fields are uploaded files. `LibrariesController` wraps ASP.NET `IFormFile` values in the application-level `IUploadedFile` abstraction. `RegisterLibraryCommandValidator` validates the uploaded files before storage. After validation succeeds, `RegisterLibraryCommandHandler` stores them through `ILibraryImageStorageService`; the API implementation writes files under `wwwroot/uploads/libraries` with generated file names. The database stores the path strings, for example `/uploads/libraries/<generated-name>.jpg`.
 
 The request does not accept approval status. New libraries are always created as `Pending`; future admin logic should transition them to `Approved` or `Rejected`.
 
@@ -1248,12 +1757,12 @@ Validation rules:
 Flow:
 
 ```text
-HTTP POST /api/Library/register
-  -> LibraryController.Register(form request)
+HTTP POST /api/libraries/register
+  -> LibrariesController.Register(form request)
   -> [Authorize] validates JWT bearer token
-  -> LibraryController extracts UserId from token claims
-  -> LibraryController wraps form files as IUploadedFile
-  -> LibraryController creates RegisterLibraryCommand with uploaded files and token UserId
+  -> LibrariesController extracts UserId from token claims
+  -> LibrariesController wraps form files as IUploadedFile
+  -> LibrariesController creates RegisterLibraryCommand with uploaded files and token UserId
   -> Mediator.Send(command)
   -> RegisterLibraryCommandHandler.Handle(...)
   -> BaseApplicationService validates RegisterLibraryCommand
@@ -1261,7 +1770,8 @@ HTTP POST /api/Library/register
   -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
   -> handler throws NotFoundException if the user profile is null
   -> ILibraryRepository.ExistsByUserIdAsync(userId) confirms the user does not already own a library
-  -> handler throws ApplicationBusinessException if a library already exists for the user
+  -> ILibraryRepository.ExistsByEmailAsync(email) confirms the email is unique
+  -> handler throws a duplicate domain error if owner or email already exists
   -> ILibraryImageStorageService.SaveAsync(...) stores images in wwwroot/uploads/libraries
   -> new LibraryAggregate(...)
   -> ILibraryRepository.AddLibraryAsync(library)
@@ -1275,46 +1785,65 @@ HTTP POST /api/Library/register
 Files:
 
 ```text
-Quraaa.API/Controllers/LibraryController.cs
+Quraaa.API/Controllers/LibrariesController.cs
+Quraaa.API/Requests/Libraries/GetLibraryBooksRequest.cs
 Quraaa.Application/Features/Libraries/Queries/GetLibraries/GetLibrariesQuery.cs
 Quraaa.Application/Features/Libraries/Queries/GetLibraries/GetLibrariesQueryHandler.cs
-Quraaa.Application/Features/Libraries/Queries/GetLibraries/GetLibrariesQueryValidator.cs
 Quraaa.Application/Features/Libraries/Queries/GetLibraries/PublicLibraryResponse.cs
+Quraaa.Application/Features/Listings/Queries/GetLibraryBooks/
 Quraaa.Application/Features/Libraries/Interfaces/ILibraryRepository.cs
 Quraaa.Persistence/Repositories/LibraryRepository.cs
 ```
 
-Route:
+Routes:
 
 ```text
-GET /api/Library
+GET /api/libraries
+GET /api/libraries/{libraryId}/books
 ```
 
 Authentication:
 
 ```text
-Authorization: Bearer <access-token>
-[Authorize(Roles = "User")]
+GET /api/libraries -> AllowAnonymous
+GET /api/libraries/{libraryId}/books -> [Authorize(Roles = "User,LibraryOwner")]
 ```
 
-Query parameters (paging):
+Library discovery parameters:
 
 ```text
 pageNumber: int (default 1)
 pageSize: int (default 10)
+searchTerm: string? (library name or location)
+```
+
+Library-book parameters:
+
+```text
+pageNumber: int (default 1)
+pageSize: int (effective range 1..20)
+searchTerm: string? (title, author, or language)
+sortBy: title, author, or quantity
+sortDescending: bool
 ```
 
 Flow:
 
 ```text
-HTTP GET /api/Library
-  -> LibraryController.GetLibraries(query)
-  -> [Authorize(Roles = "User")] validates JWT bearer token and role
+HTTP GET /api/libraries
+  -> LibrariesController.GetLibraries(query)
   -> Mediator.Send(query)
   -> GetLibrariesQueryHandler.Handle(...)
-  -> BaseApplicationService validates GetLibrariesQuery
-  -> ILibraryRepository.GetApprovedLibrariesAsync(pageNumber, pageSize)
+  -> ILibraryRepository.GetPagedAsync(pageNumber, pageSize, searchTerm)
   -> returns PagedResult<PublicLibraryResponse>
+
+HTTP GET /api/libraries/{libraryId}/books
+  -> role authorization
+  -> GetLibraryBooksQuery
+  -> ILibraryRepository.GetLibraryBooksAsync(...)
+  -> filter Active listings and join Books plus optional Categories
+  -> apply search/sort/paging
+  -> returns PagedResult<ListingSummaryResponse>
 ```
 
 Only libraries with `ApprovalStatus = Approved` are returned.
@@ -1339,7 +1868,7 @@ Quraaa.Domain/Marketplace/ListingAggregate.cs
 Route:
 
 ```text
-GET /api/Ebooks
+GET /api/ebooks
 ```
 
 Authentication:
@@ -1359,14 +1888,15 @@ searchTerm: string? (optional title/author filter)
 Seeded ebook details:
 
 - `EbookSeeder` creates a `BookAggregate` and an active digital `ListingAggregate`.
-- The seeded listing uses `DigitalAssetUrl = "/uploads/books/book1.pdf"`.
-- Store the actual PDF at `Quraaa.API/wwwroot/uploads/books/book1.pdf`; `app.UseStaticFiles()` serves it as `/uploads/books/book1.pdf`.
-- If an old seeded listing with the fixed seed ID still has a placeholder URL, `EbookSeeder` updates it to `/uploads/books/book1.pdf` on startup.
+- The seeded listing uses the private logical path `DigitalAssetUrl = "books/book1.pdf"`.
+- Store the PDF at `Quraaa.API/storage/books/book1.pdf`; the project copies `storage/books/**` into build and publish output.
+- Public `/uploads/books/*.pdf` requests are blocked, and `EbookResponse` omits `DigitalAssetUrl`.
+- A paid buyer receives the PDF only through `GET /api/orders/{orderId}/items/{orderItemId}/download`, which verifies buyer/order/item access and confines resolution to the private `storage/books` directory.
 
 Flow:
 
 ```text
-HTTP GET /api/Ebooks
+HTTP GET /api/ebooks
   -> EbooksController.GetEbooks(query)
   -> GetEbooksQuery
   -> GetEbooksQueryHandler
@@ -1374,7 +1904,181 @@ HTTP GET /api/Ebooks
   -> IEbookRepository.GetPagedAsync(pageNumber, pageSize, searchTerm)
   -> EbookRepository joins Listings to Books
   -> filters ListingFormat.Digital, ListingStatus.Active, and non-null DigitalAssetUrl
-  -> returns PagedResult<EbookResponse>
+  -> returns PagedResult<EbookResponse> without the private asset path
+```
+
+### Book Discovery and Favorites Flows
+
+Files:
+
+```text
+Quraaa.API/Controllers/BooksController.cs
+Quraaa.API/Controllers/FavoriteBooksController.cs
+Quraaa.Application/Features/Books/
+Quraaa.Application/Features/FavoriteBooks/
+Quraaa.Persistence/Repositories/BookPopularityRepository.cs
+Quraaa.Persistence/Repositories/FavoriteBookRepository.cs
+Quraaa.Persistence/Configurations/FavoriteBookConfiguration.cs
+Quraaa.Domain/Favorites/FavoriteBookAggregate.cs
+Quraaa.Domain/Ratings/BookRatingAggregate.cs
+Quraaa.Domain/Purchases/BookPurchaseAggregate.cs
+```
+
+Flow:
+
+```text
+GET /api/books/most-popular
+  -> BookPopularityRepository left-joins Books with grouped BookPurchases, BookRatings, and Active Listings
+  -> optional search/unranked filter
+  -> popularity/purchase/rating/average-rating ordering
+  -> PagedResult<PopularBookResponse>
+
+GET /api/books/recommended
+  -> JWT UserId -> UserAggregate.InterestedCategoryIds
+  -> category + exact normalized language + active-listing filters
+  -> popularity ordering
+  -> PagedResult<PopularBookResponse>
+
+GET /api/favorite-books
+  -> JWT UserId -> paged Favorites/Books join
+
+POST /api/favorite-books/{bookId}
+  -> validate user/book
+  -> return existing favorite or create FavoriteBookAggregate
+  -> filtered unique index handles concurrent duplicate adds
+
+DELETE /api/favorite-books/{bookId}
+  -> validate user/book and soft-delete the active favorite
+```
+
+There is no HTTP endpoint yet to create/update `BookRatingAggregate`; rating rows can affect discovery when present through seed/manual/database work.
+
+### Listing Management Flows
+
+Files:
+
+```text
+Quraaa.API/Controllers/LibrariesController.cs
+Quraaa.API/Controllers/LibraryListingsController.cs
+Quraaa.API/Controllers/UserListingsController.cs
+Quraaa.Application/Features/Listings/
+Quraaa.Persistence/Repositories/BookRepository.cs
+Quraaa.Persistence/Repositories/ListingRepository.cs
+Quraaa.Persistence/Repositories/LibraryRepository.cs
+Quraaa.Infrastructure/Services/GoogleBooksService.cs
+Quraaa.Domain/Marketplace/ListingAggregate.cs
+```
+
+Flow:
+
+```text
+library/user physical listing create
+  -> JWT UserId
+  -> resolve ISBN from Books; otherwise query Google Books and create BookAggregate
+  -> reject duplicate seller/book listing
+  -> ListingAggregate.CreateForLibrary/CreateForUser
+  -> PendingReview listing
+
+library listing update
+  -> resolve Active listing
+  -> resolve caller's Approved library and verify ownership
+  -> reject stock changes while an unpaid pending order reserves the listing
+  -> update any supplied price/stock/condition
+
+library listing detail
+  -> listing/book/optional-category projection
+
+current user listings
+  -> filter Active + SellerType.User + token UserId
+  -> search/sort and fixed current page defaults
+```
+
+`ListingAggregate.CreateForLibrary` and `CreateForUser` start in `PendingReview`; only active listings appear in library/user listing queries and cart lookups. There is currently no listing approval or removal endpoint.
+
+### Cart, Order, Stripe, Fulfillment, and Purchase History Flows
+
+Files:
+
+```text
+Quraaa.API/Controllers/CartController.cs
+Quraaa.API/Controllers/OrdersController.cs
+Quraaa.API/Controllers/PaymentsController.cs
+Quraaa.API/Controllers/PurchaseHistoryController.cs
+Quraaa.API/Controllers/SellerOrdersController.cs
+Quraaa.API/Services/ExpiredOrderPaymentReconciliationService.cs
+Quraaa.Application/Features/Carts/
+Quraaa.Application/Features/Orders/
+Quraaa.Application/Features/Payments/
+Quraaa.Application/Features/Purchases/
+Quraaa.Infrastructure/Services/StripePaymentService.cs
+Quraaa.Persistence/Repositories/CartRepository.cs
+Quraaa.Persistence/Repositories/BookPurchaseRepository.cs
+Quraaa.Persistence/Repositories/OrderRepository.cs
+Quraaa.Persistence/Repositories/PaymentEventInboxRepository.cs
+Quraaa.Domain/Cart/
+Quraaa.Domain/Orders/
+Quraaa.Domain/Purchases/BookPurchaseAggregate.cs
+```
+
+Flow:
+
+```text
+cart read/mutation
+  -> JWT UserId
+  -> retrieve Active or PendingPayment cart with owned CartItems
+  -> partial unique index permits one non-deleted open cart per user
+  -> validate Active listing, cumulative available stock, and quantity 1..999,999
+  -> allow at most 100 distinct listings
+  -> keep unit-price snapshot on CartItem
+  -> reject mutation while PendingPayment
+
+order checkout
+  -> require non-empty modifiable cart
+  -> reject more than 100 lines or quantity above 999,999 before per-item queries
+  -> re-check listing activity, seller ownership, and stock
+  -> snapshot book/seller/price/asset data into OrderItems
+  -> create OrderAggregate and reserve physical stock
+  -> CartStatus.PendingPayment + PendingOrderId
+  -> create PaymentAttempt
+  -> save order + reservation + cart lock before calling Stripe
+  -> create idempotent Stripe Checkout Session and attach it locally
+
+Stripe webhook
+  -> verify Stripe-Signature
+  -> correlate Order + PaymentAttempt and validate mode/session/amount/currency
+  -> claim provider event in ProcessedPaymentEvents
+  -> paid: shared finalizer marks order/cart paid and creates order-linked purchases
+  -> paid: do not decrement stock again; the reservation is the sale
+  -> async failure/expiry: release reserved stock and reopen cart
+  -> one DbContext SaveChanges persists the whole state transition
+
+cancel/expiry recovery
+  -> hosted reconciliation checks expired attempts every minute
+  -> Created attempt: replay the exact request with checkout:{attempt.Id:N}
+  -> attach a recovered Session and retrieve authoritative Stripe state
+  -> complete paid order through the shared finalizer when its webhook was missed
+  -> keyset-scan a fixed cutoff so removed rows cannot shift pages and deferred attempts are retried after each finite scan
+  -> never auto-expire an unattached replay older than the safe idempotency window
+  -> preserve complete-but-unpaid asynchronous payments for a later result
+  -> otherwise expire the unpaid order and release every physical reservation
+  -> reopen the source cart after confirmed failure/expiry
+
+seller fulfillment
+  -> list paid physical items owned by the user or their library
+  -> Pending -> Processing -> Fulfilled
+  -> complete the order when every item is fulfilled
+
+paid ebook delivery
+  -> buyer/order/item authorization
+  -> require paid digital item with a private snapshot path
+  -> resolve only under storage/books
+  -> return private no-store PDF response
+
+buy/sell history
+  -> JWT UserId
+  -> BookPurchases joined to Books/Categories
+  -> sell history additionally joins User-owned Listings
+  -> PagedResult history response
 ```
 
 ### OTP Flow
@@ -1398,8 +2102,8 @@ Quraaa.Infrastructure/Extensions/InfrastructureDependencyInjectionHandler.cs
 Routes:
 
 ```text
-POST /api/Otp/send
-POST /api/Otp/verify
+POST /api/otp/send
+POST /api/otp/verify
 ```
 
 Authentication:
@@ -1408,7 +2112,7 @@ Authentication:
 AllowAnonymous
 ```
 
-`POST /api/Otp/send` request body:
+`POST /api/otp/send` request body:
 
 ```json
 {
@@ -1418,7 +2122,7 @@ AllowAnonymous
 
 `FirebaseSmsGateway` reads the SMS gateway FCM token from `OTP_DEVICE_TOKEN` in configuration/environment variables.
 
-`POST /api/Otp/verify` request body:
+`POST /api/otp/verify` request body:
 
 ```json
 {
@@ -1441,7 +2145,7 @@ OTP behavior:
 Flow:
 
 ```text
-HTTP POST /api/Otp/send
+HTTP POST /api/otp/send
   -> OtpController.SendOtp(body request)
   -> SendOtpCommand(phoneNumber, clientIp)
   -> SendOtpCommandHandler.Handle(...)
@@ -1452,7 +2156,7 @@ HTTP POST /api/Otp/send
   -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp)
   -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends an FCM data message to the gateway device token
 
-HTTP POST /api/Otp/verify
+HTTP POST /api/otp/verify
   -> OtpController.VerifyOtp(body request)
   -> VerifyOtpCommand(phoneNumber, code, clientIp)
   -> VerifyOtpCommandHandler.Handle(...)
@@ -1478,15 +2182,15 @@ Quraaa.Infrastructure/Services/FirebaseNotificationService.cs
 Route:
 
 ```text
-POST /api/Notifications/send
-POST /api/Notifications/test
+POST /api/notifications/send
+POST /api/notifications/test
 ```
 
 Authentication:
 
 ```text
-POST /api/Notifications/send -> Authorization: Bearer <access-token>
-POST /api/Notifications/test -> AllowAnonymous when enabled
+POST /api/notifications/send -> Authorization: Bearer <access-token>
+POST /api/notifications/test -> AllowAnonymous when enabled
 ```
 
 The test route is enabled automatically in Development. Outside Development, it is disabled unless `Notifications:AllowTestEndpoint=true` or `Notifications__AllowTestEndpoint=true` is configured.
@@ -1515,7 +2219,7 @@ Successful response:
 Flow:
 
 ```text
-HTTP POST /api/Notifications/send
+HTTP POST /api/notifications/send
   -> NotificationsController.Send(body request)
   -> [Authorize] validates JWT bearer token
   -> NotificationsController extracts UserId from token claims
@@ -1526,7 +2230,7 @@ HTTP POST /api/Notifications/send
   -> IFirebaseNotificationService.SendToDeviceAsync(...)
   -> FirebaseNotificationService sends an FCM notification message to the requested device token
 
-HTTP POST /api/Notifications/test
+HTTP POST /api/notifications/test
   -> NotificationsController.SendTest(body request)
   -> route is allowed only in Development or when Notifications:AllowTestEndpoint=true
   -> SendTestNotificationCommand(deviceToken, optional title, optional body, optional data)
@@ -1556,24 +2260,24 @@ Quraaa.Domain/Category/CategoryAggregate.cs
 Routes:
 
 ```text
-GET /api/Categories
-GET /api/Categories/{categoryId}
-POST /api/Categories
+GET /api/categories
+GET /api/categories/{categoryId}
+POST /api/categories
 ```
 
 Authentication:
 
 ```text
-GET /api/Categories -> AllowAnonymous
-GET /api/Categories/{categoryId} -> AllowAnonymous
-POST /api/Categories -> Authorization: Bearer <admin-access-token>
+GET /api/categories -> anonymous by controller configuration
+GET /api/categories/{categoryId} -> anonymous by controller configuration
+POST /api/categories -> Authorization: Bearer <admin-access-token>
 ```
 
-`POST /api/Categories` requires the `Admin` role.
+`POST /api/categories` requires the `Admin` role.
 
 The `CategoryAggregate` model includes:
 
-- `Code` — unique string code used as an interest identifier during registration/profile update.
+- `Code` — unique stable category code used by seed/configuration logic; registration/profile interest payloads use `CategoryAggregate.Id` GUIDs.
 - `NameAr` — Arabic name.
 - `NameEn` — English name.
 - `ParentCategoryId` — optional parent category.
@@ -1582,21 +2286,21 @@ The `CategoryAggregate` model includes:
 Flow:
 
 ```text
-HTTP GET /api/Categories
+HTTP GET /api/categories
   -> CategoriesController.GetAllCategories()
   -> GetAllCategoriesQuery
   -> GetAllCategoriesQueryHandler
   -> ICategoryRepository.GetAllAsync()
   -> List<CategoryResponse>
 
-HTTP GET /api/Categories/{categoryId}
+HTTP GET /api/categories/{categoryId}
   -> CategoriesController.GetCategoryById(categoryId)
   -> GetCategoryByIdQuery(categoryId)
   -> GetCategoryByIdQueryHandler
   -> ICategoryRepository.GetByIdAsync(categoryId)
   -> CategoryResponse or NotFound
 
-HTTP POST /api/Categories
+HTTP POST /api/categories
   -> CategoriesController.CreateCategory(request)
   -> [Authorize(Roles = "Admin")]
   -> CreateCategoryCommand(...)
@@ -1621,9 +2325,17 @@ HTTP POST /api/Categories
 Based on the current codebase:
 
 - **Admin library review**: `LibraryAggregate` has `Approve`/`Reject` methods, but there is no HTTP endpoint to transition a library from `Pending` to `Approved`/`Rejected`.
+- **Listing review lifecycle**: all non-seeded library/user physical listings start in `PendingReview`, but there is no approval/rejection/removal endpoint. Active-only list/cart queries therefore do not expose newly created listings.
+- **Library inventory authorization mismatch**: `LibraryListingsController` requires `LibraryAdmin`, while `Role`, seeders, and library login use `LibraryOwner`. No current code grants `LibraryAdmin`, so those three routes are not reachable with the roles produced by this repository.
+- **Library add/update edge cases**: `AddPhysicalBookCommand.Isbn` is declared nullable and has no required validator but the handler dereferences it; omission can produce a `500`. `UpdateListingCommandHandler` retrieves only `Active` listings, so a new `PendingReview` listing cannot be updated and an `OutOfStock` listing cannot be restocked through that route.
+- **General login bypasses specialized role flows**: `/api/auth/login` is anonymous and does not restrict roles, so a confirmed admin/library-owner Identity can also log in with phone/password without the admin OTP or library-email checks. Decide whether that is intended before relying on specialized login as a security boundary.
 - **Refresh token rotation / logout**: tokens are generated and stored, but there is no logout or refresh endpoint.
-- **OTP integration**: OTP send/verify is required for registration and forgot-password flows, but not yet for login or general phone verification.
-- **Book/listing HTTP surface**: `GET /api/Ebooks` exposes active digital listings with book metadata, but broader catalog/listing management is still missing. `AddPhysicalBookCommand` exists without a handler or validator, and `IBookMetadataService`/`GoogleBooksService` registration is commented out.
+- **OTP coverage**: registration, forgot-password, admin login, and standalone OTP use OTP state. Regular user login and library-owner login do not; standalone OTP still does not mark a phone/user verified.
+- **Rating API**: `BookRatingAggregate`, its table, and popularity aggregation exist, but there are no rating create/update/read endpoints.
+- **Location edge cases**: location upsert/delete handlers null-forgive a missing user, the validator rejects zero latitude/longitude via `.NotEmpty()`, and DELETE requires an otherwise empty request body.
+- **Pagination inconsistency**: `PaginationRequestDTO` silently coerces invalid values and caps at 20, while other feature validators allow 100. `GET /api/listings/me` cannot bind page fields and is fixed to page 1/size 10.
+- **Category projection order**: listing/library-book/purchase repository projections pass `NameEn` and `NameAr` in the opposite order expected by `CategoryResponse`; profile/category handlers use the correct order.
+- **Aggregate mapping consistency**: domain aggregates retain scalar IDs, but several current EF configurations express cross-aggregate foreign keys with navigationless `HasOne<TAggregate>()`. Keep navigation properties out of the domain and decide on one persistence convention before adding more mappings.
 - **Tests**: no unit, integration, or end-to-end tests exist.
 - **CI/CD**: only branch-name validation is automated; add build, test, and publish workflows.
-- **Production readiness**: review `Otp:AllowInMemoryCacheInProduction=true` and `Notifications:AllowTestEndpoint=true` in `appsettings.json` before production deployment.
+- **Production readiness**: `Otp:AllowInMemoryCacheInProduction=true`, `Notifications:AllowTestEndpoint=true`, and `Stripe:IsTestMode=true` are committed defaults. Disable the test-only settings as appropriate, require Redis, configure/rotate Stripe and Firebase secrets, and add payment/OTP/checkout observability before production deployment.

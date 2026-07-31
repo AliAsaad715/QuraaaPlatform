@@ -26,4 +26,10 @@
     <ProjectReference Include="..\Quraaa.Infrastructure\Quraaa.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="storage\books\**\*"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
