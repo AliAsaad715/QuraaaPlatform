@@ -5,8 +5,6 @@ using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
-using System.Buffers.Text;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace Quraaa.Application.Features.Libraries.Queries.GetMyProfile
 {
@@ -29,7 +27,7 @@ namespace Quraaa.Application.Features.Libraries.Queries.GetMyProfile
         {
             return await ExecuteAsync(request, async () =>
             {
-                var library = await _libraryRepository.GetByUserIdAsync(request.UserId, cancellationToken);
+                var library = await _libraryRepository.GetApprovedByUserIdAsync(request.UserId, cancellationToken);
                 if (library == null)
                     throw new NotFoundException("Library not found");
 

@@ -166,7 +166,7 @@ namespace Quraaa.Persistence.Repositories
                 return (items, totalCount);
             }
 
-        public async Task<LibraryAggregate?> GetByUserIdAsync(
+        public async Task<LibraryAggregate?> GetApprovedByUserIdAsync(
                 Guid userId, CancellationToken cancellationToken = default) =>
                 await _context.Libraries
                     .FirstOrDefaultAsync(
@@ -235,7 +235,11 @@ public async Task<(IReadOnlyCollection<LibraryRequestResponse> Items, int TotalC
         return (items, totalCount);
     }
 
-    public async Task SaveChangesAsync()
+    public async Task<LibraryAggregate?> GetByIdAsync
+            (Guid id, CancellationToken cancellationToken = default) => 
+                await _context.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+
+        public async Task SaveChangesAsync()
         {
             try
             {
