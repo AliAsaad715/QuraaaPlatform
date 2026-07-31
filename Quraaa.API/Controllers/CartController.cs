@@ -1,14 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Quraaa.API.Requests.Orders;
 using Quraaa.Application.Features.Carts.Commands.AddCartItem;
 using Quraaa.Application.Features.Carts.Commands.ClearCart;
 using Quraaa.Application.Features.Carts.Commands.RemoveCartItem;
 using Quraaa.Application.Features.Carts.Commands.UpdateCartItemQuantity;
 using Quraaa.Application.Features.Carts.Common;
 using Quraaa.Application.Features.Carts.Queries.GetMyCart;
-using Quraaa.Application.Features.Orders.Commands.CreateOrder;
-using Quraaa.Application.Features.Orders.Common;
 
 namespace Quraaa.API.Controllers
 {
@@ -78,32 +75,6 @@ namespace Quraaa.API.Controllers
 
             var result = await Mediator.Send(new ClearCartCommand(userId));
             return HandleResult(result);
-        }
-
-        [HttpPost("checkout")]
-        [Obsolete("Use POST /api/orders instead.")]
-        [ProducesResponseType(typeof(StripeCheckoutSessionResponse), StatusCodes.Status200OK)]
-        public async Task<IActionResult> Checkout(
-            [FromBody] CreateOrderRequest request,
-            CancellationToken cancellationToken)
-        {
-            if (!TryGetCurrentUserId(out var userId))
-            {
-                return InvalidUserIdResult();
-            }
-
-            var result = await Mediator.Send(new CreateOrderCommand(
-                userId,
-                request.SuccessUrl,
-                request.CancelUrl,
-                request.ShippingLocation?.Latitude,
-                request.ShippingLocation?.Longitude), cancellationToken);
-
-            return HandleResult(
-                result,
-                response => Ok(new StripeCheckoutSessionResponse(
-                    response.CheckoutSessionId,
-                    response.CheckoutUrl)));
         }
     }
 }

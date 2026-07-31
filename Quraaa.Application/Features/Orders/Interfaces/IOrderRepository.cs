@@ -54,8 +54,10 @@ namespace Quraaa.Application.Features.Orders.Interfaces
             Guid listingId,
             CancellationToken cancellationToken = default);
 
-        Task<IReadOnlyCollection<Guid>> GetExpiredPendingOrderIdsAsync(
+        Task<IReadOnlyCollection<ExpiredOrderPaymentCandidate>>
+            GetExpiredPendingOrderCandidatesAsync(
             DateTime expiredOnOrBeforeUtc,
+            ExpiredOrderPaymentCandidate? after,
             int take,
             CancellationToken cancellationToken = default);
 

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Domain.Cart;
 using Quraaa.Domain.Cart.Enums;
@@ -59,6 +60,25 @@ namespace Quraaa.Persistence.Repositories
                 throw new ConflictException(
                     "Cart changed concurrently. Reload it and retry the operation.");
             }
+            catch (DbUpdateException exception)
+                when (IsOpenCartUniqueViolation(exception))
+            {
+                foreach (var entry in exception.Entries.Where(
+                    entry => entry.Entity is CartAggregate))
+                {
+                    entry.State = EntityState.Detached;
+                }
+
+                throw new ConflictException(
+                    "Another open cart was created concurrently. Reload your cart and retry the operation.");
+            }
         }
+
+        private static bool IsOpenCartUniqueViolation(DbUpdateException exception) =>
+            exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+                ConstraintName: "IX_Carts_UserId_Open"
+            };
     }
 }

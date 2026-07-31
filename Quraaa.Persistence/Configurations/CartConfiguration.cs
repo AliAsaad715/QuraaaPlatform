@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Quraaa.Domain.Cart;
+using Quraaa.Domain.Cart.Enums;
 
 namespace Quraaa.Persistence.Configurations
 {
@@ -22,6 +23,12 @@ namespace Quraaa.Persistence.Configurations
                 .IsConcurrencyToken();
 
             builder.HasIndex(x => new { x.UserId, x.Status });
+            builder.HasIndex(x => x.UserId)
+                .HasDatabaseName("IX_Carts_UserId_Open")
+                .IsUnique()
+                .HasFilter(
+                    $"\"IsDeleted\" = false AND \"Status\" IN " +
+                    $"({(int)CartStatus.Active}, {(int)CartStatus.PendingPayment})");
             builder.HasIndex(x => x.PendingOrderId)
                 .IsUnique()
                 .HasFilter("\"PendingOrderId\" IS NOT NULL");

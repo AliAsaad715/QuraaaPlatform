@@ -1,5 +1,6 @@
 using MediatR;
 using Quraaa.Application.Features.Orders.Commands.ReconcileExpiredOrderPayment;
+using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Domain.Shared.Exceptions;
 
@@ -18,6 +19,8 @@ namespace Quraaa.API.Services
 
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<ExpiredOrderPaymentReconciliationService> _logger;
+        private ExpiredOrderPaymentCandidate? _candidateCursor;
+        private DateTime? _scanCutoffUtc;
 
         public ExpiredOrderPaymentReconciliationService(
             IServiceScopeFactory scopeFactory,
@@ -63,25 +66,34 @@ namespace Quraaa.API.Services
         private async Task ReconcileBatchAsync(
             CancellationToken cancellationToken)
         {
-            var cutoffUtc = DateTime.UtcNow.Subtract(WebhookDeliveryGracePeriod);
-            IReadOnlyCollection<Guid> orderIds;
+            var cutoffUtc = _scanCutoffUtc
+                ?? DateTime.UtcNow.Subtract(WebhookDeliveryGracePeriod);
+            _scanCutoffUtc = cutoffUtc;
+
+            IReadOnlyCollection<ExpiredOrderPaymentCandidate> fetchedCandidates;
 
             await using (var candidateScope = _scopeFactory.CreateAsyncScope())
             {
                 var orderRepository = candidateScope.ServiceProvider
                     .GetRequiredService<IOrderRepository>();
 
-                orderIds = await orderRepository.GetExpiredPendingOrderIdsAsync(
-                    cutoffUtc,
-                    BatchSize,
-                    cancellationToken);
+                fetchedCandidates = await orderRepository
+                    .GetExpiredPendingOrderCandidatesAsync(
+                        cutoffUtc,
+                        _candidateCursor,
+                        BatchSize + 1,
+                        cancellationToken);
             }
+
+            var candidates = fetchedCandidates.Take(BatchSize).ToArray();
+            var hasMoreCandidates = fetchedCandidates.Count > BatchSize;
 
             var reconciledCount = 0;
 
-            foreach (var orderId in orderIds)
+            foreach (var candidate in candidates)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var orderId = candidate.OrderId;
 
                 // A fresh DbContext per order keeps one optimistic-concurrency
                 // conflict from contaminating the rest of the bounded batch.
@@ -118,6 +130,19 @@ namespace Quraaa.API.Services
                         "Could not reconcile expired payment for order {OrderId}.",
                         orderId);
                 }
+
+                // Advance only after this candidate was attempted. Unlike an
+                // OFFSET, this key remains valid if earlier rows disappear.
+                _candidateCursor = candidate;
+            }
+
+            if (!hasMoreCandidates)
+            {
+                // A fixed cutoff makes the scan finite. Once its tail is
+                // reached, wrap so deferred candidates are retried and newly
+                // expired attempts join the next scan.
+                _candidateCursor = null;
+                _scanCutoffUtc = null;
             }
 
             if (reconciledCount > 0)
@@ -125,7 +150,7 @@ namespace Quraaa.API.Services
                 _logger.LogInformation(
                     "Reconciled {ReconciledCount} expired order payment(s) from a batch of {CandidateCount}.",
                     reconciledCount,
-                    orderIds.Count);
+                    candidates.Length);
             }
         }
     }

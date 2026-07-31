@@ -47,49 +47,48 @@ namespace Quraaa.Infrastructure.Services
         public bool IsTestMode => _options.IsTestMode;
 
         public async Task<PaymentCheckoutSessionResult> CreateCheckoutSessionAsync(
-            IReadOnlyCollection<PaymentCheckoutLineItem> lineItems,
-            string clientReferenceId,
-            IReadOnlyDictionary<string, string> metadata,
-            string idempotencyKey,
-            string successUrl,
-            string cancelUrl,
-            DateTimeOffset expiresAt,
+            PaymentCheckoutSessionRequest request,
             CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(lineItems);
-            ArgumentNullException.ThrowIfNull(metadata);
+            ArgumentNullException.ThrowIfNull(request);
 
-            if (lineItems.Count == 0)
-            {
-                throw new ArgumentException("At least one checkout line item is required.", nameof(lineItems));
-            }
-
-            if (lineItems.Count > 100)
+            if (request.LineItems.Count == 0)
             {
                 throw new ArgumentException(
-                    "Stripe Checkout accepts at most 100 payment-mode line items.",
-                    nameof(lineItems));
+                    "At least one checkout line item is required.",
+                    nameof(request));
             }
 
-            if (lineItems.Any(item =>
-                    item.UnitAmountMinor is <= 0 or > 99_999_999
-                    || item.Quantity is <= 0 or > 999_999))
+            if (request.LineItems.Count > PaymentCheckoutLimits.MaximumLineItems)
+            {
+                throw new ArgumentException(
+                    $"Stripe Checkout accepts at most {PaymentCheckoutLimits.MaximumLineItems} payment-mode line items.",
+                    nameof(request));
+            }
+
+            if (request.LineItems.Any(item =>
+                    item.UnitAmountMinor is <= 0
+                        or > PaymentCheckoutLimits.MaximumUsdAmountMinor
+                    || item.Quantity is <= 0
+                        or > PaymentCheckoutLimits.MaximumQuantityPerLine))
             {
                 throw new ArgumentException(
                     "Checkout line-item amounts or quantities are outside Stripe limits.",
-                    nameof(lineItems));
+                    nameof(request));
             }
 
-            var providerMetadata = metadata.ToDictionary(pair => pair.Key, pair => pair.Value);
+            var providerMetadata = request.Metadata.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value);
             var options = new SessionCreateOptions
             {
                 Mode = "payment",
                 PaymentMethodTypes = ["card"],
-                ClientReferenceId = clientReferenceId,
-                SuccessUrl = successUrl,
-                CancelUrl = cancelUrl,
-                ExpiresAt = expiresAt.UtcDateTime,
-                LineItems = lineItems.Select(item => new SessionLineItemOptions
+                ClientReferenceId = request.ClientReferenceId,
+                SuccessUrl = request.SuccessUrl,
+                CancelUrl = request.CancelUrl,
+                ExpiresAt = request.ExpiresAt.UtcDateTime,
+                LineItems = request.LineItems.Select(item => new SessionLineItemOptions
                 {
                     Quantity = item.Quantity,
                     PriceData = new SessionLineItemPriceDataOptions
@@ -112,7 +111,7 @@ namespace Quraaa.Infrastructure.Services
 
             var requestOptions = new RequestOptions
             {
-                IdempotencyKey = idempotencyKey
+                IdempotencyKey = request.IdempotencyKey
             };
 
             Session session;
@@ -141,6 +140,24 @@ namespace Quraaa.Infrastructure.Services
                 session.Id,
                 session.Url ?? string.Empty,
                 new DateTimeOffset(DateTime.SpecifyKind(session.ExpiresAt, DateTimeKind.Utc)));
+        }
+
+        public async Task<PaymentCheckoutSessionState> GetCheckoutSessionAsync(
+            string sessionId,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                throw new ArgumentException(
+                    "Checkout session id is required.",
+                    nameof(sessionId));
+            }
+
+            var session = await _sessionService.GetAsync(
+                sessionId.Trim(),
+                cancellationToken: cancellationToken);
+
+            return ToCheckoutSessionState(session);
         }
 
         public async Task ExpireCheckoutSessionAsync(
@@ -301,17 +318,18 @@ namespace Quraaa.Infrastructure.Services
                     : "legacy-cart-checkout";
 
             var session = await CreateCheckoutSessionAsync(
-                items.Select(item => new PaymentCheckoutLineItem(
-                    item.Name,
-                    item.Description,
-                    item.UnitAmountMinor,
-                    item.Quantity)).ToList(),
-                clientReferenceId,
-                metadata,
-                $"cart-checkout:{clientReferenceId}",
-                successUrl,
-                cancelUrl,
-                DateTimeOffset.UtcNow.AddHours(23),
+                new PaymentCheckoutSessionRequest(
+                    items.Select(item => new PaymentCheckoutLineItem(
+                        item.Name,
+                        item.Description,
+                        item.UnitAmountMinor,
+                        item.Quantity)).ToList(),
+                    clientReferenceId,
+                    metadata,
+                    $"cart-checkout:{clientReferenceId}",
+                    successUrl,
+                    cancelUrl,
+                    DateTimeOffset.UtcNow.AddHours(23)),
                 cancellationToken);
 
             return new StripeCheckoutSessionResponse(session.SessionId, session.CheckoutUrl);
@@ -333,6 +351,26 @@ namespace Quraaa.Infrastructure.Services
                 paymentEvent.PaymentIntentId,
                 null,
                 paymentEvent.Metadata);
+        }
+
+        private static PaymentCheckoutSessionState ToCheckoutSessionState(
+            Session session)
+        {
+            return new PaymentCheckoutSessionState(
+                session.Id,
+                session.Url,
+                session.ClientReferenceId,
+                new DateTimeOffset(
+                    DateTime.SpecifyKind(session.ExpiresAt, DateTimeKind.Utc)),
+                session.Status ?? string.Empty,
+                session.Mode,
+                session.PaymentStatus,
+                session.PaymentIntentId,
+                session.AmountTotal,
+                session.Currency,
+                session.Livemode,
+                session.Metadata?.ToDictionary(pair => pair.Key, pair => pair.Value)
+                    ?? new Dictionary<string, string>());
         }
     }
 }

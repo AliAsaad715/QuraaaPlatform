@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Orders.Interfaces;
+using Quraaa.Application.Features.Orders.Services;
 using Quraaa.Application.Features.Payments.Common;
 using Quraaa.Application.Features.Payments.Exceptions;
 using Quraaa.Application.Features.Payments.Interfaces;
@@ -31,6 +32,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
         private readonly ICartRepository _cartRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IBookPurchaseRepository _bookPurchaseRepository;
+        private readonly IOrderPaymentFinalizationService _paymentFinalizationService;
 
         public ProcessPaymentWebhookCommandHandler(
             IPaymentGateway paymentGateway,
@@ -39,6 +41,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
             ICartRepository cartRepository,
             IListingRepository listingRepository,
             IBookPurchaseRepository bookPurchaseRepository,
+            IOrderPaymentFinalizationService paymentFinalizationService,
             ILogger<ProcessPaymentWebhookCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -49,6 +52,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
             _cartRepository = cartRepository;
             _listingRepository = listingRepository;
             _bookPurchaseRepository = bookPurchaseRepository;
+            _paymentFinalizationService = paymentFinalizationService;
         }
 
         public async Task<AppResult> Handle(
@@ -145,7 +149,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
                             "paid",
                             StringComparison.OrdinalIgnoreCase):
                     case "checkout.session.async_payment_succeeded":
-                        await CompletePaidOrderAsync(
+                        await _paymentFinalizationService.CompletePaidOrderAsync(
                             order,
                             attempt,
                             paymentEvent,
@@ -249,64 +253,6 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
             }
 
             return null;
-        }
-
-        private async Task CompletePaidOrderAsync(
-            OrderAggregate order,
-            PaymentAttempt attempt,
-            PaymentWebhookEventData paymentEvent,
-            CancellationToken cancellationToken)
-        {
-            EnsurePaidAmountMatches(order, attempt, paymentEvent);
-
-            if (order.PaymentStatus == PaymentStatus.Paid)
-            {
-                order.MarkPaid(attempt.Id, paymentEvent.PaymentIntentId);
-                return;
-            }
-
-            order.MarkPaid(attempt.Id, paymentEvent.PaymentIntentId);
-
-            var cart = await _cartRepository.GetByIdAsync(
-                order.SourceCartId,
-                cancellationToken);
-
-            if (cart is null)
-            {
-                Logger.LogError(
-                    "Paid order {OrderId} has no mutable source cart {CartId}; payment recognition will continue.",
-                    order.Id,
-                    order.SourceCartId);
-            }
-            else
-            {
-                try
-                {
-                    cart.MarkPaid(order.Id, paymentEvent.PaymentIntentId);
-                }
-                catch (ConflictException exception)
-                {
-                    Logger.LogError(
-                        exception,
-                        "Paid order {OrderId} could not finalize source cart {CartId}; payment recognition will continue.",
-                        order.Id,
-                        order.SourceCartId);
-                }
-            }
-
-            var purchases = order.Items.Select(item =>
-                BookPurchaseAggregate.Create(
-                    order.BuyerUserId,
-                    item.BookId,
-                    item.ListingId,
-                    item.Quantity,
-                    item.UnitPriceMinor / 100m,
-                    order.Id,
-                    item.Id));
-
-            await _bookPurchaseRepository.AddRangeAsync(
-                purchases,
-                cancellationToken);
         }
 
         private async Task ExpireOrderAsync(
@@ -540,40 +486,6 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
             {
                 throw new DomainException(
                     "Stripe webhook mode does not match the configured payment mode.");
-            }
-        }
-
-        private void EnsurePaidAmountMatches(
-            OrderAggregate order,
-            PaymentAttempt attempt,
-            PaymentWebhookEventData paymentEvent)
-        {
-            if (!paymentEvent.AmountTotalMinor.HasValue
-                || paymentEvent.AmountTotalMinor.Value != order.TotalAmountMinor
-                || paymentEvent.AmountTotalMinor.Value != attempt.AmountMinor)
-            {
-                throw new DomainException(
-                    "Stripe paid amount does not match the local order.");
-            }
-
-            if (string.IsNullOrWhiteSpace(paymentEvent.Currency)
-                || !string.Equals(
-                    paymentEvent.Currency,
-                    order.Currency,
-                    StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(
-                    paymentEvent.Currency,
-                    attempt.Currency,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                throw new DomainException(
-                    "Stripe payment currency does not match the local order.");
-            }
-
-            if (string.IsNullOrWhiteSpace(paymentEvent.PaymentIntentId))
-            {
-                throw new DomainException(
-                    "Stripe did not provide a payment intent for the paid order.");
             }
         }
 

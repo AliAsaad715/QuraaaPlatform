@@ -156,8 +156,10 @@ namespace Quraaa.Persistence.Repositories
                     cancellationToken);
         }
 
-        public async Task<IReadOnlyCollection<Guid>> GetExpiredPendingOrderIdsAsync(
+        public async Task<IReadOnlyCollection<ExpiredOrderPaymentCandidate>>
+            GetExpiredPendingOrderCandidatesAsync(
             DateTime expiredOnOrBeforeUtc,
+            ExpiredOrderPaymentCandidate? after,
             int take,
             CancellationToken cancellationToken = default)
         {
@@ -175,7 +177,7 @@ namespace Quraaa.Persistence.Repositories
                 _ => DateTime.SpecifyKind(expiredOnOrBeforeUtc, DateTimeKind.Utc)
             };
 
-            return await _context.Orders
+            var candidates = _context.Orders
                 .AsNoTracking()
                 .Where(order =>
                     !order.IsDeleted
@@ -186,15 +188,46 @@ namespace Quraaa.Persistence.Repositories
                             || attempt.Status == PaymentAttemptStatus.CheckoutCreated)
                         && attempt.ExpiresAtUtc.HasValue
                         && attempt.ExpiresAtUtc.Value <= normalizedCutoffUtc))
-                .OrderBy(order => order.PaymentAttempts
-                    .Where(attempt =>
-                        (attempt.Status == PaymentAttemptStatus.Created
-                            || attempt.Status == PaymentAttemptStatus.CheckoutCreated)
-                        && attempt.ExpiresAtUtc.HasValue)
-                    .Min(attempt => attempt.ExpiresAtUtc))
-                .ThenBy(order => order.Id)
-                .Select(order => order.Id)
+                .Select(order => new
+                {
+                    OrderId = order.Id,
+                    order.OrderNumber,
+                    ExpiresAtUtc = order.PaymentAttempts
+                        .Where(attempt =>
+                            (attempt.Status == PaymentAttemptStatus.Created
+                                || attempt.Status == PaymentAttemptStatus.CheckoutCreated)
+                            && attempt.ExpiresAtUtc.HasValue
+                            && attempt.ExpiresAtUtc.Value <= normalizedCutoffUtc)
+                        .Min(attempt => attempt.ExpiresAtUtc)
+                });
+
+            if (after is not null)
+            {
+                var cursorExpiresAtUtc = after.ExpiresAtUtc.Kind switch
+                {
+                    DateTimeKind.Utc => after.ExpiresAtUtc,
+                    DateTimeKind.Local => after.ExpiresAtUtc.ToUniversalTime(),
+                    _ => DateTime.SpecifyKind(after.ExpiresAtUtc, DateTimeKind.Utc)
+                };
+
+                // OrderNumber is unique and immutable, so it provides a
+                // deterministic tie-breaker when attempts share an expiry.
+                candidates = candidates.Where(candidate =>
+                    candidate.ExpiresAtUtc > cursorExpiresAtUtc
+                    || (candidate.ExpiresAtUtc == cursorExpiresAtUtc
+                        && string.Compare(
+                            candidate.OrderNumber,
+                            after.OrderNumber) > 0));
+            }
+
+            return await candidates
+                .OrderBy(candidate => candidate.ExpiresAtUtc)
+                .ThenBy(candidate => candidate.OrderNumber)
                 .Take(take)
+                .Select(candidate => new ExpiredOrderPaymentCandidate(
+                    candidate.OrderId,
+                    candidate.ExpiresAtUtc!.Value,
+                    candidate.OrderNumber))
                 .ToListAsync(cancellationToken);
         }
 
@@ -347,6 +380,20 @@ namespace Quraaa.Persistence.Repositories
                 })
             {
                 throw new PaymentEventAlreadyProcessedException();
+            }
+            catch (DbUpdateException exception)
+                when (exception.InnerException is PostgresException
+                {
+                    SqlState: PostgresErrorCodes.UniqueViolation,
+                    ConstraintName: "IX_BookPurchases_OrderItemId"
+                })
+            {
+                // A verified webhook and provider reconciliation can both
+                // stage the same immutable purchases before the order's
+                // concurrency update is issued. The losing transaction rolls
+                // back and retries against the now-paid order.
+                throw new ConflictException(
+                    "This order payment was finalized concurrently. Retry the operation.");
             }
         }
 

@@ -8,13 +8,11 @@ namespace Quraaa.Application.Features.Payments.Interfaces
         bool IsTestMode { get; }
 
         Task<PaymentCheckoutSessionResult> CreateCheckoutSessionAsync(
-            IReadOnlyCollection<PaymentCheckoutLineItem> lineItems,
-            string clientReferenceId,
-            IReadOnlyDictionary<string, string> metadata,
-            string idempotencyKey,
-            string successUrl,
-            string cancelUrl,
-            DateTimeOffset expiresAt,
+            PaymentCheckoutSessionRequest request,
+            CancellationToken cancellationToken = default);
+
+        Task<PaymentCheckoutSessionState> GetCheckoutSessionAsync(
+            string sessionId,
             CancellationToken cancellationToken = default);
 
         Task ExpireCheckoutSessionAsync(

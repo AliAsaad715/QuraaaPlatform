@@ -7,6 +7,7 @@ using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Orders.Services;
+using Quraaa.Application.Features.Payments.Common;
 using Quraaa.Application.Features.Payments.Interfaces;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
@@ -114,6 +115,19 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
                 if (!cart.Items.Any())
                 {
                     throw new ConflictException("The cart is empty.");
+                }
+
+                if (cart.Items.Count > PaymentCheckoutLimits.MaximumLineItems)
+                {
+                    throw new ConflictException(
+                        $"A cart cannot contain more than {PaymentCheckoutLimits.MaximumLineItems} different listings.");
+                }
+
+                if (cart.Items.Any(item =>
+                        item.Quantity > PaymentCheckoutLimits.MaximumQuantityPerLine))
+                {
+                    throw new ConflictException(
+                        "One or more cart item quantities exceed Stripe Checkout limits.");
                 }
 
                 var buyer = await _userRepository.GetUserByIdAsync(request.BuyerUserId)

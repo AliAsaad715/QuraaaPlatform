@@ -1,4 +1,5 @@
 using FluentValidation;
+using Quraaa.Application.Features.Payments.Common;
 
 namespace Quraaa.Application.Features.Carts.Commands.UpdateCartItemQuantity
 {
@@ -8,7 +9,10 @@ namespace Quraaa.Application.Features.Carts.Commands.UpdateCartItemQuantity
         {
             RuleFor(x => x.UserId).NotEmpty();
             RuleFor(x => x.ListingId).NotEmpty();
-            RuleFor(x => x.Quantity).GreaterThan(0);
+            RuleFor(x => x.Quantity)
+                .InclusiveBetween(
+                    1,
+                    PaymentCheckoutLimits.MaximumQuantityPerLine);
         }
     }
 }

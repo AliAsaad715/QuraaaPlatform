@@ -19,6 +19,12 @@ namespace Quraaa.Application.Extensions
 
             services.AddScoped<IPhoneService, PhoneService>();
             services.AddScoped<IOrderCheckoutService, OrderCheckoutService>();
+            services.AddScoped<
+                IOrderPaymentFinalizationService,
+                OrderPaymentFinalizationService>();
+            services.AddScoped<
+                IOrderPaymentReconciliationService,
+                OrderPaymentReconciliationService>();
             return services;
         }
     }

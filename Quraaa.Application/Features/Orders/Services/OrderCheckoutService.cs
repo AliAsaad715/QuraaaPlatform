@@ -15,24 +15,21 @@ namespace Quraaa.Application.Features.Orders.Services
 {
     public sealed class OrderCheckoutService : IOrderCheckoutService
     {
-        private static readonly TimeSpan CheckoutLifetime = TimeSpan.FromHours(1);
-        private const int MaximumCheckoutLineItems = 100;
-        private const int MaximumCheckoutQuantity = 999_999;
-        private const long MinimumUsdChargeMinor = 50;
-        private const long MaximumUsdAmountMinor = 99_999_999;
-
         private readonly IPaymentGateway _paymentGateway;
         private readonly IOrderRepository _orderRepository;
         private readonly IListingRepository _listingRepository;
+        private readonly IOrderPaymentReconciliationService _paymentReconciliationService;
 
         public OrderCheckoutService(
             IPaymentGateway paymentGateway,
             IOrderRepository orderRepository,
-            IListingRepository listingRepository)
+            IListingRepository listingRepository,
+            IOrderPaymentReconciliationService paymentReconciliationService)
         {
             _paymentGateway = paymentGateway;
             _orderRepository = orderRepository;
             _listingRepository = listingRepository;
+            _paymentReconciliationService = paymentReconciliationService;
         }
 
         public async Task<OrderCheckoutResponse> EnsureCheckoutSessionAsync(
@@ -53,6 +50,8 @@ namespace Quraaa.Application.Features.Orders.Services
             ValidateCheckoutAmounts(order);
 
             var attempt = GetActiveAttempt(order);
+            var isRecoveringUnattachedAttempt =
+                attempt?.Status == PaymentAttemptStatus.Created;
             var utcNow = DateTime.UtcNow;
             var attemptHasExpired =
                 attempt is not null
@@ -61,23 +60,23 @@ namespace Quraaa.Application.Features.Orders.Services
 
             if (attempt is not null && attemptHasExpired)
             {
-                if (attempt.Status == PaymentAttemptStatus.CheckoutCreated
-                    && !string.IsNullOrWhiteSpace(attempt.CheckoutSessionId))
-                {
-                    // Stripe is authoritative once a Session exists. Its
-                    // status check prevents a delayed paid webhook from being
-                    // overwritten by local timeout compensation.
-                    await _paymentGateway.ExpireCheckoutSessionAsync(
-                        attempt.CheckoutSessionId,
-                        $"expire-stale:{attempt.Id:N}",
+                var outcome = await _paymentReconciliationService
+                    .ReconcileExpiredAttemptAsync(
+                        order,
+                        attempt,
                         cancellationToken);
+
+                if (outcome == OrderPaymentReconciliationOutcome.Paid)
+                {
+                    throw new ConflictException(
+                        "Stripe confirmed the payment. Reload the order to view its paid status.");
                 }
 
-                await ExpireLocalCheckoutAsync(
-                    order,
-                    cart,
-                    attempt,
-                    cancellationToken);
+                if (outcome == OrderPaymentReconciliationOutcome.AwaitingPayment)
+                {
+                    throw new ConflictException(
+                        "Stripe is still processing this payment. Reload the order before retrying.");
+                }
 
                 throw new ConflictException(
                     "The payment session expired and the cart was reopened. Create a new order to retry.");
@@ -94,24 +93,13 @@ namespace Quraaa.Application.Features.Orders.Services
                     PaymentProvider.Stripe,
                     successUrl,
                     cancelUrl,
-                    utcNow.Add(CheckoutLifetime));
+                    utcNow.Add(
+                        OrderCheckoutSessionRequestFactory.CheckoutLifetime));
             }
-
-            var attemptExpiresAtUtc = attempt.ExpiresAtUtc
-                ?? throw new ConflictException(
-                    "The payment attempt does not have an expiry.");
 
             // Commit the inventory reservation, cart lock, order, and stable
             // payment-attempt inputs before making the external Stripe call.
             await _orderRepository.SaveChangesAsync(cancellationToken);
-
-            var metadata = new Dictionary<string, string>
-            {
-                ["orderId"] = order.Id.ToString(),
-                ["paymentAttemptId"] = attempt.Id.ToString(),
-                ["buyerUserId"] = order.BuyerUserId.ToString(),
-                ["cartId"] = order.SourceCartId.ToString()
-            };
 
             PaymentCheckoutSessionResult checkout;
 
@@ -120,21 +108,7 @@ namespace Quraaa.Application.Features.Orders.Services
                 // Reusing the same idempotency key and inputs recovers a
                 // Session whose successful response was previously lost.
                 checkout = await _paymentGateway.CreateCheckoutSessionAsync(
-                    order.Items
-                        .OrderBy(item => item.Id)
-                        .Select(item => new PaymentCheckoutLineItem(
-                            item.BookTitleSnapshot,
-                            $"{item.BookAuthorSnapshot} · {item.SellerNameSnapshot}",
-                            item.UnitPriceMinor,
-                            item.Quantity))
-                        .ToList(),
-                    order.Id.ToString(),
-                    metadata,
-                    $"checkout:{attempt.Id:N}",
-                    attempt.SuccessUrl,
-                    attempt.CancelUrl,
-                    new DateTimeOffset(
-                        DateTime.SpecifyKind(attemptExpiresAtUtc, DateTimeKind.Utc)),
+                    OrderCheckoutSessionRequestFactory.Create(order, attempt),
                     cancellationToken);
             }
             catch (PaymentCheckoutExpiryRejectedException)
@@ -150,6 +124,54 @@ namespace Quraaa.Application.Features.Orders.Services
 
                 throw new ConflictException(
                     "The payment attempt expired and the cart was reopened. Create a new order to retry.");
+            }
+
+            if (isRecoveringUnattachedAttempt)
+            {
+                // An idempotent Create replay returns the original response,
+                // not necessarily the Session's current status. Read it live
+                // before returning a potentially stale Checkout URL.
+                var currentSession = await _paymentGateway.GetCheckoutSessionAsync(
+                    checkout.SessionId,
+                    cancellationToken);
+
+                if (!string.Equals(
+                        currentSession.Status,
+                        "open",
+                        StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(
+                        currentSession.PaymentStatus,
+                        "unpaid",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    var outcome = await _paymentReconciliationService
+                        .ReconcileExpiredAttemptAsync(
+                            order,
+                            attempt,
+                            cancellationToken);
+
+                    if (outcome == OrderPaymentReconciliationOutcome.Paid)
+                    {
+                        throw new ConflictException(
+                            "Stripe confirmed the payment. Reload the order to view its paid status.");
+                    }
+
+                    if (outcome == OrderPaymentReconciliationOutcome.AwaitingPayment)
+                    {
+                        throw new ConflictException(
+                            "Stripe is still processing this payment. Reload the order before retrying.");
+                    }
+
+                    throw new ConflictException(
+                        "The payment session expired and the cart was reopened. Create a new order to retry.");
+                }
+
+                checkout = checkout with
+                {
+                    CheckoutUrl = currentSession.CheckoutUrl
+                        ?? checkout.CheckoutUrl,
+                    ExpiresAt = currentSession.ExpiresAt
+                };
             }
 
             try
@@ -237,15 +259,15 @@ namespace Quraaa.Application.Features.Orders.Services
 
         private static void ValidateCheckoutAmounts(OrderAggregate order)
         {
-            if (order.Items.Count > MaximumCheckoutLineItems)
+            if (order.Items.Count > PaymentCheckoutLimits.MaximumLineItems)
             {
                 throw new ConflictException(
-                    $"Stripe Checkout supports at most {MaximumCheckoutLineItems} order lines.");
+                    $"Stripe Checkout supports at most {PaymentCheckoutLimits.MaximumLineItems} order lines.");
             }
 
             if (order.Items.Any(item =>
-                    item.Quantity > MaximumCheckoutQuantity
-                    || item.UnitPriceMinor > MaximumUsdAmountMinor))
+                    item.Quantity > PaymentCheckoutLimits.MaximumQuantityPerLine
+                    || item.UnitPriceMinor > PaymentCheckoutLimits.MaximumUsdAmountMinor))
             {
                 throw new ConflictException(
                     "One or more order lines exceed Stripe Checkout limits.");
@@ -262,8 +284,8 @@ namespace Quraaa.Application.Features.Orders.Services
             }
 
             if (order.TotalAmountMinor is
-                < MinimumUsdChargeMinor or
-                > MaximumUsdAmountMinor)
+                < PaymentCheckoutLimits.MinimumUsdChargeMinor or
+                > PaymentCheckoutLimits.MaximumUsdAmountMinor)
             {
                 throw new ConflictException(
                     "The USD order total is outside Stripe's supported charge range.");

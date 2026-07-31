@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Carts.Common;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Features.Payments.Common;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Cart;
@@ -35,14 +36,33 @@ namespace Quraaa.Application.Features.Carts.Commands.AddCartItem
                     throw new NotFoundException("Listing not found or not active.");
                 }
 
-                if (listing.Stock is not null && listing.Stock < request.Quantity)
-                {
-                    throw new ConflictException("Requested quantity exceeds available stock.");
-                }
-
                 var cart = await _cartRepository.GetOpenCartByUserIdAsync(request.UserId, cancellationToken);
                 var isNewCart = cart is null;
                 cart ??= CartAggregate.Create(request.UserId);
+
+                var existingItem = cart.Items.FirstOrDefault(
+                    item => item.ListingId == request.ListingId);
+                var resultingQuantity = checked(
+                    (long)(existingItem?.Quantity ?? 0) + request.Quantity);
+
+                if (resultingQuantity > PaymentCheckoutLimits.MaximumQuantityPerLine)
+                {
+                    throw new ConflictException(
+                        $"Cart item quantity cannot exceed {PaymentCheckoutLimits.MaximumQuantityPerLine}.");
+                }
+
+                if (listing.Stock is not null && listing.Stock < resultingQuantity)
+                {
+                    throw new ConflictException(
+                        "Requested total quantity exceeds available stock.");
+                }
+
+                if (existingItem is null
+                    && cart.Items.Count >= PaymentCheckoutLimits.MaximumLineItems)
+                {
+                    throw new ConflictException(
+                        $"A cart cannot contain more than {PaymentCheckoutLimits.MaximumLineItems} different listings.");
+                }
 
                 cart.AddOrIncreaseItem(request.ListingId, request.Quantity, listing.Price);
 

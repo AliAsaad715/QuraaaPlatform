@@ -2,7 +2,7 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
-Last audited against the repository: **2026-07-28**.
+Last audited against the repository: **2026-07-31**.
 
 ## Project Overview
 
@@ -30,11 +30,11 @@ Current implemented business capabilities:
 - Authenticated favorite-book list/add/remove through `/api/favorite-books`.
 - User physical-book listing creation and current-user listing retrieval through `/api/listings`.
 - Library inventory listing create/update/detail operations through `/api/library-admin/listings`.
-- User cart retrieval/mutation through `/api/cart`; `POST /api/cart/checkout` remains as a deprecated compatibility alias.
+- User cart retrieval/mutation through `/api/cart`, with one open cart per user, Stripe-compatible line/quantity limits, and cumulative physical-stock validation.
 - Order-driven Stripe Checkout through `POST /api/orders`: the order, cart lock, physical-stock reservations, and payment attempt are persisted before Stripe is called.
 - Buyer order listing/detail, shipping update, checkout recovery, cancellation, archive, and paid-ebook download through `/api/orders`.
 - Seller paid-physical-item queues and processing/fulfillment transitions through `/api/seller/orders`.
-- Stripe webhook processing through `POST /api/payments/stripe/webhook`; paid events finalize the reserved order and create purchase records, while failure/expiry paths release reservations and reopen the cart.
+- Stripe webhook processing through `POST /api/payments/stripe/webhook`; paid events and authoritative expired-attempt reconciliation share order/cart/purchase finalization, while confirmed failure/expiry paths release reservations and reopen the cart.
 - Authenticated user buy/sell history through `/api/purchases/me/buy-history` and `/api/purchases/me/sell-history`.
 - Category management through `GET /api/categories`, `GET /api/categories/{categoryId}`, and `POST /api/categories` (admin-only).
 - Standalone OTP send through `POST /api/otp/send`.
@@ -374,6 +374,8 @@ Across aggregate boundaries, domain types expose scalar identity references such
 
 The user-to-library ownership rule is one-to-one: `LibraryAggregate` stores only scalar `UserId`; `LibraryConfiguration` uses a navigationless one-to-one mapping plus a unique index on `UserId`; the migration enforces the unique index; and application code checks for an existing library before creating another one. Library email is also unique.
 
+The open-cart rule is also one-to-one per user. `CartConfiguration` defines the partial unique index `IX_Carts_UserId_Open` on `UserId` for non-deleted `Active` or `PendingPayment` carts, `CartRepository` translates a concurrent unique-index violation to `409 Conflict`, and historical `Paid`/`Abandoned` carts remain unrestricted.
+
 ## Build, Run & Test Commands
 
 ### Prerequisites
@@ -563,8 +565,9 @@ Located in `Quraaa.Persistence/Migrations/`:
 12. `20260716101943_AddCartsAndCartItemsTables`
 13. `20260724134444_AddLocationToUsers`
 14. `20260726145336_AddOrdersAndPaymentTracking`
+15. `20260731131240_EnforceSingleOpenCartPerUser`
 
-The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, and processed-payment-event storage; add library/favorite uniqueness and engagement foreign keys; add nullable latitude/longitude columns to `UsersProfiles`; add `Carts.PendingOrderId`; and correlate purchases to orders/items. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, and processed-payment-event storage; add library/favorite uniqueness and engagement foreign keys; add nullable latitude/longitude columns to `UsersProfiles`; add `Carts.PendingOrderId`; correlate purchases to orders/items; and add the partial unique `IX_Carts_UserId_Open` index that permits at most one non-deleted `Active`/`PendingPayment` cart per user. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
 `Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
 
@@ -774,7 +777,6 @@ POST   /api/cart/items                            User
 PUT    /api/cart/items/{listingId}                User
 DELETE /api/cart/items/{listingId}                User
 DELETE /api/cart/me                               User
-POST   /api/cart/checkout                         User (deprecated alias for POST /api/orders)
 
 POST   /api/orders                                User
 GET    /api/orders/me                             User
@@ -1131,7 +1133,6 @@ POST   /api/cart/items
 PUT    /api/cart/items/{listingId}
 DELETE /api/cart/items/{listingId}
 DELETE /api/cart/me
-POST   /api/cart/checkout   # deprecated compatibility alias for POST /api/orders
 ```
 
 Add/update bodies:
@@ -1149,7 +1150,7 @@ Add/update bodies:
 }
 ```
 
-`GET /api/cart/me` returns an empty `CartResponse` when no open cart exists. Cart responses contain `cartId`, string `status`, items with snapshotted unit prices and line totals, `totalAmount`, `itemCount`, and an optional Stripe session ID. Only active listings can be added. Cart mutations are rejected while the cart is locked for a pending order.
+`GET /api/cart/me` returns an empty `CartResponse` when no open cart exists. Cart responses contain `cartId`, string `status`, items with snapshotted unit prices and line totals, `totalAmount`, `itemCount`, and an optional Stripe session ID. Only active listings can be added. Add/update quantities are limited to Stripe's `1..999,999` range; adding an existing item validates the resulting cumulative quantity against available stock; and a cart can contain at most 100 distinct listings. Order creation re-checks those limits before per-listing work so legacy/invalid carts fail early. Cart mutations are rejected while the cart is locked for a pending order. A partial unique database index enforces at most one non-deleted `Active`/`PendingPayment` cart per user, including under concurrent first-add requests.
 
 `POST /api/orders` is the primary checkout entry point. It accepts:
 
@@ -1180,7 +1181,7 @@ GET    /api/orders/{orderId}/items/{orderItemId}/download
 
 Shipping can change only while the order is unpaid. Checkout-session creation resumes or attaches the active idempotent attempt. Cancelling an unpaid pending order expires any attached Stripe session, releases its physical-stock reservations, and reopens the cart. Only terminal orders can be archived. A paid buyer can download their own digital order item as a private PDF; the public ebook listing never exposes its storage path.
 
-`POST /api/payments/stripe/webhook` verifies `Stripe-Signature`, provider mode, order/payment-attempt correlation, session, amount, currency, and payment intent. A durable `ProcessedPaymentEvent` inbox makes provider events idempotent. Paid `checkout.session.completed` and `checkout.session.async_payment_succeeded` events mark the order/cart paid and create order-linked `BookPurchaseAggregate` rows; physical stock is not decremented again because it was reserved before Stripe. `checkout.session.async_payment_failed` and `checkout.session.expired` release reserved stock and reopen the cart. A hosted reconciler runs every minute and, after a two-minute webhook grace period, reconciles expired pending attempts.
+`POST /api/payments/stripe/webhook` verifies `Stripe-Signature`, provider mode, order/payment-attempt correlation, session, amount, currency, and payment intent. A durable `ProcessedPaymentEvent` inbox makes provider events idempotent. Paid `checkout.session.completed` and `checkout.session.async_payment_succeeded` events use the shared order-payment finalizer to mark the order/cart paid and create order-linked `BookPurchaseAggregate` rows; physical stock is not decremented again because it was reserved before Stripe. `checkout.session.async_payment_failed` and `checkout.session.expired` release reserved stock and reopen the cart. A hosted reconciler runs every minute and, after a two-minute webhook grace period, reconciles expired pending attempts. For a local `Created` attempt, it replays the exact persisted Checkout request with `checkout:{attempt.Id:N}`, attaches any recovered Session, retrieves Stripe's authoritative state, and invokes the same paid finalizer when a paid webhook was missed. Inventory is released only after Stripe confirms an unpaid expired Session or, within a conservative 23-hour idempotency-retention window, the replay proves no Session was created; older unattached attempts require manual reconciliation. A complete-but-unpaid asynchronous payment remains pending, and the reconciler keyset-scans each fixed-cutoff candidate set so removed rows cannot shift later work and deferred attempts are retried on the next scan.
 
 Seller fulfillment routes allow `User` or `LibraryOwner`:
 
@@ -2025,12 +2026,15 @@ Flow:
 cart read/mutation
   -> JWT UserId
   -> retrieve Active or PendingPayment cart with owned CartItems
-  -> validate Active listing and available stock
+  -> partial unique index permits one non-deleted open cart per user
+  -> validate Active listing, cumulative available stock, and quantity 1..999,999
+  -> allow at most 100 distinct listings
   -> keep unit-price snapshot on CartItem
   -> reject mutation while PendingPayment
 
 order checkout
   -> require non-empty modifiable cart
+  -> reject more than 100 lines or quantity above 999,999 before per-item queries
   -> re-check listing activity, seller ownership, and stock
   -> snapshot book/seller/price/asset data into OrderItems
   -> create OrderAggregate and reserve physical stock
@@ -2043,17 +2047,21 @@ Stripe webhook
   -> verify Stripe-Signature
   -> correlate Order + PaymentAttempt and validate mode/session/amount/currency
   -> claim provider event in ProcessedPaymentEvents
-  -> paid: mark order/cart paid and create order-linked purchases
+  -> paid: shared finalizer marks order/cart paid and creates order-linked purchases
   -> paid: do not decrement stock again; the reservation is the sale
   -> async failure/expiry: release reserved stock and reopen cart
   -> one DbContext SaveChanges persists the whole state transition
 
 cancel/expiry recovery
-  -> expire an attached Stripe Session when appropriate
-  -> mark the unpaid order Cancelled or Expired
-  -> release every physical reservation
-  -> reopen the source cart
   -> hosted reconciliation checks expired attempts every minute
+  -> Created attempt: replay the exact request with checkout:{attempt.Id:N}
+  -> attach a recovered Session and retrieve authoritative Stripe state
+  -> complete paid order through the shared finalizer when its webhook was missed
+  -> keyset-scan a fixed cutoff so removed rows cannot shift pages and deferred attempts are retried after each finite scan
+  -> never auto-expire an unattached replay older than the safe idempotency window
+  -> preserve complete-but-unpaid asynchronous payments for a later result
+  -> otherwise expire the unpaid order and release every physical reservation
+  -> reopen the source cart after confirmed failure/expiry
 
 seller fulfillment
   -> list paid physical items owned by the user or their library
@@ -2324,7 +2332,6 @@ Based on the current codebase:
 - **Refresh token rotation / logout**: tokens are generated and stored, but there is no logout or refresh endpoint.
 - **OTP coverage**: registration, forgot-password, admin login, and standalone OTP use OTP state. Regular user login and library-owner login do not; standalone OTP still does not mark a phone/user verified.
 - **Rating API**: `BookRatingAggregate`, its table, and popularity aggregation exist, but there are no rating create/update/read endpoints.
-- **Cart quantity pre-check**: adding an existing listing validates only the incoming increment against stock rather than the resulting cart quantity. Order creation performs the final stock check, reserves physical inventory, and uses optimistic concurrency, but the earlier cart response can temporarily contain an unavailable quantity.
 - **Location edge cases**: location upsert/delete handlers null-forgive a missing user, the validator rejects zero latitude/longitude via `.NotEmpty()`, and DELETE requires an otherwise empty request body.
 - **Pagination inconsistency**: `PaginationRequestDTO` silently coerces invalid values and caps at 20, while other feature validators allow 100. `GET /api/listings/me` cannot bind page fields and is fixed to page 1/size 10.
 - **Category projection order**: listing/library-book/purchase repository projections pass `NameEn` and `NameAr` in the opposite order expected by `CategoryResponse`; profile/category handlers use the correct order.
