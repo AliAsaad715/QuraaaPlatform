@@ -1,5 +1,7 @@
+using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Domain.Library;
+using Quraaa.Domain.Library.Enums;
 
 namespace Quraaa.Application.Features.Libraries.Interfaces
 {
@@ -28,6 +30,13 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
             CancellationToken cancellationToken = default);
         // Needed by AddPhysicalBook handler to resolve the caller's library
         Task<LibraryAggregate?> GetByUserIdAsync(Guid userId,
+            CancellationToken cancellationToken = default);
+
+        Task<(IReadOnlyCollection<LibraryRequestResponse> Items, int TotalCount)> GetRequestsAsync(
+            LibraryApprovalStatus? status,
+            int pageNumber,
+            int pageSize,
+            string? searchTerm,
             CancellationToken cancellationToken = default);
         Task SaveChangesAsync();
     }
