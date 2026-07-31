@@ -5,6 +5,7 @@ using Quraaa.API.Requests.Libraries;
 using Quraaa.Application.Features.Libraries.Commands.RegisterLibrary;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraries;
+using Quraaa.Application.Features.Libraries.Queries.GetMyProfile;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Results;
 
@@ -54,7 +55,7 @@ namespace Quraaa.API.Controllers
         /// <param name="libraryId" example="01f185c0-dff4-45fa-8fe6-60d1c870ea8b">The unique identifier of the library (Pre-loaded example containing books for testing(FrontEnd)).</param>
         /// <param name="request">Pagination, filtering, and sorting parameters.</param>
         /// <param name="cancellationToken"></param>
-        [Authorize(Roles = "User,LibraryOwner")]
+        [AllowAnonymous]
         [HttpGet("{libraryId}/books")]
         [ProducesResponseType(typeof(PagedResult<ListingSummaryResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -74,6 +75,27 @@ namespace Quraaa.API.Controllers
                 SortDescending = request.SortDescending
             };
             var result = await Mediator.Send(query, cancellationToken);
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Retrieves the profile of the currently authenticated library owner.
+        /// </summary>
+        /// <response code="200">The profile was found and returned successfully.</response>
+        /// <response code="404">No profile exists for the authenticated user.</response>
+        [HttpGet("my-profile")]
+        [Authorize(Roles = "LibraryOwner")]
+        [ProducesResponseType(typeof(MyProfileLibraryResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetMyProfile(
+        CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(new GetMyProfileQuery(userId), cancellationToken);
             return HandleResult(result);
         }
     }
