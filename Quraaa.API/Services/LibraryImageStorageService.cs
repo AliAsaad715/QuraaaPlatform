@@ -24,7 +24,7 @@ namespace Quraaa.API.Services
             await using var stream = new FileStream(filePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
             await file.CopyToAsync(stream, cancellationToken);
 
-            return $"/uploads/libraries/{fileName}";
+            return $"uploads/libraries/{fileName}";
         }
 
         public Task DeleteAsync(string? storedPath, CancellationToken cancellationToken = default)
