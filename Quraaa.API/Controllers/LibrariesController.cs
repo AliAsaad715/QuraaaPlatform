@@ -5,9 +5,11 @@ using Quraaa.API.Requests.Libraries;
 using Quraaa.Application.Features.Libraries.Commands.RegisterLibrary;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraries;
+using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
 using Quraaa.Application.Features.Libraries.Queries.GetMyProfile;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Results;
+using Quraaa.Domain.Library.Enums;
 
 namespace Quraaa.API.Controllers
 {
@@ -96,6 +98,35 @@ namespace Quraaa.API.Controllers
             }
 
             var result = await Mediator.Send(new GetMyProfileQuery(userId), cancellationToken);
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Retrieves a paged list of library registration requests. Only accessible by administrators.
+        /// </summary>
+        /// <param name="request">
+        /// Pagination, filtering, and sorting parameters.
+        /// Filter by status using the LibraryApprovalStatus enum (1=Pending, 2=Approved, 3=Rejected).
+        /// </param>
+        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+        /// <returns>
+        /// An IActionResult containing a paged result of LibraryRequestResponse objects.
+        /// </returns>
+        /// <remarks>
+        /// LibraryApprovalStatus values:
+        /// - Pending (1): Awaiting admin review.
+        /// - Approved (2): Request has been approved.
+        /// - Rejected (3): Request has been rejected.
+        /// </remarks>
+        /// <response code="200">A paged collection of library requests was returned successfully.</response>
+        [HttpGet("requests")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(PagedResult<LibraryRequestResponse>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetRequests(
+            [FromQuery] GetLibraryRequestsQuery request,
+            CancellationToken cancellationToken = default)
+        {
+            var result = await Mediator.Send(request, cancellationToken);
             return HandleResult(result);
         }
     }
