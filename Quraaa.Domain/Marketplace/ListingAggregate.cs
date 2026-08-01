@@ -106,6 +106,17 @@ namespace Quraaa.Domain.Marketplace
             UpdateAudit(modifiedBy);
         }
 
+        public void Reactivate(Guid modifiedBy)
+        {
+            if (Status != ListingStatus.Removed)
+            {
+                throw new DomainException("Only removed listings can be reactivated.");
+            }
+
+            Status = ListingStatus.Active;
+            UpdateAudit(modifiedBy);
+        }
+
         public void UpdatePrice(decimal price, Guid modifiedBy)
         {
             if (price <= 0)

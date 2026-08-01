@@ -105,11 +105,12 @@ namespace Quraaa.Persistence.Repositories
             string? searchTerm = null,
             string? sortBy = null,
             bool sortDescending = false,
+            ListingStatus? status = null,
             CancellationToken cancellationToken = default)
             {
                 var query = _context.Listings
                     .AsNoTracking()
-                    .Where(lb => lb.LibraryId == libraryId && lb.Status == ListingStatus.Active)
+                    .Where(lb => lb.LibraryId == libraryId && (status == null || lb.Status == status))
                     .Join(
                         _context.Books.AsNoTracking(),
                         lb => lb.BookId,
@@ -150,6 +151,7 @@ namespace Quraaa.Persistence.Repositories
                         x.Listing.Price,
                         x.Listing.Stock,
                         x.Listing.Condition,
+                        x.Listing.Status,
                         new BookDetails(
                             x.Book.Id,
                             x.Book.Title,
