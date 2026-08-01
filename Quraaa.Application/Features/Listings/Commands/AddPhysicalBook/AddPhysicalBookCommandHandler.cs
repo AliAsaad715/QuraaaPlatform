@@ -42,7 +42,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddPhysicalBook
             {
                 // ── Step 1: Resolve the caller's library ──────────────────────
                 var library = await _libraryRepository
-                    .GetByUserIdAsync(request.RequestingUserId, cancellationToken);
+                    .GetApprovedByUserIdAsync(request.RequestingUserId, cancellationToken);
 
                 if (library is null)
                     throw new NotFoundException("Library was not found.");

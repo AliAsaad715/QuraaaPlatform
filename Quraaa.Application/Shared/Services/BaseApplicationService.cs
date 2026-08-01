@@ -52,7 +52,7 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogInformation("{SuccessMessage} | User: {User}",
                     successMessage, SafeGetCurrentUserIdForLog());
 
-                return Result.Success();
+                return Result.Success(successMessage);
             }
             catch (NotFoundException ex)
             {
@@ -199,14 +199,13 @@ namespace Quraaa.Application.Shared.Services
     Func<Task> businessLogic,
     string successMessage = "Operation successful")
         {
-
             try
             {
                 await businessLogic();
 
                 Logger.LogInformation("{SuccessMessage} | User: {User}",
                     successMessage, SafeGetCurrentUserIdForLog());
-                return Result.Success();
+                return Result.Success(successMessage);
             }
             catch (NotFoundException ex)
             {

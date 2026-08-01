@@ -3,13 +3,13 @@ using Microsoft.AspNetCore.Mvc;
 using Quraaa.API.Requests.Files;
 using Quraaa.API.Requests.Libraries;
 using Quraaa.Application.Features.Libraries.Commands.RegisterLibrary;
+using Quraaa.Application.Features.Libraries.Commands.UpdateLibraryApprovalStatus;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraries;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
 using Quraaa.Application.Features.Libraries.Queries.GetMyProfile;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Results;
-using Quraaa.Domain.Library.Enums;
 
 namespace Quraaa.API.Controllers
 {
@@ -127,6 +127,38 @@ namespace Quraaa.API.Controllers
             CancellationToken cancellationToken = default)
         {
             var result = await Mediator.Send(request, cancellationToken);
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Updates the approval status of a library by only admin.
+        /// </summary>
+        /// <param name="id">The library identifier.</param>
+        /// <returns>Returns the result of the update operation.</returns>
+        /// <response code="200">Approval status updated successfully.</response>
+        /// <response code="400">The request is invalid.</response>
+        /// <response code="401">Unauthorized.</response>
+        /// <response code="403">Forbidden.</response>
+        /// <response code="404">Library not found.</response>
+        [HttpPatch("{id:guid}/approval-status")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateApprovalStatus(
+            [FromRoute] Guid id,
+            [FromBody] UpdateLibraryApprovalStatusCommand command,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var adminId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                command with { LibraryId = id, AdminId = adminId },
+                cancellationToken);
+
             return HandleResult(result);
         }
     }

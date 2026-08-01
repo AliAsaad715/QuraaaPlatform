@@ -45,7 +45,7 @@ namespace Quraaa.Application.Features.Listings.Commands.UpdateListing
 
                 // ── Verify the caller owns this listing's library ─────────────
                 var library = await _libraryRepository
-                    .GetByUserIdAsync(request.RequestingUserId, cancellationToken);
+                    .GetApprovedByUserIdAsync(request.RequestingUserId, cancellationToken);
 
                 if (library is null || listing.LibraryId != library.Id)
                     throw new UnauthorizedAccessException("Unauthorized access to this listing");
