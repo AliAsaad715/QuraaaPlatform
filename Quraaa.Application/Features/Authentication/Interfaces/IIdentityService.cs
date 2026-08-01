@@ -13,6 +13,16 @@ namespace Quraaa.Application.Features.Authentication.Interfaces
         Task<bool> CheckPasswordAsync(Guid userId, string password);
         Task<bool> IsInRoleAsync(Guid userId, string role);
         Task<IdentityResultDto> AddUserToRoleAsync(Guid userId, string role);
+        Task RevokeRefreshTokenAsync(
+            string refreshToken,
+            CancellationToken cancellationToken = default);
+        Task<AuthResponse?> RefreshAuthTokensAsync(
+            string refreshToken,
+            CancellationToken cancellationToken = default);
+        Task<bool> IsRefreshTokenFamilyActiveAsync(
+            Guid userId,
+            Guid familyId,
+            CancellationToken cancellationToken = default);
         Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber);
         Task<SignInResultDto> CheckPasswordAndGenerateTokensAsync(string phoneNumber, string password);
     }
