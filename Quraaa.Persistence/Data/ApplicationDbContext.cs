@@ -32,6 +32,7 @@ namespace Quraaa.Persistence.Data
         public DbSet<CartAggregate> Carts { get; set; }
         public DbSet<OrderAggregate> Orders { get; set; }
         public DbSet<ProcessedPaymentEvent> ProcessedPaymentEvents { get; set; }
+        public DbSet<ConsumedRefreshToken> ConsumedRefreshTokens { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
