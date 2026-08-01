@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
+using Quraaa.Domain.Marketplace.Enums;
 
 namespace Quraaa.Application.Features.Listings.Queries.GetLibraryBooks
 {
@@ -34,6 +35,7 @@ namespace Quraaa.Application.Features.Listings.Queries.GetLibraryBooks
                     request.SearchTerm,
                     request.SortBy,
                     request.SortDescending,
+                    ListingStatus.Active,
                     cancellationToken);
 
                 // Repository already projects directly to ListingSummaryResponse
