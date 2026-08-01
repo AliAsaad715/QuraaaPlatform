@@ -67,6 +67,28 @@ namespace Quraaa.Domain.Marketplace
                 libraryId, null, price, condition, null, stock);
         }
 
+        public static ListingAggregate CreateDigitalForLibrary(
+            Guid id,
+            Guid bookId,
+            Guid libraryId,
+            decimal price,
+            string digitalAssetUrl)
+        {
+            if (price <= 0)
+            {
+                throw new DomainException("Price must be greater than zero.");
+            }
+
+            if (string.IsNullOrWhiteSpace(digitalAssetUrl))
+            {
+                throw new DomainException("A digital asset reference is required for digital listings.");
+            }
+
+            return new ListingAggregate(
+                id, bookId, ListingFormat.Digital, SellerType.Library,
+                libraryId, null, price, null, digitalAssetUrl, 1);
+        }
+
         // Users can sell either format (per your note). Physical listings need
         // a condition + stock count; digital listings need an asset reference.
         public static ListingAggregate CreateForUser(
