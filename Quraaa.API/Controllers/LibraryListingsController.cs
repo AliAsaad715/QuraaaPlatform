@@ -1,6 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.API.Controllers;
+using Quraaa.API.Requests.Files;
+using Quraaa.API.Requests.Listings;
+using Quraaa.Application.Features.Listings.Commands.AddDigitalBook;
 using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
 using Quraaa.Application.Features.Listings.Commands.RemoveListing;
 using Quraaa.Application.Features.Listings.Commands.ReactivateListing;
@@ -56,6 +59,44 @@ namespace Quraaa.API.Controllers
                 command with { RequestingUserId = userId },
                 cancellationToken);
 
+            return HandleResult(result);
+        }
+
+        // ── POST /api/library-admin/listings/digital ─────────────────────────
+        /// <summary>
+        /// Adds a digital book to the current user's library.
+        /// </summary>
+        /// <remarks>
+        /// The uploaded digital asset must be a PDF file.
+        /// ISBN lookup resolution order:
+        /// <list type="number">
+        /// <item><description>Local Books table (by ISBN).</description></item>
+        /// <item><description>Google Books API.</description></item>
+        /// </list>
+        /// </remarks>
+        [HttpPost("digital")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(typeof(AddDigitalBookResponse), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> AddDigitalBook(
+            [FromForm] AddDigitalBookRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var command = new AddDigitalBookCommand
+            {
+                RequestingUserId = userId,
+                Price = request.Price,
+                Isbn = request.Isbn,
+                DigitalAsset = new FormFileUploadedFile(request.DigitalAsset)
+            };
+
+            var result = await Mediator.Send(command, cancellationToken);
             return HandleResult(result);
         }
 

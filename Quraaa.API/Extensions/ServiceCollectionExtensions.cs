@@ -5,6 +5,7 @@ using Quraaa.Application.Extensions;
 using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
+using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Persistence.Extensions;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -18,6 +19,7 @@ namespace Quraaa.API.Extensions
         {
             services.AddJwtAuthentication(configuration);
             services.AddScoped<ILibraryImageStorageService, LibraryImageStorageService>();
+            services.AddScoped<ILibraryBookStorageService, LibraryBookStorageService>();
             services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
             PersistenceDependencyInjectionHandler.AddPersistenceDependencies(services, configuration);
             ApplicationPackagesRegisterExtensions.AddApplicationDependencies(services);
