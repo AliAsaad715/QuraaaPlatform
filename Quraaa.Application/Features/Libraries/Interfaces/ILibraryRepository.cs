@@ -28,9 +28,7 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
         Task<bool> ExistsByIdAsync(
             Guid libraryId,
             CancellationToken cancellationToken = default);
-        Task<LibraryAggregate?> GetByIdAsync(
-            Guid libraryId,
-            CancellationToken cancellationToken = default);
+
         // Needed by AddPhysicalBook handler to resolve the caller's library
         Task<LibraryAggregate?> GetApprovedByUserIdAsync(Guid userId,
             CancellationToken cancellationToken = default);

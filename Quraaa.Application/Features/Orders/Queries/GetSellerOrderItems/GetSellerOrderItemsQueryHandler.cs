@@ -34,7 +34,7 @@ namespace Quraaa.Application.Features.Orders.Queries.GetSellerOrderItems
         {
             return await ExecuteAsync(request, async () =>
             {
-                var library = await _libraryRepository.GetByUserIdAsync(
+                var library = await _libraryRepository.GetApprovedByUserIdAsync(
                     request.RequestingUserId,
                     cancellationToken);
 

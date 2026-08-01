@@ -18,7 +18,7 @@ namespace Quraaa.Application.Features.Orders.Commands.Common
             Guid orderItemId,
             CancellationToken cancellationToken)
         {
-            var library = await libraryRepository.GetByUserIdAsync(
+            var library = await libraryRepository.GetApprovedByUserIdAsync(
                 requestingUserId,
                 cancellationToken);
 

@@ -66,15 +66,6 @@ namespace Quraaa.Persistence.Repositories
             CancellationToken cancellationToken = default) =>
             await _context.Libraries.AnyAsync(l => l.Id == libraryId, cancellationToken);
 
-        public async Task<LibraryAggregate?> GetByIdAsync(
-            Guid libraryId,
-            CancellationToken cancellationToken = default) =>
-            await _context.Libraries
-                .AsNoTracking()
-                .FirstOrDefaultAsync(
-                    l => l.Id == libraryId && !l.IsDeleted,
-                    cancellationToken);
-
         public async Task AddLibraryAsync(LibraryAggregate library) =>
             await _context.Libraries.AddAsync(library);
 
@@ -183,66 +174,64 @@ namespace Quraaa.Persistence.Repositories
                                 l.ApprovalStatus == LibraryApprovalStatus.Approved,
                         cancellationToken);
 
-// --- inside LibraryRepository ---
+        public async Task<(IReadOnlyCollection<LibraryRequestResponse> Items, int TotalCount)> GetRequestsAsync(
+            LibraryApprovalStatus? status,
+            int pageNumber,
+            int pageSize,
+            string? searchTerm,
+            CancellationToken cancellationToken = default)
+            {
+                // Inner join is safe here — LibraryAggregate.UserId is a required,
+                // non-nullable Guid (no factory path creates a library without one),
+                // unlike the optional Book.CategoryId case from earlier that needed a
+                // left join to avoid silently dropping rows.
+                var query = _context.Libraries
+                    .AsNoTracking()
+                    .Join(
+                        _context.UsersProfiles.AsNoTracking(),
+                        l => l.UserId,
+                        u => u.Id,
+                        (l, u) => new { Library = l, User = u });
 
-public async Task<(IReadOnlyCollection<LibraryRequestResponse> Items, int TotalCount)> GetRequestsAsync(
-    LibraryApprovalStatus? status,
-    int pageNumber,
-    int pageSize,
-    string? searchTerm,
-    CancellationToken cancellationToken = default)
-    {
-        // Inner join is safe here — LibraryAggregate.UserId is a required,
-        // non-nullable Guid (no factory path creates a library without one),
-        // unlike the optional Book.CategoryId case from earlier that needed a
-        // left join to avoid silently dropping rows.
-        var query = _context.Libraries
-            .AsNoTracking()
-            .Join(
-                _context.UsersProfiles.AsNoTracking(),
-                l => l.UserId,
-                u => u.Id,
-                (l, u) => new { Library = l, User = u });
+                if (status.HasValue)
+                {
+                    query = query.Where(x => x.Library.ApprovalStatus == status.Value);
+                }
 
-        if (status.HasValue)
-        {
-            query = query.Where(x => x.Library.ApprovalStatus == status.Value);
-        }
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    var normalized = searchTerm.Trim();
+                    query = query.Where(x =>
+                        EF.Functions.ILike(x.Library.LibraryName, $"%{normalized}%") ||
+                        EF.Functions.ILike(x.Library.Location, $"%{normalized}%") ||
+                        EF.Functions.ILike(x.User.FirstName, $"%{normalized}%") ||
+                        EF.Functions.ILike(x.User.LastName, $"%{normalized}%"));
+                }
 
-        if (!string.IsNullOrWhiteSpace(searchTerm))
-        {
-            var normalized = searchTerm.Trim();
-            query = query.Where(x =>
-                EF.Functions.ILike(x.Library.LibraryName, $"%{normalized}%") ||
-                EF.Functions.ILike(x.Library.Location, $"%{normalized}%") ||
-                EF.Functions.ILike(x.User.FirstName, $"%{normalized}%") ||
-                EF.Functions.ILike(x.User.LastName, $"%{normalized}%"));
-        }
+                var totalCount = await query.CountAsync(cancellationToken);
 
-        var totalCount = await query.CountAsync(cancellationToken);
+                var items = await query
+                    .OrderByDescending(x => x.Library.CreationTime) // newest requests first
+                    .Skip((pageNumber - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(x => new LibraryRequestResponse(
+                        x.Library.Id,
+                        x.Library.LibraryName,
+                        x.Library.Location,
+                        x.Library.LibraryImage,
+                        x.Library.HeaderImage,
+                        x.Library.Email,
+                        x.Library.ApprovalStatus,
+                        x.Library.CreationTime,
+                        new RequesterInfo(
+                            x.User.Id,
+                            x.User.FirstName,
+                            x.User.LastName,
+                            x.User.PhoneNumber)))
+                    .ToListAsync(cancellationToken);
 
-        var items = await query
-            .OrderByDescending(x => x.Library.CreationTime) // newest requests first
-            .Skip((pageNumber - 1) * pageSize)
-            .Take(pageSize)
-            .Select(x => new LibraryRequestResponse(
-                x.Library.Id,
-                x.Library.LibraryName,
-                x.Library.Location,
-                x.Library.LibraryImage,
-                x.Library.HeaderImage,
-                x.Library.Email,
-                x.Library.ApprovalStatus,
-                x.Library.CreationTime,
-                new RequesterInfo(
-                    x.User.Id,
-                    x.User.FirstName,
-                    x.User.LastName,
-                    x.User.PhoneNumber)))
-            .ToListAsync(cancellationToken);
-
-        return (items, totalCount);
-    }
+                return (items, totalCount);
+            }
 
     public async Task<LibraryAggregate?> GetByIdAsync
             (Guid id, CancellationToken cancellationToken = default) => 
