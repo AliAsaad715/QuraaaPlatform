@@ -5,7 +5,7 @@ using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
 using Quraaa.Application.Features.Listings.Commands.UpdateListing;
 using Quraaa.Application.Features.Listings.Queries.GetListingById;
 
-namespace Quraaa.Presentation.Controllers
+namespace Quraaa.API.Controllers
 {
     /// <summary>
     /// All endpoints require the caller to be an authenticated LibraryOwner

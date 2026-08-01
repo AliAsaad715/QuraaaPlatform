@@ -46,7 +46,7 @@ namespace Quraaa.API.Controllers
         {
             return result.Match(
                 // 200 OK
-                success => Ok(new { message = "Operation successful." }),
+                success => Ok(new { message = success.Message }),
 
                 // 400 Bad Request (Validation)
                 validationFailed => BadRequest(new
