@@ -133,7 +133,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
                 var buyer = await _userRepository.GetUserByIdAsync(request.BuyerUserId)
                     ?? throw new NotFoundException("Buyer profile not found.");
 
-                var buyerLibrary = await _libraryRepository.GetByUserIdAsync(
+                var buyerLibrary = await _libraryRepository.GetApprovedByUserIdAsync(
                     request.BuyerUserId,
                     cancellationToken);
 
