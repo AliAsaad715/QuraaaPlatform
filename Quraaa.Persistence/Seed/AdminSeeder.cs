@@ -65,6 +65,13 @@ namespace Quraaa.Persistence.Seed
                 if (!await userManager.CheckPasswordAsync(existingUser, password))
                 {
                     var resetToken = await userManager.GeneratePasswordResetTokenAsync(existingUser);
+
+                    // Persist the configured password change and refresh-token
+                    // revocation in the same Identity user update.
+                    existingUser.RefreshToken = null;
+                    existingUser.RefreshTokenExpiryTime = DateTime.UtcNow;
+                    existingUser.RefreshTokenFamilyId = null;
+
                     var resetResult = await userManager.ResetPasswordAsync(existingUser, resetToken, password);
                     if (!resetResult.Succeeded)
                     {

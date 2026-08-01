@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Quraaa.Application.Features.Authentication.Common;
@@ -13,15 +14,24 @@ namespace Quraaa.Persistence.Services
 {
     public class IdentityService : IIdentityService
     {
+        private const string RefreshTokenHashPrefix = "sha256:";
+        private const int RefreshTokenSizeInBytes = 64;
+
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly RoleManager<IdentityRole<Guid>> _roleManager;
         private readonly IConfiguration _configuration;
+        private readonly ApplicationDbContext _dbContext;
 
-        public IdentityService(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole<Guid>> roleManager, IConfiguration configuration)
+        public IdentityService(
+            UserManager<ApplicationUser> userManager,
+            RoleManager<IdentityRole<Guid>> roleManager,
+            IConfiguration configuration,
+            ApplicationDbContext dbContext)
         {
             _userManager = userManager;
             _roleManager = roleManager;
             _configuration = configuration;
+            _dbContext = dbContext;
         }
 
         public async Task<IdentityUserInfo?> GetUserIdentityByPhoneNumberAsync(string phoneNumber)
@@ -82,6 +92,12 @@ namespace Quraaa.Persistence.Services
                 return IdentityResultDto.Failure(new[] { "User security identity was not found." });
             }
 
+            // UserManager persists the password hash, security stamp, and these
+            // refresh-token fields in one concurrency-checked user update.
+            user.RefreshToken = null;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow;
+            user.RefreshTokenFamilyId = null;
+
             var result = await _userManager.ChangePasswordAsync(user, oldPassword, newPassword);
             if (!result.Succeeded)
             {
@@ -101,6 +117,13 @@ namespace Quraaa.Persistence.Services
             }
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+
+            // Keep password recovery and refresh-token revocation atomic at the
+            // Identity-user row. A successful reset cannot leave the old token live.
+            user.RefreshToken = null;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow;
+            user.RefreshTokenFamilyId = null;
+
             var result = await _userManager.ResetPasswordAsync(user, token, newPassword);
             if (!result.Succeeded)
             {
@@ -173,22 +196,160 @@ namespace Quraaa.Persistence.Services
             return IdentityResultDto.Success(user.PasswordHash ?? string.Empty);
         }
 
+        public async Task RevokeRefreshTokenAsync(
+            string refreshToken,
+            CancellationToken cancellationToken = default)
+        {
+            if (!IsValidRawRefreshToken(refreshToken))
+            {
+                return;
+            }
+
+            var refreshTokenHash = HashRefreshToken(refreshToken);
+            var revokedAt = DateTime.UtcNow;
+            var concurrencyStamp = Guid.NewGuid().ToString();
+
+            // Try the indexed current-token path first. If refresh rotation wins
+            // the race, this update affects zero rows and the consumed-token lookup
+            // below resolves the stable family and revokes its replacement.
+            var affectedUsers = await _userManager.Users
+                .Where(user => user.RefreshToken == refreshTokenHash
+                    || user.RefreshToken == refreshToken)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(user => user.RefreshToken, (string?)null)
+                    .SetProperty(user => user.RefreshTokenExpiryTime, revokedAt)
+                    .SetProperty(user => user.RefreshTokenFamilyId, (Guid?)null)
+                    .SetProperty(user => user.ConcurrencyStamp, concurrencyStamp),
+                    cancellationToken);
+
+            if (affectedUsers > 0)
+            {
+                return;
+            }
+
+            await RevokeFamilyForConsumedTokenAsync(
+                refreshTokenHash,
+                revokedAt,
+                cancellationToken);
+        }
+
         public async Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber)
         {
             var user = await _userManager.FindByIdAsync(userId.ToString());
-            if (user == null) throw new Exception("User security identity not found.");
+            if (user == null)
+            {
+                throw new InvalidOperationException("User security identity not found.");
+            }
 
+            return await GenerateAndPersistAuthTokensAsync(
+                user,
+                phoneNumber,
+                Guid.NewGuid(),
+                presentedRefreshToken: null,
+                presentedRefreshTokenExpiresAtUtc: null,
+                cancellationToken: default);
+        }
+
+        public async Task<AuthResponse?> RefreshAuthTokensAsync(
+            string refreshToken,
+            CancellationToken cancellationToken = default)
+        {
+            if (!IsValidRawRefreshToken(refreshToken))
+            {
+                return null;
+            }
+
+            var refreshTokenHash = HashRefreshToken(refreshToken);
+            var user = await _userManager.Users.SingleOrDefaultAsync(candidate =>
+                candidate.RefreshToken == refreshTokenHash
+                || candidate.RefreshToken == refreshToken,
+                cancellationToken);
+
+            var now = DateTime.UtcNow;
+
+            if (user is null)
+            {
+                // A consumed, still-live predecessor is a replay. Revoking its
+                // active family makes any descendant refresh/access token unusable.
+                await RevokeFamilyForConsumedTokenAsync(
+                    refreshTokenHash,
+                    now,
+                    cancellationToken);
+                return null;
+            }
+
+            if (!user.PhoneNumberConfirmed
+                || user.RefreshTokenExpiryTime <= now)
+            {
+                await RevokeRefreshTokenAsync(refreshToken, cancellationToken);
+                return null;
+            }
+
+            var familyId = user.RefreshTokenFamilyId ?? Guid.NewGuid();
+
+            try
+            {
+                return await GenerateAndPersistAuthTokensAsync(
+                    user,
+                    user.PhoneNumber ?? string.Empty,
+                    familyId,
+                    refreshToken,
+                    user.RefreshTokenExpiryTime,
+                    cancellationToken);
+            }
+            catch (AuthTokenPersistenceException exception)
+                when (exception.IsConcurrencyFailure)
+            {
+                // The winner archives this token before committing. Resolve that
+                // record after the concurrency loss and revoke the winning family.
+                await RevokeFamilyForConsumedTokenAsync(
+                    refreshTokenHash,
+                    now,
+                    cancellationToken);
+                return null;
+            }
+        }
+
+        public async Task<bool> IsRefreshTokenFamilyActiveAsync(
+            Guid userId,
+            Guid familyId,
+            CancellationToken cancellationToken = default)
+        {
+            if (userId == Guid.Empty || familyId == Guid.Empty)
+            {
+                return false;
+            }
+
+            var now = DateTime.UtcNow;
+            return await _userManager.Users.AnyAsync(user =>
+                user.Id == userId
+                && user.RefreshTokenFamilyId == familyId
+                && user.RefreshToken != null
+                && user.RefreshTokenExpiryTime > now,
+                cancellationToken);
+        }
+
+        private async Task<AuthResponse> GenerateAndPersistAuthTokensAsync(
+            ApplicationUser user,
+            string phoneNumber,
+            Guid familyId,
+            string? presentedRefreshToken,
+            DateTime? presentedRefreshTokenExpiresAtUtc,
+            CancellationToken cancellationToken)
+        {
             var secretKey = _configuration["JWT_SECRET_KEY"] ?? throw new InvalidOperationException("JWT Secret Key is missing.");
             var issuer = _configuration["JWT_ISSUER"];
             var audience = _configuration["JWT_AUDIENCE"];
             var durationInMinutes = double.Parse(_configuration["JWT_DURATION_IN_MINUTES"] ?? "60");
             var userRoles = await _userManager.GetRolesAsync(user);
+            var issuedAtUtc = DateTime.UtcNow;
 
             var authClaims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(ClaimTypes.MobilePhone, user.PhoneNumber ?? string.Empty),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+                new Claim(ClaimTypes.MobilePhone, user.PhoneNumber ?? phoneNumber),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim(AuthenticationClaimNames.SessionId, familyId.ToString())
             };
 
             foreach (var role in userRoles)
@@ -201,25 +362,122 @@ namespace Quraaa.Persistence.Services
             var token = new JwtSecurityToken(
                 issuer: issuer,
                 audience: audience,
-                expires: DateTime.UtcNow.AddMinutes(durationInMinutes),
+                expires: issuedAtUtc.AddMinutes(durationInMinutes),
                 claims: authClaims,
                 signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
             );
 
-            string accessToken = new JwtSecurityTokenHandler().WriteToken(token);
+            var accessToken = new JwtSecurityTokenHandler().WriteToken(token);
+            var refreshToken = GenerateSecureRefreshToken();
+            var refreshTokenHash = HashRefreshToken(refreshToken);
+            var refreshTokenExpiresAtUtc = issuedAtUtc.AddDays(30);
+            var startsNewFamily = presentedRefreshToken is null;
 
-            string refreshToken = GenerateSecureRefreshToken();
+            await using var transaction = await _dbContext.Database
+                .BeginTransactionAsync(cancellationToken);
 
-            user.RefreshToken = refreshToken;
-            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(30);
+            var userUpdate = _userManager.Users.Where(candidate =>
+                candidate.Id == user.Id
+                && candidate.ConcurrencyStamp == user.ConcurrencyStamp);
 
-            await _userManager.UpdateAsync(user);
+            if (!startsNewFamily)
+            {
+                var presentedRefreshTokenHash = HashRefreshToken(presentedRefreshToken!);
+                var expectedFamilyId = user.RefreshTokenFamilyId;
+
+                userUpdate = userUpdate.Where(candidate =>
+                    candidate.RefreshTokenFamilyId == expectedFamilyId
+                    && (candidate.RefreshToken == presentedRefreshTokenHash
+                        || candidate.RefreshToken == presentedRefreshToken));
+            }
+
+            var affectedUsers = await userUpdate.ExecuteUpdateAsync(setters => setters
+                .SetProperty(candidate => candidate.RefreshToken, refreshTokenHash)
+                .SetProperty(candidate => candidate.RefreshTokenExpiryTime, refreshTokenExpiresAtUtc)
+                .SetProperty(candidate => candidate.RefreshTokenFamilyId, familyId)
+                .SetProperty(candidate => candidate.ConcurrencyStamp, Guid.NewGuid().ToString()),
+                cancellationToken);
+
+            if (affectedUsers != 1)
+            {
+                throw new AuthTokenPersistenceException(
+                    new[] { "The refresh-token family changed concurrently." },
+                    isConcurrencyFailure: true);
+            }
+
+            if (startsNewFamily)
+            {
+                // A fresh login is a new session family. Old-family records must
+                // not be able to revoke this independently authenticated session.
+                await _dbContext.ConsumedRefreshTokens
+                    .Where(consumed => consumed.UserId == user.Id)
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
+            else
+            {
+                await _dbContext.ConsumedRefreshTokens
+                    .Where(consumed => consumed.UserId == user.Id
+                        && consumed.ExpiresAtUtc <= issuedAtUtc)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                _dbContext.ConsumedRefreshTokens.Add(new ConsumedRefreshToken(
+                    user.Id,
+                    familyId,
+                    HashRefreshToken(presentedRefreshToken!),
+                    issuedAtUtc,
+                    presentedRefreshTokenExpiresAtUtc!.Value));
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
 
             return new AuthResponse(
                 accessToken,
                 refreshToken,
                 token.ValidTo
             );
+        }
+
+        private async Task RevokeFamilyForConsumedTokenAsync(
+            string refreshTokenHash,
+            DateTime revokedAtUtc,
+            CancellationToken cancellationToken)
+        {
+            var consumedToken = await _dbContext.ConsumedRefreshTokens
+                .AsNoTracking()
+                .SingleOrDefaultAsync(candidate =>
+                    candidate.TokenHash == refreshTokenHash
+                    && candidate.ExpiresAtUtc > revokedAtUtc,
+                    cancellationToken);
+
+            if (consumedToken is null)
+            {
+                return;
+            }
+
+            await RevokeRefreshTokenFamilyAsync(
+                consumedToken.UserId,
+                consumedToken.FamilyId,
+                revokedAtUtc,
+                cancellationToken);
+        }
+
+        private async Task RevokeRefreshTokenFamilyAsync(
+            Guid userId,
+            Guid familyId,
+            DateTime revokedAtUtc,
+            CancellationToken cancellationToken)
+        {
+            await _userManager.Users
+                .Where(user => user.Id == userId
+                    && user.RefreshTokenFamilyId == familyId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(user => user.RefreshToken, (string?)null)
+                    .SetProperty(user => user.RefreshTokenExpiryTime, revokedAtUtc)
+                    .SetProperty(user => user.RefreshTokenFamilyId, (Guid?)null)
+                    .SetProperty(user => user.ConcurrencyStamp, Guid.NewGuid().ToString()),
+                    cancellationToken);
         }
 
         public async Task<SignInResultDto> CheckPasswordAndGenerateTokensAsync(string phoneNumber, string password)
@@ -245,12 +503,50 @@ namespace Quraaa.Persistence.Services
             return SignInResultDto.Success(authResponse);
         }
 
-        private string GenerateSecureRefreshToken()
+        private static string GenerateSecureRefreshToken()
         {
-            var randomNumber = new byte[64];
-            using var rng = RandomNumberGenerator.Create();
-            rng.GetBytes(randomNumber);
-            return Convert.ToBase64String(randomNumber);
+            return Convert.ToBase64String(
+                RandomNumberGenerator.GetBytes(RefreshTokenSizeInBytes));
+        }
+
+        private static bool IsValidRawRefreshToken(string? refreshToken)
+        {
+            if (string.IsNullOrWhiteSpace(refreshToken)
+                || refreshToken.StartsWith(
+                    RefreshTokenHashPrefix,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                return Convert.FromBase64String(refreshToken).Length
+                    == RefreshTokenSizeInBytes;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        private static string HashRefreshToken(string refreshToken)
+        {
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(refreshToken));
+            return $"{RefreshTokenHashPrefix}{Convert.ToBase64String(hash)}";
+        }
+
+        private sealed class AuthTokenPersistenceException : Exception
+        {
+            public bool IsConcurrencyFailure { get; }
+
+            public AuthTokenPersistenceException(
+                IEnumerable<string> errors,
+                bool isConcurrencyFailure)
+                : base($"Authentication tokens could not be persisted: {string.Join(" | ", errors)}")
+            {
+                IsConcurrencyFailure = isConcurrencyFailure;
+            }
         }
     }
 }

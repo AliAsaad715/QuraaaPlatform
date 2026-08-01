@@ -2,8 +2,11 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Quraaa.API.Services;
 using Quraaa.Application.Extensions;
+using Quraaa.Application.Features.Authentication.Common;
+using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Persistence.Extensions;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 
@@ -50,6 +53,56 @@ namespace Quraaa.API.Extensions
                         ValidateLifetime = true,
                         ClockSkew = TimeSpan.Zero,
                         NameClaimType = ClaimTypes.NameIdentifier
+                    };
+
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnTokenValidated = async context =>
+                        {
+                            var tokenId = context.Principal?
+                                .FindFirstValue(JwtRegisteredClaimNames.Jti);
+
+                            if (string.IsNullOrWhiteSpace(tokenId))
+                            {
+                                context.Fail("Access token does not contain a token identifier.");
+                                return;
+                            }
+
+                            var revocationService = context.HttpContext.RequestServices
+                                .GetRequiredService<IAccessTokenRevocationService>();
+
+                            if (await revocationService.IsRevokedAsync(
+                                    tokenId,
+                                    context.HttpContext.RequestAborted))
+                            {
+                                context.Fail("Access token has been revoked.");
+                                return;
+                            }
+
+                            var userIdValue = context.Principal?
+                                .FindFirstValue(ClaimTypes.NameIdentifier);
+                            var familyIdValue = context.Principal?
+                                .FindFirstValue(AuthenticationClaimNames.SessionId)
+                                ?? context.Principal?.FindFirstValue(ClaimTypes.Sid);
+
+                            if (!Guid.TryParse(userIdValue, out var userId)
+                                || !Guid.TryParse(familyIdValue, out var familyId))
+                            {
+                                context.Fail("Access token does not contain a valid session identifier.");
+                                return;
+                            }
+
+                            var identityService = context.HttpContext.RequestServices
+                                .GetRequiredService<IIdentityService>();
+
+                            if (!await identityService.IsRefreshTokenFamilyActiveAsync(
+                                    userId,
+                                    familyId,
+                                    context.HttpContext.RequestAborted))
+                            {
+                                context.Fail("Access-token session has been revoked or replaced.");
+                            }
+                        }
                     };
                 });
 

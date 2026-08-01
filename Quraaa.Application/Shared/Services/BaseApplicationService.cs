@@ -74,6 +74,11 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogWarning("Conflict: {Message}", ex.Message);
                 return Result.Conflict(ex.Message);
             }
+            catch (UnauthenticatedException ex)
+            {
+                Logger.LogWarning("Authentication failed: {Message}", ex.Message);
+                return Result.Unauthorized();
+            }
             catch (UnauthorizedAccessException)
             {
                 Logger.LogWarning("Security violation by User {User}", SafeGetCurrentUserIdForLog());
@@ -138,6 +143,11 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogWarning("Conflict: {Message}", ex.Message);
                 return Result.Conflict(ex.Message);
             }
+            catch (UnauthenticatedException ex)
+            {
+                Logger.LogWarning("Authentication failed: {Message}", ex.Message);
+                return Result.Unauthorized();
+            }
             catch (UnauthorizedAccessException)
             {
                 Logger.LogWarning("Security violation by User {User}", SafeGetCurrentUserIdForLog());
@@ -183,6 +193,11 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogWarning("Conflict: {Message}", ex.Message);
                 return Result.Conflict(ex.Message);
             }
+            catch (UnauthenticatedException ex)
+            {
+                Logger.LogWarning("Authentication failed: {Message}", ex.Message);
+                return Result.Unauthorized();
+            }
             catch (UnauthorizedAccessException)
             {
                 Logger.LogWarning("Security violation by User {User}", SafeGetCurrentUserIdForLog());
@@ -226,6 +241,11 @@ namespace Quraaa.Application.Shared.Services
             {
                 Logger.LogWarning("Conflict: {Message}", ex.Message);
                 return Result.Conflict(ex.Message);
+            }
+            catch (UnauthenticatedException ex)
+            {
+                Logger.LogWarning("Authentication failed: {Message}", ex.Message);
+                return Result.Unauthorized();
             }
             catch (UnauthorizedAccessException)
             {

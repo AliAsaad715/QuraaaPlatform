@@ -2,7 +2,7 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
-Last audited against the repository: **2026-07-31**.
+Last audited against the repository: **2026-08-01**.
 
 ## Project Overview
 
@@ -15,7 +15,9 @@ Current implemented business capabilities:
 - User login through `POST /api/auth/login`.
 - Admin login uses a password-plus-OTP flow through `POST /api/auth/admin/login` and `POST /api/auth/admin/login/verify`.
 - Approved library owners can log in with their library email and Identity password through `POST /api/auth/library/login`.
-- Authenticated password reset through `POST /api/auth/reset-password`.
+- Users, admins, and library owners share refresh-token-authenticated logout through `POST /api/auth/logout`; any unexpired token from the active rotation family revokes all descendant refresh and access tokens.
+- Access/refresh token pairs are rotated through `POST /api/auth/refresh`; consumed-token history detects replay and revokes the active family, while expired, revoked, or invalid tokens return `401 Unauthorized`.
+- Authenticated password reset through `POST /api/auth/reset-password`; successful password changes revoke the account's refresh-token family and its access JWTs.
 - Unauthenticated forgot-password OTP send through `POST /api/auth/forgot-password`.
 - Unauthenticated forgot-password OTP verification and password reset through `POST /api/auth/forgot-password/verify`.
 - Authenticated profile retrieval through `GET /api/profile/me`.
@@ -277,6 +279,8 @@ Quraaa.Domain/
 Quraaa.Persistence/
   Quraaa.Persistence.csproj
   Configurations/
+    ApplicationUserConfiguration.cs
+    ConsumedRefreshTokenConfiguration.cs
     OrderConfiguration.cs
     OrderItemConfiguration.cs
     OrderPaymentAttemptConfiguration.cs
@@ -284,6 +288,7 @@ Quraaa.Persistence/
   Data/
     ApplicationDbContext.cs
     ApplicationUser.cs
+    ConsumedRefreshToken.cs
     ProcessedPaymentEvent.cs
   Extensions/
     PersistenceDependencyInjectionHandler.cs
@@ -306,6 +311,7 @@ Quraaa.Infrastructure/
     FirebaseSmsGateway.cs
     GoogleBooksService.cs
     OtpCacheService.cs
+    AccessTokenRevocationService.cs
     StripePaymentService.cs
 ```
 
@@ -540,6 +546,7 @@ DbSets:
 - `Carts` (`CartAggregate`; `CartItem` is mapped as a child entity)
 - `Orders` (`OrderAggregate`; `OrderItem` and `PaymentAttempt` are mapped as child entities)
 - `ProcessedPaymentEvents` (`ProcessedPaymentEvent`; the Stripe webhook idempotency inbox)
+- `ConsumedRefreshTokens` (`ConsumedRefreshToken`; hashed, rotated-token history used for family logout and replay detection)
 
 It applies all `IEntityTypeConfiguration` classes from the Persistence assembly and adds a global query filter for active categories only:
 
@@ -566,8 +573,9 @@ Located in `Quraaa.Persistence/Migrations/`:
 13. `20260724134444_AddLocationToUsers`
 14. `20260726145336_AddOrdersAndPaymentTracking`
 15. `20260731131240_EnforceSingleOpenCartPerUser`
+16. `20260801123016_AddRefreshTokenFamiliesAndIndexes`
 
-The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, and processed-payment-event storage; add library/favorite uniqueness and engagement foreign keys; add nullable latitude/longitude columns to `UsersProfiles`; add `Carts.PendingOrderId`; correlate purchases to orders/items; and add the partial unique `IX_Carts_UserId_Open` index that permits at most one non-deleted `Active`/`PendingPayment` cart per user. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, and consumed-refresh-token storage; add library/favorite uniqueness and engagement foreign keys; add nullable latitude/longitude columns to `UsersProfiles`; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; and add partial unique indexes for the current refresh-token hash/family plus unique consumed-token hash history. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
 `Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
 
@@ -617,8 +625,8 @@ The newer migrations make `Books.CategoryId` nullable; create favorite, purchase
 `Quraaa.Application/Shared/Results/AppResult.cs` uses OneOf:
 
 ```csharp
-public class AppResult : OneOfBase<Success, ValidationFailed, NotFound, Forbidden, DomainError, Conflict>
-public class AppResult<TData> : OneOfBase<TData, ValidationFailed, NotFound, Forbidden, DomainError, Conflict>
+public class AppResult : OneOfBase<Success, ValidationFailed, NotFound, Unauthorized, Forbidden, DomainError, Conflict>
+public class AppResult<TData> : OneOfBase<TData, ValidationFailed, NotFound, Unauthorized, Forbidden, DomainError, Conflict>
 ```
 
 `ApiClientController.HandleResult` maps these to HTTP status codes:
@@ -626,6 +634,7 @@ public class AppResult<TData> : OneOfBase<TData, ValidationFailed, NotFound, For
 - Success → `200 OK`
 - Validation failure → `400 Bad Request`
 - Not found → `404 Not Found`
+- Unauthorized → `401 Unauthorized`
 - Forbidden → `403 Forbidden`
 - `ConflictException` / `Conflict` → `409 Conflict`
 - `LibraryErrorCodes.DuplicateLibraryForUser`, `LibraryErrorCodes.DuplicateLibraryEmail`, or `"DUPLICATE_APPLICATION"` domain errors → `409 Conflict`
@@ -652,6 +661,10 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 ## Security Considerations
 
 - JWT authentication uses a symmetric signing key from `JWT_SECRET_KEY`. Keep this key secret and rotate it periodically.
+- Logout authenticates with the refresh-token secret, so it still works after access-token expiry. The current token is resolved through the partial unique `AspNetUsers.RefreshToken` index; consumed ancestors resolve through unique hashed history. Either path clears only the currently matching family. A still-valid bearer `jti` is also cached as revoked.
+- Refresh tokens are 64-byte opaque Base64 secrets stored only as SHA-256 hashes. Rotation atomically archives the presented hash, writes its replacement, and preserves a stable family id. Reuse of an unexpired consumed token revokes the active family; submitted `sha256:` database values are never accepted as raw credentials.
+- Access JWTs carry the family id in a `sid` claim. JWT validation checks that `sid` against the current Identity row, so logout, replay detection, a newer login, authenticated password change, forgot-password recovery, and configured admin password reset immediately invalidate every access token from the replaced/revoked family.
+- Each account currently has one active family. A fresh login creates a new family and removes the prior consumed-token history; rotation prunes expired history for that user.
 - Passwords are hashed by ASP.NET Core Identity.
 - Phone numbers are used as usernames; emails are synthesized as `{phone}@quraaa.com`.
 - Phone numbers are normalized to E.164 where possible using `libphonenumber-csharp`.
@@ -744,6 +757,8 @@ POST   /api/auth/login                            anonymous by controller config
 POST   /api/auth/library/login                    anonymous
 POST   /api/auth/admin/login                      anonymous
 POST   /api/auth/admin/login/verify               anonymous
+POST   /api/auth/logout                           refresh token in body; valid bearer optional
+POST   /api/auth/refresh                          anonymous; requires refresh token in body
 POST   /api/auth/reset-password                   authenticated
 POST   /api/auth/forgot-password                  anonymous
 POST   /api/auth/forgot-password/verify           anonymous
@@ -861,6 +876,32 @@ Successful registration verification response is `AuthResponse`:
 ```
 
 Successful login response is also `AuthResponse`.
+
+`POST /api/auth/logout` requires the refresh token issued by any login flow:
+
+```json
+{
+  "refreshToken": "secure-random-base64"
+}
+```
+
+A still-valid access token is optional:
+
+```http
+Authorization: Bearer <access-token>
+```
+
+On success, the endpoint returns `200 OK` and revokes the active family resolved from either the current refresh secret or any still-unexpired consumed ancestor. This works even when an expired bearer token is sent. All family access JWTs subsequently fail `sid` validation; if a valid bearer was supplied, its `jti` is cached as revoked too. Invalid, expired, or already-revoked refresh tokens receive the same idempotent `200`; missing or oversized input returns `400`. The client must also delete both tokens from its own secure storage.
+
+`POST /api/auth/refresh` does not require a valid access token. Send the refresh token in the request body:
+
+```json
+{
+  "refreshToken": "secure-random-base64"
+}
+```
+
+A successful response is a new `AuthResponse`. Refresh tokens rotate: after success, the submitted token is invalid and the client must atomically replace both locally stored tokens. Missing input returns `400`; invalid, expired, revoked, or reused tokens return the same generic `401` response.
 
 `POST /api/auth/admin/login` validates the supplied admin phone/password and sends an OTP rather than returning tokens:
 
@@ -1346,7 +1387,7 @@ Important registration details:
 - `UserAggregate.PhoneNumber` is formatted to E.164.
 - `UserAggregate.PasswordHash` stores the Identity password hash.
 - New users receive `Role.User`.
-- Refresh tokens are random 64-byte values encoded as Base64 and saved on the Identity user.
+- Refresh tokens are random 64-byte values encoded as Base64. Only a prefixed SHA-256 hash is saved on the Identity user; raw tokens stored by earlier builds are accepted once and migrated during rotation.
 - Refresh token expiry is set to `DateTime.UtcNow.AddDays(30)`.
 
 ### Registration Validation Rules
@@ -1390,6 +1431,70 @@ HTTP POST /api/auth/login
   -> IIdentityService.GenerateAuthTokensAsync(id, phone)
   -> AuthResponse
 ```
+
+### Logout Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/AuthController.cs
+Quraaa.API/Requests/Authentication/LogoutRequest.cs
+Quraaa.API/Extensions/ServiceCollectionExtensions.cs
+Quraaa.Application/Features/Authentication/Commands/Logout/
+Quraaa.Application/Features/Authentication/Interfaces/IAccessTokenRevocationService.cs
+Quraaa.Application/Features/Authentication/Interfaces/IIdentityService.cs
+Quraaa.Infrastructure/Services/AccessTokenRevocationService.cs
+Quraaa.Persistence/Services/IdentityService.cs
+```
+
+Flow:
+
+```text
+HTTP POST /api/auth/logout
+  -> [AllowAnonymous] lets the refresh-token credential work after JWT expiry
+  -> AuthController accepts the refresh token in the body and never accepts a client user id
+  -> when middleware produced an authenticated principal, AuthController also extracts its jti and expiration
+  -> IdentityService hashes the refresh token and first uses the indexed current-token lookup
+  -> if rotation already replaced it, consumed-token history resolves the same family
+  -> a conditional update clears the active token, expiry, and family id without touching a newer independent login
+  -> invalid, expired, or already-revoked refresh tokens are an idempotent no-op
+  -> when a valid bearer was present, AccessTokenRevocationService caches its jti until token expiry
+  -> subsequent JWT validation rejects both that jti and every JWT carrying the revoked family sid
+  -> AppResult success
+```
+
+The route is shared because token revocation is identical for users, admins, and library owners. The refresh-token secret identifies the account; no role or client-supplied user id is trusted. The client must delete its local access and refresh tokens after a successful response.
+
+### Refresh Token Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/AuthController.cs
+Quraaa.API/Requests/Authentication/RefreshTokenRequest.cs
+Quraaa.Application/Features/Authentication/Commands/RefreshToken/
+Quraaa.Application/Features/Authentication/Interfaces/IIdentityService.cs
+Quraaa.Persistence/Data/ConsumedRefreshToken.cs
+Quraaa.Persistence/Services/IdentityService.cs
+```
+
+Flow:
+
+```text
+HTTP POST /api/auth/refresh
+  -> [AllowAnonymous]; an access token is not required
+  -> BaseApplicationService validates the refresh-token request
+  -> IdentityService validates the raw Base64 credential, hashes it, and resolves the current Identity user through a partial unique index
+  -> non-prefixed legacy plaintext storage is accepted for a one-time migration; a stored `sha256:` hash is never accepted as the bearer secret
+  -> require a confirmed identity and an unexpired stored token
+  -> preserve/create the stable family id and add it to the replacement access JWT as sid
+  -> in one transaction, conditionally replace the current hash and archive the consumed hash with its expiry
+  -> a consumed-token replay or concurrent rotation loser revokes the active family and returns 401
+  -> JWT validation checks sid against the active Identity family, so descendant access tokens are revoked too
+  -> return the new AuthResponse only when the atomic rotation commits
+```
+
+The endpoint is shared across roles. Current Identity roles are reloaded when the replacement access token is created, so role changes are reflected at refresh time.
 
 ### Admin and Library-Owner Login Flows
 
@@ -1489,7 +1594,7 @@ HTTP POST /api/auth/reset-password
   -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
   -> handler throws NotFoundException if the user profile is null
   -> IIdentityService.ChangePasswordAsync(userId, oldPassword, newPassword)
-  -> IdentityService uses UserManager.ChangePasswordAsync to verify the old password and update the Identity password hash
+  -> IdentityService clears the refresh token and family id before UserManager.ChangePasswordAsync, so a successful Identity update atomically persists the new password/security stamp and family revocation
   -> handler converts Identity failures to ApplicationBusinessException
   -> handler checks the updated hash was returned
   -> UserAggregate.UpdatePasswordHash(updatedHash, userId)
@@ -1572,7 +1677,7 @@ HTTP POST /api/auth/forgot-password/verify
   -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
   -> handler throws NotFoundException if the user profile is null
   -> IIdentityService.ResetPasswordAsync(user.Id, newPassword)
-  -> IdentityService generates a reset token and calls UserManager.ResetPasswordAsync
+  -> IdentityService generates a reset token, clears the refresh token/family id, and calls UserManager.ResetPasswordAsync so password recovery and family revocation persist in one Identity update
   -> handler throws ApplicationBusinessException on Identity errors
   -> UserAggregate.UpdatePasswordHash(updatedHash, user.Id)
   -> IUserRepository.SaveChangesAsync()
@@ -2329,7 +2434,7 @@ Based on the current codebase:
 - **Library inventory authorization mismatch**: `LibraryListingsController` requires `LibraryAdmin`, while `Role`, seeders, and library login use `LibraryOwner`. No current code grants `LibraryAdmin`, so those three routes are not reachable with the roles produced by this repository.
 - **Library add/update edge cases**: `AddPhysicalBookCommand.Isbn` is declared nullable and has no required validator but the handler dereferences it; omission can produce a `500`. `UpdateListingCommandHandler` retrieves only `Active` listings, so a new `PendingReview` listing cannot be updated and an `OutOfStock` listing cannot be restocked through that route.
 - **General login bypasses specialized role flows**: `/api/auth/login` is anonymous and does not restrict roles, so a confirmed admin/library-owner Identity can also log in with phone/password without the admin OTP or library-email checks. Decide whether that is intended before relying on specialized login as a security boundary.
-- **Refresh token rotation / logout**: tokens are generated and stored, but there is no logout or refresh endpoint.
+- **Single-session authentication model**: each Identity user has one active refresh-token family. A fresh login invalidates the prior family's refresh and access tokens. Multiple per-device concurrent sessions, device-scoped logout, and independent session management are not modeled yet.
 - **OTP coverage**: registration, forgot-password, admin login, and standalone OTP use OTP state. Regular user login and library-owner login do not; standalone OTP still does not mark a phone/user verified.
 - **Rating API**: `BookRatingAggregate`, its table, and popularity aggregation exist, but there are no rating create/update/read endpoints.
 - **Location edge cases**: location upsert/delete handlers null-forgive a missing user, the validator rejects zero latitude/longitude via `.NotEmpty()`, and DELETE requires an otherwise empty request body.
