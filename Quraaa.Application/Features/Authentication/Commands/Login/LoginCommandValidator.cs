@@ -1,5 +1,6 @@
 ﻿using FluentValidation;
 using PhoneNumbers;
+using Quraaa.Application.Features.Authentication.Common;
 
 namespace Quraaa.Application.Features.Authentication.Commands.Login
 {
@@ -9,24 +10,35 @@ namespace Quraaa.Application.Features.Authentication.Commands.Login
         {
             RuleFor(x => x.PhoneNumber)
                 .NotEmpty().WithMessage("Phone number is required.")
-                .Must(BeAValidInternationalPhoneNumber)
-                .WithMessage("Invalid international phone number format. It must start with '+' and include a valid country code.");
+                .Must(BeASyrianPhoneNumber)
+                .WithMessage("Invalid Syrian phone number. It must start with '+963' and be a valid Syrian number.");
 
             RuleFor(x => x.Password)
                 .NotEmpty().WithMessage("Password is required.")
-                .MaximumLength(256).WithMessage("Password is too long.");
+                .MinimumLength(AuthenticationPasswordPolicy.MinimumLength)
+                    .WithMessage($"Password must be at least {AuthenticationPasswordPolicy.MinimumLength} characters long.")
+                .MaximumLength(AuthenticationPasswordPolicy.MaximumLength)
+                    .WithMessage($"Password must not exceed {AuthenticationPasswordPolicy.MaximumLength} characters.");
         }
 
-        private bool BeAValidInternationalPhoneNumber(string phoneNumber)
+        private bool BeASyrianPhoneNumber(string phoneNumber)
         {
-            if (string.IsNullOrWhiteSpace(phoneNumber)) return false;
-            if (!phoneNumber.Trim().StartsWith("+")) return false;
+            if (string.IsNullOrWhiteSpace(phoneNumber))
+            {
+                return false;
+            }
+
+            var trimmed = phoneNumber.Trim();
+            if (!trimmed.StartsWith("+963"))
+            {
+                return false;
+            }
 
             var phoneUtil = PhoneNumberUtil.GetInstance();
             try
             {
-                var number = phoneUtil.Parse(phoneNumber, null);
-                return phoneUtil.IsValidNumber(number);
+                var number = phoneUtil.Parse(trimmed, "SY");
+                return phoneUtil.IsValidNumberForRegion(number, "SY");
             }
             catch (NumberParseException)
             {

@@ -1,5 +1,6 @@
 using FluentValidation;
 using PhoneNumbers;
+using Quraaa.Application.Features.Authentication.Common;
 
 namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPassword
 {
@@ -19,8 +20,10 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
 
             RuleFor(x => x.NewPassword)
                 .NotEmpty().WithMessage("New password is required.")
-                .MinimumLength(8).WithMessage("New password must be at least 8 characters long.")
-                .MaximumLength(64).WithMessage("New password must not exceed 64 characters.")
+                .MinimumLength(AuthenticationPasswordPolicy.MinimumLength)
+                    .WithMessage($"New password must be at least {AuthenticationPasswordPolicy.MinimumLength} characters long.")
+                .MaximumLength(AuthenticationPasswordPolicy.MaximumLength)
+                    .WithMessage($"New password must not exceed {AuthenticationPasswordPolicy.MaximumLength} characters.")
                 .Matches(@"[0-9]").WithMessage("New password must contain at least one digit.");
         }
 

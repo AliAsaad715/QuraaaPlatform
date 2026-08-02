@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.OpenApi;
+using System.Net;
 
 namespace Quraaa.API.Extensions
 {
@@ -70,8 +71,40 @@ namespace Quraaa.API.Extensions
                     ForwardedHeaders.XForwardedHost;
                 options.ForwardLimit = 1;
 
-                options.KnownIPNetworks.Clear();
-                options.KnownProxies.Clear();
+                var configuredProxies = config
+                    .GetSection("ForwardedHeaders:KnownProxies")
+                    .Get<string[]>() ?? Array.Empty<string>();
+                var configuredNetworks = config
+                    .GetSection("ForwardedHeaders:KnownNetworks")
+                    .Get<string[]>() ?? Array.Empty<string>();
+
+                if (configuredProxies.Length > 0 || configuredNetworks.Length > 0)
+                {
+                    options.KnownIPNetworks.Clear();
+                    options.KnownProxies.Clear();
+                }
+
+                foreach (var configuredProxy in configuredProxies)
+                {
+                    if (!IPAddress.TryParse(configuredProxy, out var proxyAddress))
+                    {
+                        throw new InvalidOperationException(
+                            $"Invalid forwarded-header proxy address: '{configuredProxy}'.");
+                    }
+
+                    options.KnownProxies.Add(proxyAddress);
+                }
+
+                foreach (var configuredNetwork in configuredNetworks)
+                {
+                    if (!System.Net.IPNetwork.TryParse(configuredNetwork, out var network))
+                    {
+                        throw new InvalidOperationException(
+                            $"Invalid forwarded-header proxy network: '{configuredNetwork}'.");
+                    }
+
+                    options.KnownIPNetworks.Add(network);
+                }
             });
 
             return services;
