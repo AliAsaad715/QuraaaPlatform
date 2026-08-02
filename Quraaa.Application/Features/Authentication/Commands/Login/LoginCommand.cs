@@ -7,6 +7,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.Login
     public record LoginCommand
     (
         string PhoneNumber,
-        string Password
+        string Password,
+        string ClientIp
     ) : IRequest<AppResult<AuthResponse>>;
 }

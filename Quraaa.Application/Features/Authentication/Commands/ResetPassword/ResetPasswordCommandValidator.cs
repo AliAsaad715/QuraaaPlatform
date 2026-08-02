@@ -1,4 +1,5 @@
 using FluentValidation;
+using Quraaa.Application.Features.Authentication.Common;
 
 namespace Quraaa.Application.Features.Authentication.Commands.ResetPassword
 {
@@ -11,13 +12,17 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetPassword
 
             RuleFor(x => x.OldPassword)
                 .NotEmpty().WithMessage("Old password is required.")
-                .MinimumLength(8).WithMessage("Old password must be at least 8 characters long.")
-                .MaximumLength(64).WithMessage("Old password must not exceed 64 characters.");
+                .MinimumLength(AuthenticationPasswordPolicy.MinimumLength)
+                    .WithMessage($"Old password must be at least {AuthenticationPasswordPolicy.MinimumLength} characters long.")
+                .MaximumLength(AuthenticationPasswordPolicy.MaximumLength)
+                    .WithMessage($"Old password must not exceed {AuthenticationPasswordPolicy.MaximumLength} characters.");
 
             RuleFor(x => x.NewPassword)
                 .NotEmpty().WithMessage("New password is required.")
-                .MinimumLength(8).WithMessage("New password must be at least 8 characters long.")
-                .MaximumLength(64).WithMessage("New password must not exceed 64 characters.")
+                .MinimumLength(AuthenticationPasswordPolicy.MinimumLength)
+                    .WithMessage($"New password must be at least {AuthenticationPasswordPolicy.MinimumLength} characters long.")
+                .MaximumLength(AuthenticationPasswordPolicy.MaximumLength)
+                    .WithMessage($"New password must not exceed {AuthenticationPasswordPolicy.MaximumLength} characters.")
                 .NotEqual(x => x.OldPassword).WithMessage("New password must be different from old password.");
         }
     }

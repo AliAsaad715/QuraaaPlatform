@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Domain.User;
 using Quraaa.Domain.User.Enums;
 using Quraaa.Persistence.Data;
@@ -26,6 +27,13 @@ namespace Quraaa.Persistence.Seed
                 return;
             }
 
+            if (password.Length < AuthenticationPasswordPolicy.MinimumLength
+                || password.Length > AuthenticationPasswordPolicy.MaximumLength)
+            {
+                throw new InvalidOperationException(
+                    $"ADMIN_PASSWORD must contain {AuthenticationPasswordPolicy.MinimumLength} through {AuthenticationPasswordPolicy.MaximumLength} characters.");
+            }
+
             string role = Role.Admin.ToString();
             if (!await roleManager.RoleExistsAsync(role))
             {
@@ -44,6 +52,12 @@ namespace Quraaa.Persistence.Seed
 
                 if (!await userManager.IsInRoleAsync(existingUser, role))
                 {
+                    // A privileged role must not be inherited by a refresh-token
+                    // family authenticated before the role elevation.
+                    existingUser.RefreshToken = null;
+                    existingUser.RefreshTokenExpiryTime = DateTime.UtcNow;
+                    existingUser.RefreshTokenFamilyId = null;
+
                     var addRoleResult = await userManager.AddToRoleAsync(existingUser, role);
                     if (!addRoleResult.Succeeded)
                     {

@@ -2,7 +2,7 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
-Last audited against the repository: **2026-08-01**.
+Last audited against the repository: **2026-08-02**.
 
 ## Project Overview
 
@@ -12,7 +12,7 @@ Current implemented business capabilities:
 
 - Pending user registration starts through `POST /api/auth/register`.
 - Registration phone verification completes through `POST /api/auth/register/verify`.
-- User login through `POST /api/auth/login`.
+- User login through `POST /api/auth/login`; valid credentials for an unverified pending registration resend the registration OTP and return the same pending-verification response as `POST /api/auth/register`.
 - Admin login uses a password-plus-OTP flow through `POST /api/auth/admin/login` and `POST /api/auth/admin/login/verify`.
 - Approved library owners can log in with their library email and Identity password through `POST /api/auth/library/login`.
 - Users, admins, and library owners share refresh-token-authenticated logout through `POST /api/auth/logout`; any unexpired token from the active rotation family revokes all descendant refresh and access tokens.
@@ -481,20 +481,22 @@ Startup calls `DotNetEnv.Env.Load()` before creating the builder, then also load
 
 ### Required / commonly used configuration keys
 
-| Concern          | Keys                                                                                                                                          |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| PostgreSQL       | `ConnectionStrings:DefaultConnection`                                                                                                         |
-| JWT              | `JWT_SECRET_KEY` (required), `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_DURATION_IN_MINUTES`                                                          |
-| Admin seed       | `ADMIN_PHONE_NUMBER`, `ADMIN_PASSWORD`                                                                                                        |
-| Firebase         | `Firebase:CredentialsPath`, `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_CREDENTIALS_JSON`                                                     |
-| OTP cache        | `REDIS_URL`, `REDIS_TLS_URL`, `Redis:ConnectionString`, `ConnectionStrings:Redis`, `Redis:InstanceName`, `Otp:AllowInMemoryCacheInProduction` |
-| OTP gateway      | `OTP_DEVICE_TOKEN`                                                                                                                            |
-| Notifications    | `Notifications:AllowTestEndpoint` / `Notifications__AllowTestEndpoint`                                                                        |
-| Stripe           | `Stripe:SecretKey`, `Stripe:WebhookSecret`, `Stripe:Currency`, `Stripe:IsTestMode`                                                            |
-| Google Books     | `GoogleBooks:ApiKey`, `GoogleBooks:BaseUrl` (defaults to `https://www.googleapis.com/`)                                                       |
-| Swagger          | `Swagger:ServerUrl`                                                                                                                           |
+| Concern       | Keys                                                                                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL    | `ConnectionStrings:DefaultConnection`                                                                                                         |
+| JWT           | `JWT_SECRET_KEY` (required), `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_DURATION_IN_MINUTES`                                                          |
+| Admin seed    | `ADMIN_PHONE_NUMBER`, `ADMIN_PASSWORD`                                                                                                        |
+| Firebase      | `Firebase:CredentialsPath`, `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_CREDENTIALS_JSON`                                                     |
+| OTP cache     | `REDIS_URL`, `REDIS_TLS_URL`, `Redis:ConnectionString`, `ConnectionStrings:Redis`, `Redis:InstanceName`, `Otp:AllowInMemoryCacheInProduction` |
+| OTP gateway   | `OTP_DEVICE_TOKEN`                                                                                                                            |
+| Notifications | `Notifications:AllowTestEndpoint` / `Notifications__AllowTestEndpoint`                                                                        |
+| Stripe        | `Stripe:SecretKey`, `Stripe:WebhookSecret`, `Stripe:Currency`, `Stripe:IsTestMode`                                                            |
+| Google Books  | `GoogleBooks:ApiKey`, `GoogleBooks:BaseUrl` (defaults to `https://www.googleapis.com/`)                                                       |
+| Swagger       | `Swagger:ServerUrl`                                                                                                                           |
+| Reverse proxy | `ForwardedHeaders:KnownProxies`, `ForwardedHeaders:KnownNetworks`                                                                             |
 
 `JWT_SECRET_KEY` is required by `IdentityService.GenerateAuthTokensAsync` and by `ServiceCollectionExtensions.AddJwtAuthentication`. If it is missing, the application throws `InvalidOperationException` at startup.
+`JWT_DURATION_IN_MINUTES` defaults to `60` and is validated at startup as an invariant finite number greater than zero and no greater than `10080` (seven days).
 
 Firebase Admin credential resolution order:
 
@@ -664,11 +666,13 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 - Logout authenticates with the refresh-token secret, so it still works after access-token expiry. The current token is resolved through the partial unique `AspNetUsers.RefreshToken` index; consumed ancestors resolve through unique hashed history. Either path clears only the currently matching family. A still-valid bearer `jti` is also cached as revoked.
 - Refresh tokens are 64-byte opaque Base64 secrets stored only as SHA-256 hashes. Rotation atomically archives the presented hash, writes its replacement, and preserves a stable family id. Reuse of an unexpired consumed token revokes the active family; submitted `sha256:` database values are never accepted as raw credentials.
 - Access JWTs carry the family id in a `sid` claim. JWT validation checks that `sid` against the current Identity row, so logout, replay detection, a newer login, authenticated password change, forgot-password recovery, and configured admin password reset immediately invalidate every access token from the replaced/revoked family.
-- Each account currently has one active family. A fresh login creates a new family and removes the prior consumed-token history; rotation prunes expired history for that user.
+- Each account currently has one active family. A fresh login creates a new family and removes the prior consumed-token history; rotation reloads the current Identity roles and prunes expired history.
+- Any code that grants a privileged Identity role must clear the refresh token and family id in the same Identity update; the current role-grant and seeding paths do this for privileged elevation.
 - Passwords are hashed by ASP.NET Core Identity.
 - Phone numbers are used as usernames; emails are synthesized as `{phone}@quraaa.com`.
 - Phone numbers are normalized to E.164 where possible using `libphonenumber-csharp`.
-- New registration is intentionally limited by `RegisterCommandValidator` to valid Syrian (`+963`) phone numbers; login/forgot-password/admin/standalone OTP validators currently accept any valid international number.
+- New registration and regular user login are limited to valid Syrian (`+963`) phone numbers; forgot-password/admin/standalone OTP validators currently accept any valid international number. Login passwords must contain 6 through 256 characters before credential verification runs.
+- Regular login accepts an ordinary account whose domain/Identity roles match as `User`/`{User}`, or a library-owner account whose roles match as `LibraryOwner`/`{User, LibraryOwner}`. Admin and mismatched/custom-role identities are rejected. A library owner therefore receives both roles from this route and can use role-authorized library functionality with the same token. Failed regular-login credentials are limited by account and trusted client address, and the HTTP endpoint also has a per-client fixed-window limit.
 - The forgot-password endpoint returns a generic success even if the phone number is not registered, to avoid leaking registration status.
 - OTP send and verify endpoints implement rate limiting and failed-attempt lockouts via `IDistributedCache`.
 - Admin login requires valid admin credentials followed by a six-digit OTP. Credential attempts, OTP sends, and OTP verification are rate-limited by phone and client IP.
@@ -677,8 +681,8 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 - Ebook PDF paths are omitted from public ebook responses. `/uploads/books/*.pdf` is blocked, and paid buyers receive PDFs only through the authenticated order-item download route.
 - Firebase service-account credentials and `.env` secrets must never be committed.
 - `Notifications:AllowTestEndpoint` is enabled in `appsettings.json` and `appsettings.Development.json`. Disable it in production unless you intend to allow unauthenticated test notification dispatch.
-- `Otp:AllowInMemoryCacheInProduction` is set to `true` in `appsettings.json`. This is acceptable only for temporary single-instance testing; production should use Redis.
-- HTTPS redirection and forwarded headers are enabled in the middleware pipeline. Configure `KnownProxies`/`KnownIPNetworks` appropriately if you deploy behind a reverse proxy.
+- `Otp:AllowInMemoryCacheInProduction` is `true` in the base settings.
+- HTTPS redirection and forwarded headers are enabled in the middleware pipeline. Forwarded headers trust loopback proxies by default; configure explicit arrays under `ForwardedHeaders:KnownProxies` and/or `ForwardedHeaders:KnownNetworks` when deploying behind another reverse proxy.
 - `AdminSeeder` creates or synchronizes the configured admin Identity/profile, role, confirmed-phone state, and password on startup. Ensure `ADMIN_PHONE_NUMBER` and `ADMIN_PASSWORD` are strong and kept secret; changing the configured password resets the seeded admin password.
 
 ## Testing Strategy
@@ -875,7 +879,7 @@ Successful registration verification response is `AuthResponse`:
 }
 ```
 
-Successful login response is also `AuthResponse`.
+The login validator requires a valid Syrian (`+963`) phone number and a password from 6 through 256 characters. A matching ordinary user receives the `User` role, while a matching library owner receives both `User` and `LibraryOwner` and can use the same token for role-authorized library functionality. Admin and mismatched/custom-role identities are rejected. Successful login response is also `AuthResponse`. If the credentials are valid but an ordinary pending registration's phone is not confirmed, login resends a `register-otp` code and returns the same `400 ValidationFailure` response used by a repeated registration attempt. The client should then continue through `POST /api/auth/register/verify`. Wrong credentials and unconfirmed library-owner identities never trigger a registration OTP.
 
 `POST /api/auth/logout` requires the refresh token issued by any login flow:
 
@@ -932,7 +936,7 @@ Admin credentials are checked against both the `UserAggregate.Role == Admin` val
 }
 ```
 
-The library must be approved, its owner profile must have `Role.LibraryOwner`, the Identity account must be confirmed and in the `LibraryOwner` role, and the supplied password is still the owner's Identity password. Five failed credential attempts within five minutes trigger a five-minute lock by email and client IP.
+The library must be approved, its owner profile must have `Role.LibraryOwner`, the Identity account must be confirmed with the exact role set `{User, LibraryOwner}`, and the supplied password is still the owner's Identity password. An extra `Admin` or custom role fails closed so this password-only route cannot mint privileged claims. Five failed credential attempts within five minutes trigger a five-minute lock by email and client IP.
 
 Password reset request body maps to `ResetPasswordRequest`; the controller creates `ResetPasswordCommand` after reading `UserId` from the authenticated JWT:
 
@@ -974,9 +978,7 @@ Forgot-password verify request body:
   "gender": 1,
   "dateOfBirth": "2000-01-01",
   "profileImageUrl": "/uploads/profiles/user.jpg",
-  "interests": [
-    "3fa85f64-5717-4562-b3fc-2c963f66afa6"
-  ]
+  "interests": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"]
 }
 ```
 
@@ -1305,10 +1307,13 @@ Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommandHand
 Quraaa.Application/Features/Authentication/Commands/VerifyRegisterOtp/VerifyRegisterOtpCommand.cs
 Quraaa.Application/Features/Authentication/Commands/VerifyRegisterOtp/VerifyRegisterOtpCommandValidator.cs
 Quraaa.Application/Features/Authentication/Commands/VerifyRegisterOtp/VerifyRegisterOtpCommandHandler.cs
+Quraaa.Application/Features/Authentication/Interfaces/IAuthenticationUnitOfWork.cs
 Quraaa.Application/Features/Otp/Interfaces/IOtpCacheService.cs
 Quraaa.Application/Features/Otp/Interfaces/IFirebaseSmsGateway.cs
 Quraaa.Persistence/Services/IdentityService.cs
+Quraaa.Persistence/Services/AuthenticationUnitOfWork.cs
 Quraaa.Persistence/Repositories/UserRepository.cs
+Quraaa.Infrastructure/Services/OtpCacheService.cs
 Quraaa.Domain/User/UserAggregate.cs
 ```
 
@@ -1330,7 +1335,7 @@ Validation rules:
 - `FirstName`: required, max 50 characters.
 - `LastName`: required, max 50 characters.
 - `PhoneNumber`: required, must start with `+963`, and must be valid for the Syrian `SY` region according to libphonenumber.
-- `Password`: required, at least 6 characters, must contain at least one digit.
+- `Password`: required, 6 through 256 characters, must contain at least one digit.
 - `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
 - `Gender`: must be a valid enum value.
 - `Interests`: required and not empty; each value must be an existing `CategoryAggregate.Id`.
@@ -1352,10 +1357,10 @@ HTTP POST /api/auth/register
   -> IIdentityService.GetUserIdentityByPhoneNumberAsync(formattedPhone)
   -> if the phone belongs to a confirmed account, throws ApplicationBusinessException
   -> if the phone belongs to an unconfirmed account, does not update pending password/profile data, resends an OTP, and returns a validation error telling the client to complete verification
-  -> otherwise creates a new ASP.NET Identity user with PhoneNumberConfirmed = false
-  -> rejects an unexpected existing UserAggregate for the phone, otherwise creates a new UserAggregate with the same id, normalized phone, password hash, and interest category IDs
-  -> IUserRepository.SaveChangesAsync()
-  -> handler generates OTP and stores it in IDistributedCache under "register-otp" keys
+  -> otherwise acquires one atomic owner-tagged phone/client OTP lease
+  -> creates the new ASP.NET Identity user, User role membership, UserAggregate, and interests inside one database transaction
+  -> commits before generating or sending an OTP; a failed persistence write leaves no partial Identity/profile account
+  -> handler stores an owner-tagged OTP in IDistributedCache under "register-otp" keys
   -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp)
   -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends an FCM data message to the gateway device token
   -> Success, no tokens yet
@@ -1372,9 +1377,11 @@ HTTP POST /api/auth/register/verify
   -> handler reads OTP from IDistributedCache under the "register-otp" namespace
   -> handler compares code using fixed-time comparison
   -> failed attempts are tracked; 5 failures in 5 minutes trigger a 5-minute lockout
+  -> a valid OTP can clear a legacy incomplete regular registration only when it has no profile, or has a matching User profile but no Identity role; privileged/mixed-role identities are never auto-repaired
+  -> requires the pending profile domain role and exact Identity role set to both be User
   -> IIdentityService.ConfirmPhoneNumberAsync(userId) sets PhoneNumberConfirmed = true
   -> success clears OTP and verification state under the "register-otp" namespace
-  -> IIdentityService.GenerateAuthTokensAsync(id, phone)
+  -> IIdentityService.GenerateRegularUserAuthTokensAsync(id, phone)
   -> AuthResponse
 ```
 
@@ -1397,7 +1404,7 @@ Important registration details:
 - `FirstName`: required, max 50 characters.
 - `LastName`: required, max 50 characters.
 - `PhoneNumber`: required, must start with `+963`, and must be valid for the Syrian `SY` region according to libphonenumber.
-- `Password`: required, at least 6 characters, must contain at least one digit.
+- `Password`: required, 6 through 256 characters, must contain at least one digit.
 - `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
 - `Gender`: must be a valid enum value.
 - `Interests`: required and not empty.
@@ -1410,6 +1417,7 @@ Files:
 
 ```text
 Quraaa.API/Controllers/AuthController.cs
+Quraaa.API/Requests/Authentication/LoginRequest.cs
 Quraaa.Application/Features/Authentication/Commands/Login/LoginCommand.cs
 Quraaa.Application/Features/Authentication/Commands/Login/LoginCommandValidator.cs
 Quraaa.Application/Features/Authentication/Commands/Login/LoginCommandHandler.cs
@@ -1421,14 +1429,21 @@ Flow:
 
 ```text
 HTTP POST /api/auth/login
-  -> AuthController.Login(command)
+  -> AuthController.Login(request)
+  -> LoginCommand(phone, password, server-derived client IP)
   -> Mediator.Send(command)
   -> LoginCommandHandler.Handle(...)
   -> BaseApplicationService validates LoginCommand
   -> IPhoneService.FormatToE164(phone)
-  -> IIdentityService.CheckPasswordAndGenerateTokensAsync(formattedPhone, password)
-  -> if credentials are valid but PhoneNumberConfirmed is false, returns validation error requiring registration completion
-  -> IIdentityService.GenerateAuthTokensAsync(id, phone)
+  -> enforce account/client credential lockouts before password hashing
+  -> load the Identity and verify the password
+  -> require matching domain/Identity roles: User + {User}, or LibraryOwner + {User, LibraryOwner}
+  -> if credentials are valid but PhoneNumberConfirmed is false:
+       -> acquire the shared atomic registration-OTP phone/client lease
+       -> cache and send an owner-tagged register-otp code
+       -> return the same pending-verification validation response as repeated registration
+       -> client completes POST /api/auth/register/verify
+  -> issue through GenerateRegularUserAuthTokensAsync or GenerateLibraryOwnerAuthTokensAsync according to the matched profile role
   -> AuthResponse
 ```
 
@@ -1539,7 +1554,7 @@ POST /api/auth/library/login
   -> enforce credential lockout by email and client IP
   -> resolve an Approved library by email
   -> resolve its UserAggregate and Identity user
-  -> require confirmed phone, valid password, domain LibraryOwner role, and Identity LibraryOwner role
+  -> require confirmed phone, valid password, domain LibraryOwner role, and exact Identity roles {User, LibraryOwner}
   -> clear credential state
   -> return AuthResponse
 ```
@@ -2245,7 +2260,7 @@ OTP behavior:
 - After too many invalid attempts, the OTP is cleared and verification is locked for 5 minutes.
 - Successful verification clears the OTP and failed-attempt state.
 - The standalone OTP flow stores its state under the `standalone-otp` cache namespace, so it never collides with registration (`register-otp`) or forgot-password (`forgot-password-otp`) OTP state.
-- The OTP feature is standalone; it does not yet mark a user or phone number as verified and is not enforced by login.
+- The standalone OTP feature does not mark a user or phone number as verified and is not used by login. Login only uses the registration OTP namespace when valid credentials belong to an unverified pending registration.
 
 Flow:
 
@@ -2433,9 +2448,8 @@ Based on the current codebase:
 - **Listing review lifecycle**: all non-seeded library/user physical listings start in `PendingReview`, but there is no approval/rejection/removal endpoint. Active-only list/cart queries therefore do not expose newly created listings.
 - **Library inventory authorization mismatch**: `LibraryListingsController` requires `LibraryAdmin`, while `Role`, seeders, and library login use `LibraryOwner`. No current code grants `LibraryAdmin`, so those three routes are not reachable with the roles produced by this repository.
 - **Library add/update edge cases**: `AddPhysicalBookCommand.Isbn` is declared nullable and has no required validator but the handler dereferences it; omission can produce a `500`. `UpdateListingCommandHandler` retrieves only `Active` listings, so a new `PendingReview` listing cannot be updated and an `OutOfStock` listing cannot be restocked through that route.
-- **General login bypasses specialized role flows**: `/api/auth/login` is anonymous and does not restrict roles, so a confirmed admin/library-owner Identity can also log in with phone/password without the admin OTP or library-email checks. Decide whether that is intended before relying on specialized login as a security boundary.
 - **Single-session authentication model**: each Identity user has one active refresh-token family. A fresh login invalidates the prior family's refresh and access tokens. Multiple per-device concurrent sessions, device-scoped logout, and independent session management are not modeled yet.
-- **OTP coverage**: registration, forgot-password, admin login, and standalone OTP use OTP state. Regular user login and library-owner login do not; standalone OTP still does not mark a phone/user verified.
+- **OTP coverage**: registration, forgot-password, admin login, and standalone OTP use OTP state. Regular user login resends the registration OTP only for valid credentials on an unverified pending registration; library-owner login does not use OTP, and standalone OTP still does not mark a phone/user verified.
 - **Rating API**: `BookRatingAggregate`, its table, and popularity aggregation exist, but there are no rating create/update/read endpoints.
 - **Location edge cases**: location upsert/delete handlers null-forgive a missing user, the validator rejects zero latitude/longitude via `.NotEmpty()`, and DELETE requires an otherwise empty request body.
 - **Pagination inconsistency**: `PaginationRequestDTO` silently coerces invalid values and caps at 20, while other feature validators allow 100. `GET /api/listings/me` cannot bind page fields and is fixed to page 1/size 10.
@@ -2443,4 +2457,4 @@ Based on the current codebase:
 - **Aggregate mapping consistency**: domain aggregates retain scalar IDs, but several current EF configurations express cross-aggregate foreign keys with navigationless `HasOne<TAggregate>()`. Keep navigation properties out of the domain and decide on one persistence convention before adding more mappings.
 - **Tests**: no unit, integration, or end-to-end tests exist.
 - **CI/CD**: only branch-name validation is automated; add build, test, and publish workflows.
-- **Production readiness**: `Otp:AllowInMemoryCacheInProduction=true`, `Notifications:AllowTestEndpoint=true`, and `Stripe:IsTestMode=true` are committed defaults. Disable the test-only settings as appropriate, require Redis, configure/rotate Stripe and Firebase secrets, and add payment/OTP/checkout observability before production deployment.
+- **Production readiness**: `Notifications:AllowTestEndpoint=true` and `Stripe:IsTestMode=true` are committed defaults. Disable the test-only settings as appropriate, configure Redis plus Stripe/Firebase secrets, rotate secrets, and add payment/OTP/checkout observability before production deployment.

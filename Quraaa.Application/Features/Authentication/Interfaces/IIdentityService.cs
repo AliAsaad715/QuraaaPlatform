@@ -10,8 +10,13 @@ namespace Quraaa.Application.Features.Authentication.Interfaces
         Task<IdentityResultDto> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword);
         Task<(bool Succeeded, string? UpdatedPasswordHash, IEnumerable<string> Errors)> ResetPasswordAsync(Guid userId, string newPassword);
         Task<IdentityResultDto> ConfirmPhoneNumberAsync(Guid userId);
+        Task<bool> TryDeleteIncompleteUnconfirmedRegularRegistrationAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default);
         Task<bool> CheckPasswordAsync(Guid userId, string password);
         Task<bool> IsInRoleAsync(Guid userId, string role);
+        Task<bool> IsRegularUserIdentityAsync(Guid userId);
+        Task<bool> IsLibraryOwnerIdentityAsync(Guid userId);
         Task<IdentityResultDto> AddUserToRoleAsync(Guid userId, string role);
         Task RevokeRefreshTokenAsync(
             string refreshToken,
@@ -24,6 +29,7 @@ namespace Quraaa.Application.Features.Authentication.Interfaces
             Guid familyId,
             CancellationToken cancellationToken = default);
         Task<AuthResponse> GenerateAuthTokensAsync(Guid userId, string phoneNumber);
-        Task<SignInResultDto> CheckPasswordAndGenerateTokensAsync(string phoneNumber, string password);
+        Task<AuthResponse?> GenerateRegularUserAuthTokensAsync(Guid userId, string phoneNumber);
+        Task<AuthResponse?> GenerateLibraryOwnerAuthTokensAsync(Guid userId, string phoneNumber);
     }
 }
