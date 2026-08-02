@@ -4,6 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Application.Features.Authentication.Interfaces;
+using Quraaa.Domain.Shared.Exceptions;
+using Quraaa.Domain.User.Enums;
 using Quraaa.Persistence.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -20,17 +22,20 @@ namespace Quraaa.Persistence.Services
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly RoleManager<IdentityRole<Guid>> _roleManager;
         private readonly IConfiguration _configuration;
+        private readonly AuthenticationTokenOptions _tokenOptions;
         private readonly ApplicationDbContext _dbContext;
 
         public IdentityService(
             UserManager<ApplicationUser> userManager,
             RoleManager<IdentityRole<Guid>> roleManager,
             IConfiguration configuration,
+            AuthenticationTokenOptions tokenOptions,
             ApplicationDbContext dbContext)
         {
             _userManager = userManager;
             _roleManager = roleManager;
             _configuration = configuration;
+            _tokenOptions = tokenOptions;
             _dbContext = dbContext;
         }
 
@@ -77,9 +82,18 @@ namespace Quraaa.Persistence.Services
 
             if (!await _roleManager.RoleExistsAsync(role))
             {
-                await _roleManager.CreateAsync(new IdentityRole<Guid> { Name = role });
+                var roleResult = await _roleManager.CreateAsync(new IdentityRole<Guid> { Name = role });
+                if (!roleResult.Succeeded)
+                {
+                    return IdentityResultDto.Failure(roleResult.Errors.Select(e => e.Description));
+                }
             }
-            await _userManager.AddToRoleAsync(identityUser, role);
+
+            var addToRoleResult = await _userManager.AddToRoleAsync(identityUser, role);
+            if (!addToRoleResult.Succeeded)
+            {
+                return IdentityResultDto.Failure(addToRoleResult.Errors.Select(e => e.Description));
+            }
 
             return IdentityResultDto.Success(identityUser.PasswordHash!);
         }
@@ -153,6 +167,39 @@ namespace Quraaa.Persistence.Services
             return IdentityResultDto.Success(user.PasswordHash ?? string.Empty);
         }
 
+        public async Task<bool> TryDeleteIncompleteUnconfirmedRegularRegistrationAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default)
+        {
+            var normalizedUserRole = Role.User.ToString().ToUpperInvariant();
+            var userRoleId = await _dbContext.Roles
+                .Where(role => role.NormalizedName == normalizedUserRole)
+                .Select(role => role.Id)
+                .SingleOrDefaultAsync(cancellationToken);
+
+            if (userRoleId == Guid.Empty)
+            {
+                return false;
+            }
+
+            var deletedUsers = await _userManager.Users
+                .Where(user => user.Id == userId
+                    && !user.PhoneNumberConfirmed
+                    && !_dbContext.UserRoles.Any(userRole =>
+                        userRole.UserId == user.Id
+                        && userRole.RoleId != userRoleId)
+                    && (
+                        !_dbContext.UsersProfiles.Any(profile => profile.Id == user.Id)
+                        || (_dbContext.UsersProfiles.Any(profile =>
+                                profile.Id == user.Id
+                                && profile.Role == Role.User)
+                            && !_dbContext.UserRoles.Any(userRole =>
+                                userRole.UserId == user.Id))))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            return deletedUsers == 1;
+        }
+
         public async Task<bool> CheckPasswordAsync(Guid userId, string password)
         {
             var user = await _userManager.FindByIdAsync(userId.ToString());
@@ -163,6 +210,30 @@ namespace Quraaa.Persistence.Services
         {
             var user = await _userManager.FindByIdAsync(userId.ToString());
             return user is not null && await _userManager.IsInRoleAsync(user, role);
+        }
+
+        public async Task<bool> IsRegularUserIdentityAsync(Guid userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user is null)
+            {
+                return false;
+            }
+
+            var roles = await _userManager.GetRolesAsync(user);
+            return HasExactRegularUserRole(roles);
+        }
+
+        public async Task<bool> IsLibraryOwnerIdentityAsync(Guid userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user is null)
+            {
+                return false;
+            }
+
+            var roles = await _userManager.GetRolesAsync(user);
+            return HasExactLibraryOwnerRoles(roles);
         }
 
         public async Task<IdentityResultDto> AddUserToRoleAsync(Guid userId, string role)
@@ -185,6 +256,13 @@ namespace Quraaa.Persistence.Services
             if (await _userManager.IsInRoleAsync(user, role))
             {
                 return IdentityResultDto.Success(user.PasswordHash ?? string.Empty);
+            }
+
+            if (!string.Equals(role, Role.User.ToString(), StringComparison.Ordinal))
+            {
+                user.RefreshToken = null;
+                user.RefreshTokenExpiryTime = DateTime.UtcNow;
+                user.RefreshTokenFamilyId = null;
             }
 
             var addRoleResult = await _userManager.AddToRoleAsync(user, role);
@@ -241,13 +319,54 @@ namespace Quraaa.Persistence.Services
                 throw new InvalidOperationException("User security identity not found.");
             }
 
-            return await GenerateAndPersistAuthTokensAsync(
+            return await GenerateFreshAuthTokensAsync(
                 user,
                 phoneNumber,
-                Guid.NewGuid(),
-                presentedRefreshToken: null,
-                presentedRefreshTokenExpiresAtUtc: null,
-                cancellationToken: default);
+                issuedRoles: null);
+        }
+
+        public async Task<AuthResponse?> GenerateRegularUserAuthTokensAsync(
+            Guid userId,
+            string phoneNumber)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user is null || !user.PhoneNumberConfirmed)
+            {
+                return null;
+            }
+
+            var roles = await _userManager.GetRolesAsync(user);
+            if (!HasExactRegularUserRole(roles))
+            {
+                return null;
+            }
+
+            return await GenerateFreshAuthTokensAsync(
+                user,
+                phoneNumber,
+                roles.ToArray());
+        }
+
+        public async Task<AuthResponse?> GenerateLibraryOwnerAuthTokensAsync(
+            Guid userId,
+            string phoneNumber)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user is null || !user.PhoneNumberConfirmed)
+            {
+                return null;
+            }
+
+            var roles = await _userManager.GetRolesAsync(user);
+            if (!HasExactLibraryOwnerRoles(roles))
+            {
+                return null;
+            }
+
+            return await GenerateFreshAuthTokensAsync(
+                user,
+                phoneNumber,
+                roles.ToArray());
         }
 
         public async Task<AuthResponse?> RefreshAuthTokensAsync(
@@ -321,12 +440,14 @@ namespace Quraaa.Persistence.Services
             }
 
             var now = DateTime.UtcNow;
-            return await _userManager.Users.AnyAsync(user =>
-                user.Id == userId
-                && user.RefreshTokenFamilyId == familyId
-                && user.RefreshToken != null
-                && user.RefreshTokenExpiryTime > now,
-                cancellationToken);
+            return await _userManager.Users
+                .AsNoTracking()
+                .AnyAsync(user =>
+                    user.Id == userId
+                    && user.RefreshTokenFamilyId == familyId
+                    && user.RefreshToken != null
+                    && user.RefreshTokenExpiryTime > now,
+                    cancellationToken);
         }
 
         private async Task<AuthResponse> GenerateAndPersistAuthTokensAsync(
@@ -335,13 +456,15 @@ namespace Quraaa.Persistence.Services
             Guid familyId,
             string? presentedRefreshToken,
             DateTime? presentedRefreshTokenExpiresAtUtc,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            IReadOnlyCollection<string>? issuedRoles = null)
         {
             var secretKey = _configuration["JWT_SECRET_KEY"] ?? throw new InvalidOperationException("JWT Secret Key is missing.");
             var issuer = _configuration["JWT_ISSUER"];
             var audience = _configuration["JWT_AUDIENCE"];
-            var durationInMinutes = double.Parse(_configuration["JWT_DURATION_IN_MINUTES"] ?? "60");
-            var userRoles = await _userManager.GetRolesAsync(user);
+            var durationInMinutes = _tokenOptions.AccessTokenDurationInMinutes;
+            IReadOnlyCollection<string> userRoles = issuedRoles
+                ?? (await _userManager.GetRolesAsync(user)).ToArray();
             var issuedAtUtc = DateTime.UtcNow;
 
             var authClaims = new List<Claim>
@@ -439,6 +562,46 @@ namespace Quraaa.Persistence.Services
             );
         }
 
+        private async Task<AuthResponse> GenerateFreshAuthTokensAsync(
+            ApplicationUser user,
+            string phoneNumber,
+            IReadOnlyCollection<string>? issuedRoles)
+        {
+            try
+            {
+                return await GenerateAndPersistAuthTokensAsync(
+                    user,
+                    phoneNumber,
+                    Guid.NewGuid(),
+                    presentedRefreshToken: null,
+                    presentedRefreshTokenExpiresAtUtc: null,
+                    cancellationToken: default,
+                    issuedRoles: issuedRoles);
+            }
+            catch (AuthTokenPersistenceException exception)
+                when (exception.IsConcurrencyFailure)
+            {
+                throw new ConflictException(
+                    "Another authentication request completed concurrently. Please retry.");
+            }
+        }
+
+        private static bool HasExactRegularUserRole(IList<string> roles)
+        {
+            return roles.Count == 1
+                && string.Equals(
+                    roles[0],
+                    Role.User.ToString(),
+                    StringComparison.Ordinal);
+        }
+
+        private static bool HasExactLibraryOwnerRoles(IList<string> roles)
+        {
+            return roles.Count == 2
+                && roles.Contains(Role.User.ToString(), StringComparer.Ordinal)
+                && roles.Contains(Role.LibraryOwner.ToString(), StringComparer.Ordinal);
+        }
+
         private async Task RevokeFamilyForConsumedTokenAsync(
             string refreshTokenHash,
             DateTime revokedAtUtc,
@@ -478,29 +641,6 @@ namespace Quraaa.Persistence.Services
                     .SetProperty(user => user.RefreshTokenFamilyId, (Guid?)null)
                     .SetProperty(user => user.ConcurrencyStamp, Guid.NewGuid().ToString()),
                     cancellationToken);
-        }
-
-        public async Task<SignInResultDto> CheckPasswordAndGenerateTokensAsync(string phoneNumber, string password)
-        {
-            var user = await _userManager.FindByNameAsync(phoneNumber);
-            if (user == null)
-            {
-                return SignInResultDto.Failure(SignInFailureReason.InvalidCredentials);
-            }
-
-            var isPasswordValid = await _userManager.CheckPasswordAsync(user, password);
-            if (!isPasswordValid)
-            {
-                return SignInResultDto.Failure(SignInFailureReason.InvalidCredentials);
-            }
-
-            if (!user.PhoneNumberConfirmed)
-            {
-                return SignInResultDto.Failure(SignInFailureReason.PhoneNumberNotConfirmed);
-            }
-
-            var authResponse = await GenerateAuthTokensAsync(user.Id, phoneNumber);
-            return SignInResultDto.Success(authResponse);
         }
 
         private static string GenerateSecureRefreshToken()

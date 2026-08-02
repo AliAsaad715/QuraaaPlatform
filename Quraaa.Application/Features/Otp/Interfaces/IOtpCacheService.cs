@@ -9,6 +9,10 @@ namespace Quraaa.Application.Features.Otp.Interfaces
         Task<bool> HasRecentOtpRequestAsync(string phoneNumber, TimeSpan lockoutPeriod, string keyPrefix, CancellationToken cancellationToken = default);
         Task RecordOtpRequestAsync(string phoneNumber, TimeSpan lockoutPeriod, string keyPrefix, CancellationToken cancellationToken = default);
         Task ClearOtpRequestAsync(string phoneNumber, string keyPrefix, CancellationToken cancellationToken = default);
+        Task<bool> TryAcquireOtpRequestAsync(string targetKey, string ownerToken, TimeSpan lockoutPeriod, string keyPrefix, CancellationToken cancellationToken = default);
+        Task<bool> TrySetOwnedOtpAsync(string phoneNumber, string otpCode, string ownerToken, TimeSpan expiration, string keyPrefix, CancellationToken cancellationToken = default);
+        Task ClearOwnedOtpAsync(string phoneNumber, string otpCode, string ownerToken, string keyPrefix, CancellationToken cancellationToken = default);
+        Task ReleaseOtpRequestAsync(string targetKey, string ownerToken, string keyPrefix, CancellationToken cancellationToken = default);
 
         Task<int> IncrementFailedVerificationAttemptAsync(string targetKey, TimeSpan expiration, string keyPrefix, CancellationToken cancellationToken = default);
         Task ClearFailedVerificationAttemptsAsync(string targetKey, string keyPrefix, CancellationToken cancellationToken = default);

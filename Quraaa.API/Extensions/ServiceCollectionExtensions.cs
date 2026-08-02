@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Quraaa.API.Services;
 using Quraaa.Application.Extensions;
@@ -8,8 +9,10 @@ using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Persistence.Extensions;
 using System.IdentityModel.Tokens.Jwt;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 
 namespace Quraaa.API.Extensions
 {
@@ -18,11 +21,35 @@ namespace Quraaa.API.Extensions
         public static void AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddJwtAuthentication(configuration);
+            services.AddAuthenticationRateLimiting();
             services.AddScoped<ILibraryImageStorageService, LibraryImageStorageService>();
             services.AddScoped<ILibraryBookStorageService, LibraryBookStorageService>();
             services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
             PersistenceDependencyInjectionHandler.AddPersistenceDependencies(services, configuration);
             ApplicationPackagesRegisterExtensions.AddApplicationDependencies(services);
+        }
+
+        private static void AddAuthenticationRateLimiting(this IServiceCollection services)
+        {
+            services.AddRateLimiter(options =>
+            {
+                options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddPolicy("regular-login", httpContext =>
+                {
+                    var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString()
+                        ?? "unknown-client";
+
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: clientAddress,
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 30,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        });
+                });
+            });
         }
 
         private static void AddJwtAuthentication(this IServiceCollection services, IConfiguration configuration)
@@ -35,6 +62,24 @@ namespace Quraaa.API.Extensions
 
             var issuer = configuration["JWT_ISSUER"];
             var audience = configuration["JWT_AUDIENCE"];
+            var durationValue = configuration["JWT_DURATION_IN_MINUTES"] ?? "60";
+            if (!double.TryParse(
+                    durationValue,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var durationInMinutes)
+                || !double.IsFinite(durationInMinutes)
+                || durationInMinutes <= 0
+                || durationInMinutes > TimeSpan.FromDays(7).TotalMinutes)
+            {
+                throw new InvalidOperationException(
+                    "JWT_DURATION_IN_MINUTES must be an invariant positive number no greater than 10080.");
+            }
+
+            services.AddSingleton(new AuthenticationTokenOptions
+            {
+                AccessTokenDurationInMinutes = durationInMinutes
+            });
 
             services
                 .AddAuthentication(options =>

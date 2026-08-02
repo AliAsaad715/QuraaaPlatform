@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Quraaa.Application.Features.Authentication.Commands.AdminLogin;
 using Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin;
 using Quraaa.Application.Features.Authentication.Commands.Login;
@@ -45,6 +46,10 @@ namespace Quraaa.API.Controllers
         /// Authenticates a user and returns an access token.
         /// </summary>
         /// <remarks>
+        /// Valid credentials for an unverified pending registration resend the
+        /// registration OTP. The client should then continue through
+        /// <c>POST /api/auth/register/verify</c>.
+        ///
         /// 💡 **Demo Accounts for Testing:**
         /// 
         /// * **User Account:**
@@ -52,16 +57,22 @@ namespace Quraaa.API.Controllers
         ///     
         ///     * **Password:** `User@12345`
         /// 
-        /// * **Admin Account:**
-        ///     * **Phone Number:** `+963987654321`
-        ///     
-        ///     * **Password:** `Admin@12345`
+        /// Admin accounts must use <c>POST /api/auth/admin/login</c> and
+        /// <c>POST /api/auth/admin/login/verify</c>.
         /// </remarks>
         [HttpPost("login")]
+        [EnableRateLimiting("regular-login")]
         [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> Login([FromBody] LoginCommand command)
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
+            var command = new LoginCommand(
+                request.PhoneNumber,
+                request.Password,
+                GetClientIpAddress() ?? string.Empty);
+
             var result = await Mediator.Send(command);
             return HandleResult(result);
         }
@@ -122,6 +133,7 @@ namespace Quraaa.API.Controllers
         [HttpPost("library/login")]
         [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> LibraryOwnerLogin([FromBody] LibraryOwnerLoginRequest request)
         {
             var command = new LibraryOwnerLoginCommand(
@@ -152,6 +164,7 @@ namespace Quraaa.API.Controllers
         [HttpPost("admin/login/verify")]
         [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> VerifyAdminLoginOtp([FromBody] VerifyAdminLoginOtpRequest request)
         {
             var command = new VerifyAdminLoginOtpCommand(
@@ -190,6 +203,7 @@ namespace Quraaa.API.Controllers
         [HttpPost("register/verify")]
         [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> VerifyRegisterOtp([FromBody] VerifyRegisterOtpRequest request)
         {
             var command = new VerifyRegisterOtpCommand(

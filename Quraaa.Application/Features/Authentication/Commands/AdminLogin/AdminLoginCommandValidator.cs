@@ -1,5 +1,6 @@
 using FluentValidation;
 using PhoneNumbers;
+using Quraaa.Application.Features.Authentication.Common;
 
 namespace Quraaa.Application.Features.Authentication.Commands.AdminLogin
 {
@@ -14,8 +15,8 @@ namespace Quraaa.Application.Features.Authentication.Commands.AdminLogin
 
             RuleFor(x => x.Password)
                 .NotEmpty().WithMessage("Password is required.")
-                .MinimumLength(6).WithMessage("Password is too short.")
-                .MaximumLength(256).WithMessage("Password is too long.");
+                .MinimumLength(AuthenticationPasswordPolicy.MinimumLength).WithMessage("Password is too short.")
+                .MaximumLength(AuthenticationPasswordPolicy.MaximumLength).WithMessage("Password is too long.");
         }
 
         private bool BeAValidInternationalPhoneNumber(string phoneNumber)

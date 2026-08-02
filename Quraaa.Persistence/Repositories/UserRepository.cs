@@ -14,9 +14,11 @@ namespace Quraaa.Persistence.Repositories
             _context = context;
         }
 
-        public async Task AddUserAsync(UserAggregate user)
+        public async Task AddUserAsync(
+            UserAggregate user,
+            CancellationToken cancellationToken = default)
         {
-            await _context.UsersProfiles.AddAsync(user);
+            await _context.UsersProfiles.AddAsync(user, cancellationToken);
         }
 
         public async Task<UserAggregate?> GetUserByIdAsync(Guid id)
@@ -32,9 +34,9 @@ namespace Quraaa.Persistence.Repositories
                         .FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber && !u.IsDeleted);
         }
 
-        public async Task SaveChangesAsync()
+        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
         }
     }
 }
