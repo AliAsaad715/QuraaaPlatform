@@ -79,13 +79,13 @@ Quraaa.Persistence ──> Quraaa.Application + Quraaa.Domain
 Quraaa.Domain ──> no project references
 ```
 
-| Project | Responsibility |
-| --- | --- |
-| `Quraaa.Domain` | Aggregates, entities, value objects, enums, and business invariants. |
-| `Quraaa.Application` | Commands, queries, handlers, validators, DTOs, result types, and service interfaces. |
-| `Quraaa.Persistence` | EF Core context and mappings, PostgreSQL migrations, repositories, Identity persistence, and seeders. |
-| `Quraaa.Infrastructure` | Stripe, Firebase, Redis/cache, Google Books, and other external-service implementations. |
-| `Quraaa.API` | Controllers, HTTP contracts, authentication setup, OpenAPI, file adapters, hosted services, and application startup. |
+| Project                 | Responsibility                                                                                                       |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `Quraaa.Domain`         | Aggregates, entities, value objects, enums, and business invariants.                                                 |
+| `Quraaa.Application`    | Commands, queries, handlers, validators, DTOs, result types, and service interfaces.                                 |
+| `Quraaa.Persistence`    | EF Core context and mappings, PostgreSQL migrations, repositories, Identity persistence, and seeders.                |
+| `Quraaa.Infrastructure` | Stripe, Firebase, Redis/cache, Google Books, and other external-service implementations.                             |
+| `Quraaa.API`            | Controllers, HTTP contracts, authentication setup, OpenAPI, file adapters, hosted services, and application startup. |
 
 Application operations are dispatched through MediatR. FluentValidation validators are registered automatically, and application results are mapped centrally to HTTP `200`, `400`, `401`, `403`, `404`, and `409` responses.
 
@@ -170,7 +170,6 @@ Generated `bin/` and `obj/` directories are not source and should not be edited.
    ```
 
 4. Configure Firebase using one of these supported approaches:
-
    - Put the service-account JSON at `Quraaa.API/storage/firebase/quraa.json` (the configured local path), or
    - Set `GOOGLE_APPLICATION_CREDENTIALS` / `Firebase__CredentialsPath` to an absolute credential path, or
    - Set `FIREBASE_CREDENTIALS_JSON` to the complete JSON value in the deployment environment.
@@ -186,7 +185,6 @@ Generated `bin/` and `obj/` directories are not source and should not be edited.
    ```
 
 6. Open the local API documentation:
-
    - Swagger UI: `http://localhost:5153/docs`
    - OpenAPI JSON: `http://localhost:5153/openapi/v1.json`
    - HTTPS launch profile: `https://localhost:7260`
@@ -197,31 +195,31 @@ At startup, the API applies pending EF Core migrations and runs all configured s
 
 ASP.NET Core configuration is loaded from appsettings files, `.env`, environment variables, and command-line arguments. For nested environment keys, use double underscores, for example `Stripe__SecretKey` for `Stripe:SecretKey`. Environment variables override committed appsettings values.
 
-| Key | Required | Purpose / behavior |
-| --- | --- | --- |
-| `ConnectionStrings__DefaultConnection` | Yes | Npgsql connection string for PostgreSQL. |
-| `JWT_SECRET_KEY` | Yes | Symmetric JWT signing key. Startup fails when it is missing. |
-| `JWT_ISSUER` | No | Enables issuer validation when set. |
-| `JWT_AUDIENCE` | No | Enables audience validation when set. |
-| `JWT_DURATION_IN_MINUTES` | No | Access-token lifetime; defaults to `60`. |
-| `Stripe__SecretKey` | Yes | Must start with `sk_test_` or `sk_live_` according to `Stripe__IsTestMode`. |
-| `Stripe__WebhookSecret` | Yes | Stripe endpoint signing secret; must start with `whsec_`. |
-| `Stripe__Currency` | No | Must resolve to `usd`; the configured default is `usd`. |
-| `Stripe__IsTestMode` | No | Selects test or live key validation; defaults to test mode. |
-| `GOOGLE_APPLICATION_CREDENTIALS` | One Firebase option | Absolute path to a Firebase service-account file. |
-| `Firebase__CredentialsPath` | One Firebase option | Configured credential path; local appsettings uses `storage/firebase/quraa.json`. |
-| `FIREBASE_CREDENTIALS_JSON` | One Firebase option | Deployment-friendly full credential JSON; startup validates and writes it to the private Firebase storage directory. |
-| `OTP_DEVICE_TOKEN` | For OTP delivery | Server-side FCM token for the Android SMS-gateway device. It is not accepted from OTP request bodies. |
-| `ConnectionStrings__Redis` / `Redis__ConnectionString` | Production recommended | Redis connection string for distributed OTP and revocation data. |
-| `REDIS_URL` / `REDIS_TLS_URL` | Alternative Redis option | Supports Heroku-style `redis://` and `rediss://` URLs. |
-| `Redis__InstanceName` | No | Cache-key prefix; defaults to `Quraaa:Otp:`. |
-| `Otp__AllowInMemoryCacheInProduction` | No | Allows a non-shared, restart-volatile fallback. Keep `false` in real production. |
-| `Notifications__AllowTestEndpoint` | No | Enables the anonymous notification test endpoint outside Development. Keep `false` in production. |
-| `GoogleBooks__ApiKey` | No | API key used during external ISBN lookup. |
-| `GoogleBooks__BaseUrl` | No | Defaults to `https://www.googleapis.com/`. |
-| `BaseAPIURL` | Recommended | Prefix used when returning locally stored library image URLs. |
-| `Swagger__ServerUrl` | No | Overrides the server URL advertised in OpenAPI. |
-| `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD` | No | Creates or synchronizes the seeded administrator when both are set. |
+| Key                                                    | Required                 | Purpose / behavior                                                                                                   |
+| ------------------------------------------------------ | ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `ConnectionStrings__DefaultConnection`                 | Yes                      | Npgsql connection string for PostgreSQL.                                                                             |
+| `JWT_SECRET_KEY`                                       | Yes                      | Symmetric JWT signing key. Startup fails when it is missing.                                                         |
+| `JWT_ISSUER`                                           | No                       | Enables issuer validation when set.                                                                                  |
+| `JWT_AUDIENCE`                                         | No                       | Enables audience validation when set.                                                                                |
+| `JWT_DURATION_IN_MINUTES`                              | No                       | Access-token lifetime; defaults to `60`.                                                                             |
+| `Stripe__SecretKey`                                    | Yes                      | Must start with `sk_test_` or `sk_live_` according to `Stripe__IsTestMode`.                                          |
+| `Stripe__WebhookSecret`                                | Yes                      | Stripe endpoint signing secret; must start with `whsec_`.                                                            |
+| `Stripe__Currency`                                     | No                       | Must resolve to `usd`; the configured default is `usd`.                                                              |
+| `Stripe__IsTestMode`                                   | No                       | Selects test or live key validation; defaults to test mode.                                                          |
+| `GOOGLE_APPLICATION_CREDENTIALS`                       | One Firebase option      | Absolute path to a Firebase service-account file.                                                                    |
+| `Firebase__CredentialsPath`                            | One Firebase option      | Configured credential path; local appsettings uses `storage/firebase/quraa.json`.                                    |
+| `FIREBASE_CREDENTIALS_JSON`                            | One Firebase option      | Deployment-friendly full credential JSON; startup validates and writes it to the private Firebase storage directory. |
+| `OTP_DEVICE_TOKEN`                                     | For OTP delivery         | Server-side FCM token for the Android SMS-gateway device. It is not accepted from OTP request bodies.                |
+| `ConnectionStrings__Redis` / `Redis__ConnectionString` | Production recommended   | Redis connection string for distributed OTP and revocation data.                                                     |
+| `REDIS_URL` / `REDIS_TLS_URL`                          | Alternative Redis option | Supports Heroku-style `redis://` and `rediss://` URLs.                                                               |
+| `Redis__InstanceName`                                  | No                       | Cache-key prefix; defaults to `Quraaa:Otp:`.                                                                         |
+| `Otp__AllowInMemoryCacheInProduction`                  | No                       | Allows a non-shared, restart-volatile fallback. Keep `false` in real production.                                     |
+| `Notifications__AllowTestEndpoint`                     | No                       | Enables the anonymous notification test endpoint outside Development. Keep `false` in production.                    |
+| `GoogleBooks__ApiKey`                                  | No                       | API key used during external ISBN lookup.                                                                            |
+| `GoogleBooks__BaseUrl`                                 | No                       | Defaults to `https://www.googleapis.com/`.                                                                           |
+| `BaseAPIURL`                                           | Recommended              | Prefix used when returning locally stored library image URLs.                                                        |
+| `Swagger__ServerUrl`                                   | No                       | Overrides the server URL advertised in OpenAPI.                                                                      |
+| `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`                | No                       | Creates or synchronizes the seeded administrator when both are set.                                                  |
 
 The process also respects normal ASP.NET Core settings such as `ASPNETCORE_ENVIRONMENT`, `ASPNETCORE_URLS`, and command-line `--urls`.
 
@@ -244,89 +242,89 @@ The current checkout exposes 62 controller actions.
 
 ### Authentication and profiles
 
-| Method | Route | Access | Purpose |
-| --- | --- | --- | --- |
-| `POST` | `/api/auth/register` | Public | Start user registration and send its OTP. |
-| `POST` | `/api/auth/register/verify` | Public | Verify registration OTP and complete account creation. |
-| `POST` | `/api/auth/login` | Public | Authenticate a user and issue an access / refresh pair. |
-| `POST` | `/api/auth/library/login` | Public | Authenticate an approved library owner by library email and password. |
-| `POST` | `/api/auth/admin/login` | Public | Validate administrator credentials and send a login OTP. |
-| `POST` | `/api/auth/admin/login/verify` | Public | Verify the administrator OTP and issue tokens. |
-| `POST` | `/api/auth/refresh` | Refresh token | Rotate a valid refresh token and issue a new pair. |
-| `POST` | `/api/auth/logout` | Refresh token; bearer optional | Revoke the matching refresh-token family and optional current access token. |
-| `POST` | `/api/auth/reset-password` | Authenticated | Change the current account password and revoke its sessions. |
-| `POST` | `/api/auth/forgot-password` | Public | Send a password-recovery OTP. |
-| `POST` | `/api/auth/forgot-password/verify` | Public | Verify the recovery OTP and set a new password. |
-| `GET` | `/api/profile/me` | Authenticated | Get the current user profile. |
-| `PUT` | `/api/profile/me` | Authenticated | Update profile fields and interests. |
-| `POST` | `/api/profile/location` | Authenticated | Create or replace the current profile location. |
-| `DELETE` | `/api/profile/location` | Authenticated | Delete the current profile location. |
+| Method   | Route                              | Access                         | Purpose                                                                     |
+| -------- | ---------------------------------- | ------------------------------ | --------------------------------------------------------------------------- |
+| `POST`   | `/api/auth/register`               | Public                         | Start user registration and send its OTP.                                   |
+| `POST`   | `/api/auth/register/verify`        | Public                         | Verify registration OTP and complete account creation.                      |
+| `POST`   | `/api/auth/login`                  | Public                         | Authenticate a user and issue an access / refresh pair.                     |
+| `POST`   | `/api/auth/library/login`          | Public                         | Authenticate an approved library owner by library email and password.       |
+| `POST`   | `/api/auth/admin/login`            | Public                         | Validate administrator credentials and send a login OTP.                    |
+| `POST`   | `/api/auth/admin/login/verify`     | Public                         | Verify the administrator OTP and issue tokens.                              |
+| `POST`   | `/api/auth/refresh`                | Refresh token                  | Rotate a valid refresh token and issue a new pair.                          |
+| `POST`   | `/api/auth/logout`                 | Refresh token; bearer optional | Revoke the matching refresh-token family and optional current access token. |
+| `POST`   | `/api/auth/reset-password`         | Authenticated                  | Change the current account password and revoke its sessions.                |
+| `POST`   | `/api/auth/forgot-password`        | Public                         | Send a password-recovery OTP.                                               |
+| `POST`   | `/api/auth/forgot-password/verify` | Public                         | Verify the recovery OTP and set a new password.                             |
+| `GET`    | `/api/profile/me`                  | Authenticated                  | Get the current user profile.                                               |
+| `PUT`    | `/api/profile/me`                  | Authenticated                  | Update profile fields and interests.                                        |
+| `POST`   | `/api/profile/location`            | Authenticated                  | Create or replace the current profile location.                             |
+| `DELETE` | `/api/profile/location`            | Authenticated                  | Delete the current profile location.                                        |
 
 ### Catalog and discovery
 
-| Method | Route | Access | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/api/categories` | Public | List active categories. |
-| `GET` | `/api/categories/{categoryId}` | Public | Get one active category. |
-| `POST` | `/api/categories` | `Admin` | Create a category. |
-| `GET` | `/api/ebooks` | Public | Browse active digital listings. |
-| `GET` | `/api/books/most-popular` | Public | Browse ranked popular books. |
-| `GET` | `/api/books/recommended` | Authenticated | Browse interest- and language-based recommendations. |
-| `GET` | `/api/favorite-books` | Authenticated | List the current account's favorite books. |
-| `POST` | `/api/favorite-books/{bookId}` | Authenticated | Add a favorite. |
-| `DELETE` | `/api/favorite-books/{bookId}` | Authenticated | Remove a favorite. |
+| Method   | Route                          | Access        | Purpose                                              |
+| -------- | ------------------------------ | ------------- | ---------------------------------------------------- |
+| `GET`    | `/api/categories`              | Public        | List active categories.                              |
+| `GET`    | `/api/categories/{categoryId}` | Public        | Get one active category.                             |
+| `POST`   | `/api/categories`              | `Admin`       | Create a category.                                   |
+| `GET`    | `/api/ebooks`                  | Public        | Browse active digital listings.                      |
+| `GET`    | `/api/books/most-popular`      | Public        | Browse ranked popular books.                         |
+| `GET`    | `/api/books/recommended`       | Authenticated | Browse interest- and language-based recommendations. |
+| `GET`    | `/api/favorite-books`          | Authenticated | List the current account's favorite books.           |
+| `POST`   | `/api/favorite-books/{bookId}` | Authenticated | Add a favorite.                                      |
+| `DELETE` | `/api/favorite-books/{bookId}` | Authenticated | Remove a favorite.                                   |
 
 ### Libraries and listings
 
-| Method | Route | Access | Purpose |
-| --- | --- | --- | --- |
-| `POST` | `/api/libraries/register` | Authenticated | Submit a multipart library application. |
-| `GET` | `/api/libraries` | Public | Search and page approved libraries. |
-| `GET` | `/api/libraries/{libraryId}/books` | Public | Browse a library's listings with paging, search, and sorting. |
-| `GET` | `/api/libraries/my-profile` | `LibraryOwner` | Get the approved library owned by the caller. |
-| `GET` | `/api/libraries/requests` | `Admin` | Page and filter library applications. |
-| `PATCH` | `/api/libraries/{id}/approval-status` | `Admin` | Approve or reject a library application. |
-| `POST` | `/api/library-admin/listings` | `LibraryOwner` | Add a physical book by ISBN. |
-| `POST` | `/api/library-admin/listings/digital` | `LibraryOwner` | Upload a PDF and add a digital book by ISBN. |
-| `PUT` | `/api/library-admin/listings/{listingId}` | `LibraryOwner` | Update supplied listing fields. |
-| `GET` | `/api/library-admin/listings/me` | `LibraryOwner` | Page and filter the owner's library listings. |
-| `GET` | `/api/library-admin/listings/{listingId}` | `LibraryOwner` | Get listing, book, and category details. |
-| `DELETE` | `/api/library-admin/listings/{listingId}` | `LibraryOwner` | Mark an owned listing as removed. |
-| `PATCH` | `/api/library-admin/listings/{listingId}/activate` | `LibraryOwner` | Reactivate a removed listing. |
-| `GET` | `/api/listings/me` | `User` | Get physical listings created by the current user. |
-| `POST` | `/api/listings/me/physical` | `User` | Create a user-owned physical listing. |
+| Method   | Route                                              | Access         | Purpose                                                       |
+| -------- | -------------------------------------------------- | -------------- | ------------------------------------------------------------- |
+| `POST`   | `/api/libraries/register`                          | Authenticated  | Submit a multipart library application.                       |
+| `GET`    | `/api/libraries`                                   | Public         | Search and page approved libraries.                           |
+| `GET`    | `/api/libraries/{libraryId}/books`                 | Public         | Browse a library's listings with paging, search, and sorting. |
+| `GET`    | `/api/libraries/my-profile`                        | `LibraryOwner` | Get the approved library owned by the caller.                 |
+| `GET`    | `/api/libraries/requests`                          | `Admin`        | Page and filter library applications.                         |
+| `PATCH`  | `/api/libraries/{id}/approval-status`              | `Admin`        | Approve or reject a library application.                      |
+| `POST`   | `/api/library-admin/listings`                      | `LibraryOwner` | Add a physical book by ISBN.                                  |
+| `POST`   | `/api/library-admin/listings/digital`              | `LibraryOwner` | Upload a PDF and add a digital book by ISBN.                  |
+| `PUT`    | `/api/library-admin/listings/{listingId}`          | `LibraryOwner` | Update supplied listing fields.                               |
+| `GET`    | `/api/library-admin/listings/me`                   | `LibraryOwner` | Page and filter the owner's library listings.                 |
+| `GET`    | `/api/library-admin/listings/{listingId}`          | `LibraryOwner` | Get listing, book, and category details.                      |
+| `DELETE` | `/api/library-admin/listings/{listingId}`          | `LibraryOwner` | Mark an owned listing as removed.                             |
+| `PATCH`  | `/api/library-admin/listings/{listingId}/activate` | `LibraryOwner` | Reactivate a removed listing.                                 |
+| `GET`    | `/api/listings/me`                                 | `User`         | Get physical listings created by the current user.            |
+| `POST`   | `/api/listings/me/physical`                        | `User`         | Create a user-owned physical listing.                         |
 
 ### Cart, orders, payments, and fulfillment
 
-| Method | Route | Access | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/api/cart/me` | `User` | Get the current open cart, or an empty-cart response when none exists. |
-| `POST` | `/api/cart/items` | `User` | Add a listing to the cart. |
-| `PUT` | `/api/cart/items/{listingId}` | `User` | Change a cart item's quantity. |
-| `DELETE` | `/api/cart/items/{listingId}` | `User` | Remove a cart item. |
-| `DELETE` | `/api/cart/me` | `User` | Clear the open cart. |
-| `POST` | `/api/orders` | `User` | Create an order from the cart and open Stripe Checkout. |
-| `GET` | `/api/orders/me` | `User` | Page the buyer's orders. |
-| `GET` | `/api/orders/{orderId}` | `User` | Get buyer-visible order details. |
-| `PUT` | `/api/orders/{orderId}/shipping-location` | `User` | Update an eligible order's shipping coordinates. |
-| `POST` | `/api/orders/{orderId}/checkout-session` | `User` | Recover or create a checkout session for an eligible order. |
-| `POST` | `/api/orders/{orderId}/cancel` | `User` | Cancel an eligible order, optionally with a reason. |
-| `DELETE` | `/api/orders/{orderId}` | `User` | Archive an eligible order from buyer history. |
-| `GET` | `/api/orders/{orderId}/items/{orderItemId}/download` | `User` | Stream a purchased PDF after buyer and paid-order checks. |
-| `POST` | `/api/payments/stripe/webhook` | Signed Stripe event | Process supported Checkout Session events idempotently. |
-| `GET` | `/api/seller/orders` | `User` or `LibraryOwner` | Page paid physical order items sold by the caller. |
-| `POST` | `/api/seller/orders/{orderId}/items/{orderItemId}/processing` | `User` or `LibraryOwner` | Move an owned physical item to processing. |
-| `POST` | `/api/seller/orders/{orderId}/items/{orderItemId}/fulfilled` | `User` or `LibraryOwner` | Mark an owned physical item fulfilled. |
-| `GET` | `/api/purchases/me/buy-history` | `User` | Page the current user's purchase history. |
-| `GET` | `/api/purchases/me/sell-history` | `User` | Page the current user's sale history. |
+| Method   | Route                                                         | Access                   | Purpose                                                                |
+| -------- | ------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------- |
+| `GET`    | `/api/cart/me`                                                | `User`                   | Get the current open cart, or an empty-cart response when none exists. |
+| `POST`   | `/api/cart/items`                                             | `User`                   | Add a listing to the cart.                                             |
+| `PUT`    | `/api/cart/items/{listingId}`                                 | `User`                   | Change a cart item's quantity.                                         |
+| `DELETE` | `/api/cart/items/{listingId}`                                 | `User`                   | Remove a cart item.                                                    |
+| `DELETE` | `/api/cart/me`                                                | `User`                   | Clear the open cart.                                                   |
+| `POST`   | `/api/orders`                                                 | `User`                   | Create an order from the cart and open Stripe Checkout.                |
+| `GET`    | `/api/orders/me`                                              | `User`                   | Page the buyer's orders.                                               |
+| `GET`    | `/api/orders/{orderId}`                                       | `User`                   | Get buyer-visible order details.                                       |
+| `PUT`    | `/api/orders/{orderId}/shipping-location`                     | `User`                   | Update an eligible order's shipping coordinates.                       |
+| `POST`   | `/api/orders/{orderId}/checkout-session`                      | `User`                   | Recover or create a checkout session for an eligible order.            |
+| `POST`   | `/api/orders/{orderId}/cancel`                                | `User`                   | Cancel an eligible order, optionally with a reason.                    |
+| `DELETE` | `/api/orders/{orderId}`                                       | `User`                   | Archive an eligible order from buyer history.                          |
+| `GET`    | `/api/orders/{orderId}/items/{orderItemId}/download`          | `User`                   | Stream a purchased PDF after buyer and paid-order checks.              |
+| `POST`   | `/api/payments/stripe/webhook`                                | Signed Stripe event      | Process supported Checkout Session events idempotently.                |
+| `GET`    | `/api/seller/orders`                                          | `User` or `LibraryOwner` | Page paid physical order items sold by the caller.                     |
+| `POST`   | `/api/seller/orders/{orderId}/items/{orderItemId}/processing` | `User` or `LibraryOwner` | Move an owned physical item to processing.                             |
+| `POST`   | `/api/seller/orders/{orderId}/items/{orderItemId}/fulfilled`  | `User` or `LibraryOwner` | Mark an owned physical item fulfilled.                                 |
+| `GET`    | `/api/purchases/me/buy-history`                               | `User`                   | Page the current user's purchase history.                              |
+| `GET`    | `/api/purchases/me/sell-history`                              | `User`                   | Page the current user's sale history.                                  |
 
 ### OTP and notifications
 
-| Method | Route | Access | Purpose |
-| --- | --- | --- | --- |
-| `POST` | `/api/otp/send` | Public | Send a standalone OTP through the configured SMS gateway. |
-| `POST` | `/api/otp/verify` | Public | Verify a standalone OTP. |
-| `POST` | `/api/notifications/send` | Authenticated | Send an FCM notification. |
+| Method | Route                     | Access              | Purpose                                                        |
+| ------ | ------------------------- | ------------------- | -------------------------------------------------------------- |
+| `POST` | `/api/otp/send`           | Public              | Send a standalone OTP through the configured SMS gateway.      |
+| `POST` | `/api/otp/verify`         | Public              | Verify a standalone OTP.                                       |
+| `POST` | `/api/notifications/send` | Authenticated       | Send an FCM notification.                                      |
 | `POST` | `/api/notifications/test` | Public when enabled | Send a development/test notification; otherwise returns `404`. |
 
 ## Important workflows
@@ -442,4 +440,6 @@ Before deploying publicly:
 4. Run the Release build and inspect `git diff --check` before opening a pull request.
 5. Update this README and `AGENTS.md` when routes, configuration, startup behavior, or architecture change.
 
-No `LICENSE` file is currently included. Add an explicit license before redistributing the project outside its intended team or organization.
+## License
+
+QuraaaPlatform is licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file for details.
