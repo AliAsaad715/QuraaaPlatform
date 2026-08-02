@@ -10,8 +10,13 @@ namespace Quraaa.Application.Features.Books.Queries.GetRecommendedBooks
                 .NotEmpty().WithMessage("User id is required.");
 
             RuleFor(x => x.Language)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty().WithMessage("Language is required.")
-                .MaximumLength(20).WithMessage("Language must be 20 characters or fewer.");
+                .MaximumLength(20).WithMessage("Language must be 20 characters or fewer.")
+                .Must(language =>
+                    language.Equals("ar", StringComparison.OrdinalIgnoreCase) ||
+                    language.Equals("en", StringComparison.OrdinalIgnoreCase))
+                .WithMessage("Language must be either 'ar' or 'en'.");
 
             RuleFor(x => x.PageNumber)
                 .GreaterThanOrEqualTo(1).WithMessage("Page number must be at least 1.");

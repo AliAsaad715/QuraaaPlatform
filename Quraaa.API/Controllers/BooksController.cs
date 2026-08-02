@@ -18,6 +18,7 @@ namespace Quraaa.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetRecommendedBooks(
             [FromQuery] GetRecommendedBooksRequest request,
+            [FromHeader(Name = "Accept-Language")] string? acceptLanguage,
             CancellationToken cancellationToken = default)
         {
             if (!TryGetCurrentUserId(out var userId))
@@ -27,7 +28,7 @@ namespace Quraaa.API.Controllers
 
             var query = new GetRecommendedBooksQuery(
                 userId,
-                request.Language,
+                acceptLanguage?.Trim().ToLowerInvariant() ?? string.Empty,
                 request.PageNumber,
                 request.PageSize,
                 request.SearchTerm);

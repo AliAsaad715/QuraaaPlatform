@@ -134,6 +134,8 @@ namespace Quraaa.API.Controllers
         /// Updates the approval status of a library by only admin.
         /// </summary>
         /// <param name="id">The library identifier.</param>
+        /// <param name="command">The request containing the new approval status.</param>
+        /// <param name="cancellationToken">A token to cancel the operation.</param>
         /// <returns>Returns the result of the update operation.</returns>
         /// <response code="200">Approval status updated successfully.</response>
         /// <response code="400">The request is invalid.</response>

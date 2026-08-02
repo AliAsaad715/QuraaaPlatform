@@ -1058,7 +1058,7 @@ includeUnranked: default true; false excludes books with no purchases and no rat
 `GET /api/books/recommended` requires authentication and uses:
 
 ```text
-language: required, max 20 characters
+Accept-Language header: required and must contain only the single code `ar` or `en`; regional tags, weighted lists, wildcards, and other languages are rejected
 pageNumber: default 1
 pageSize: default 20, valid 1..100
 searchTerm: optional title/author search, max 100 characters
