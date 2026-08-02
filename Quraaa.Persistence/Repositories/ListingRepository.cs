@@ -132,6 +132,7 @@ namespace Quraaa.Persistence.Repositories
                     x.Listing.Price,
                     x.Listing.Stock,
                     x.Listing.Condition,
+                    x.Listing.Status,
                     new BookDetails(
                         x.Book.Id,
                         x.Book.Title,

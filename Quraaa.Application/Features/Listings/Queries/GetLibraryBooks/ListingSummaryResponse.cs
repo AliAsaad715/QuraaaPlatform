@@ -10,6 +10,7 @@ namespace Quraaa.Application.Features.Listings.Queries.GetLibraryBooks
         decimal Price,
         int? Stock,
         BookCondition? Condition,
+        ListingStatus? Status,
         BookDetails Book
     );
 }

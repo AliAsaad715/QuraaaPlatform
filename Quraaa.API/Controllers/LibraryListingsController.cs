@@ -1,9 +1,18 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.API.Controllers;
+using Quraaa.API.Requests.Files;
+using Quraaa.API.Requests.Listings;
+using Quraaa.Application.Features.Listings.Commands.AddDigitalBook;
 using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
+using Quraaa.Application.Features.Listings.Commands.RemoveListing;
+using Quraaa.Application.Features.Listings.Commands.ReactivateListing;
 using Quraaa.Application.Features.Listings.Commands.UpdateListing;
+using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Features.Listings.Queries.GetListingById;
+using Quraaa.Application.Features.Listings.Queries.GetMyLibraryListings;
+using Quraaa.Application.Shared.Results;
+using Quraaa.API.Requests.Libraries;
 
 namespace Quraaa.API.Controllers
 {
@@ -53,6 +62,44 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
+        // ── POST /api/library-admin/listings/digital ─────────────────────────
+        /// <summary>
+        /// Adds a digital book to the current user's library.
+        /// </summary>
+        /// <remarks>
+        /// The uploaded digital asset must be a PDF file.
+        /// ISBN lookup resolution order:
+        /// <list type="number">
+        /// <item><description>Local Books table (by ISBN).</description></item>
+        /// <item><description>Google Books API.</description></item>
+        /// </list>
+        /// </remarks>
+        [HttpPost("digital")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(typeof(AddDigitalBookResponse), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> AddDigitalBook(
+            [FromForm] AddDigitalBookRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var command = new AddDigitalBookCommand
+            {
+                RequestingUserId = userId,
+                Price = request.Price,
+                Isbn = request.Isbn,
+                DigitalAsset = new FormFileUploadedFile(request.DigitalAsset)
+            };
+
+            var result = await Mediator.Send(command, cancellationToken);
+            return HandleResult(result);
+        }
+
         // ── PUT /api/library-admin/listings/{listingId} ───────────────────────
         /// <summary>
         /// Update price, stock, and/or condition for a listing.
@@ -79,6 +126,92 @@ namespace Quraaa.API.Controllers
                     ListingId = listingId,
                     RequestingUserId = userId
                 },
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
+        // ── GET /api/library-admin/listings/me ───────────────────────────────
+        /// <summary>
+        /// Get a paged list of listings for the authenticated library owner's approved library.
+        /// </summary>
+        /// <remarks>
+        /// The response includes <c>Status</c> so frontend clients can render listing state.
+        /// Supported values are <c>Active = 1</c>, <c>OutOfStock = 2</c>, and <c>Removed = 4</c>.
+        /// </remarks>
+        [HttpGet("me")]
+        [ProducesResponseType(typeof(PagedResult<ListingSummaryResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetMyListings(
+            [FromQuery] GetLibraryBooksRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var query = new GetMyLibraryListingsQuery(
+                userId,
+                request.SearchTerm,
+                request.SortBy,
+                request.SortDescending,
+                request.Status)
+            {
+                PageNumber = request.PageNumber,
+                PageSize = request.PageSize
+            };
+
+            var result = await Mediator.Send(query, cancellationToken);
+            return HandleResult(result);
+        }
+
+        // ── DELETE /api/library-admin/listings/{listingId} ───────────────────
+        /// <summary>
+        /// Remove a listing from the authenticated library owner's approved library.
+        /// </summary>
+        [HttpDelete("{listingId:guid}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> RemoveListing(
+            [FromRoute] Guid listingId,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                new RemoveListingCommand(userId, listingId),
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
+        // ── PATCH /api/library-admin/listings/{listingId}/activate ─────────────
+        /// <summary>
+        /// Reactivate a previously removed listing owned by the authenticated library.
+        /// </summary>
+        [HttpPatch("{listingId:guid}/activate")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> ReactivateListing(
+            [FromRoute] Guid listingId,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                new ReactivateListingCommand(userId, listingId),
                 cancellationToken);
 
             return HandleResult(result);

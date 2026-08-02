@@ -64,6 +64,14 @@ namespace Quraaa.API.Controllers
                     detail = "Requested resource was not found."
                 }),
 
+                // 401 Unauthorized
+                unauthorized => StatusCode(StatusCodes.Status401Unauthorized, new
+                {
+                    type = "Unauthorized",
+                    title = "Authentication Failed",
+                    detail = "Authentication credentials are invalid, expired, or revoked."
+                }),
+
                 // 403 Forbidden
                 forbidden => StatusCode(StatusCodes.Status403Forbidden, new
                 {
@@ -137,6 +145,14 @@ namespace Quraaa.API.Controllers
                     type = "NotFound",
                     title = "Resource Not Found",
                     detail = "Requested resource was not found."
+                }),
+
+                // 401 Unauthorized
+                unauthorized => StatusCode(StatusCodes.Status401Unauthorized, new
+                {
+                    type = "Unauthorized",
+                    title = "Authentication Failed",
+                    detail = "Authentication credentials are invalid, expired, or revoked."
                 }),
 
                 // 403 Forbidden

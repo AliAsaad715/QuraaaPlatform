@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using Quraaa.Application.Features.Authentication.Commands.AdminLogin;
 using Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin;
 using Quraaa.Application.Features.Authentication.Commands.Login;
+using Quraaa.Application.Features.Authentication.Commands.Logout;
+using Quraaa.Application.Features.Authentication.Commands.RefreshToken;
 using Quraaa.API.Requests.Authentication;
 using Quraaa.Application.Features.Authentication.Commands.Register;
 using Quraaa.Application.Features.Authentication.Commands.ResetPassword;
@@ -11,6 +13,9 @@ using Quraaa.Application.Features.Authentication.Commands.ResetForgotPassword;
 using Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOtp;
 using Quraaa.Application.Features.Authentication.Commands.VerifyRegisterOtp;
 using Quraaa.Application.Features.Authentication.Common;
+using System.Globalization;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 
 namespace Quraaa.API.Controllers
 {
@@ -58,6 +63,57 @@ namespace Quraaa.API.Controllers
         public async Task<IActionResult> Login([FromBody] LoginCommand command)
         {
             var result = await Mediator.Send(command);
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Revokes a user, admin, or library-owner session using its refresh token.
+        /// </summary>
+        /// <remarks>
+        /// A valid bearer token is optional. When present, its access-token id is
+        /// also revoked; an expired bearer token does not prevent refresh-token logout.
+        /// </remarks>
+        [AllowAnonymous]
+        [HttpPost("logout")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> Logout(
+            [FromBody] LogoutRequest request,
+            CancellationToken cancellationToken)
+        {
+            string? tokenId = null;
+            DateTimeOffset? expiresAt = null;
+
+            if (User.Identity?.IsAuthenticated == true
+                && TryGetCurrentAccessToken(out var currentTokenId, out var currentExpiresAt))
+            {
+                tokenId = currentTokenId;
+                expiresAt = currentExpiresAt;
+            }
+
+            var result = await Mediator.Send(
+                new LogoutCommand(request.RefreshToken, tokenId, expiresAt),
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Exchanges a valid refresh token for a new access/refresh token pair.
+        /// </summary>
+        [AllowAnonymous]
+        [HttpPost("refresh")]
+        [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> RefreshToken(
+            [FromBody] RefreshTokenRequest request,
+            CancellationToken cancellationToken)
+        {
+            var result = await Mediator.Send(
+                new RefreshTokenCommand(request.RefreshToken),
+                cancellationToken);
+
             return HandleResult(result);
         }
 
@@ -179,6 +235,48 @@ namespace Quraaa.API.Controllers
         private string? GetClientIpAddress()
         {
             return HttpContext.Connection.RemoteIpAddress?.ToString();
+        }
+
+        private bool TryGetCurrentAccessToken(
+            out string tokenId,
+            out DateTimeOffset expiresAt)
+        {
+            tokenId = User.FindFirstValue(JwtRegisteredClaimNames.Jti)
+                ?? string.Empty;
+
+            var expirationValue = User.FindFirstValue(JwtRegisteredClaimNames.Exp)
+                ?? User.FindFirstValue(ClaimTypes.Expiration);
+
+            if (string.IsNullOrWhiteSpace(tokenId)
+                || string.IsNullOrWhiteSpace(expirationValue))
+            {
+                expiresAt = default;
+                return false;
+            }
+
+            if (long.TryParse(
+                    expirationValue,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var unixTimeSeconds))
+            {
+                try
+                {
+                    expiresAt = DateTimeOffset.FromUnixTimeSeconds(unixTimeSeconds);
+                    return true;
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    expiresAt = default;
+                    return false;
+                }
+            }
+
+            return DateTimeOffset.TryParse(
+                expirationValue,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out expiresAt);
         }
     }
 }

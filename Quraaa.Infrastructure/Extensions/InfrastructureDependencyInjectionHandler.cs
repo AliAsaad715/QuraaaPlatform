@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Notifications.Interfaces;
@@ -69,6 +70,7 @@ namespace Quraaa.Infrastructure.Extensions
                 serviceProvider => serviceProvider.GetRequiredService<StripePaymentService>());
 
             services.AddScoped<IOtpCacheService, OtpCacheService>();
+            services.AddScoped<IAccessTokenRevocationService, AccessTokenRevocationService>();
             services.AddScoped<IFirebaseSmsGateway, FirebaseSmsGateway>();
             services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
             services.AddHttpClient<IBookMetadataService, GoogleBooksService>(client =>

@@ -2,6 +2,7 @@ using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.Library.Enums;
+using Quraaa.Domain.Marketplace.Enums;
 
 namespace Quraaa.Application.Features.Libraries.Interfaces
 {
@@ -24,6 +25,7 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
             string? searchTerm = null,
             string? sortBy = null,
             bool sortDescending = false,
+            ListingStatus? status = null,
             CancellationToken cancellationToken = default);
         Task<bool> ExistsByIdAsync(
             Guid libraryId,
