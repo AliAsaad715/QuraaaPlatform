@@ -73,9 +73,9 @@ namespace Quraaa.Infrastructure.Extensions
             services.AddScoped<IAccessTokenRevocationService, AccessTokenRevocationService>();
             services.AddScoped<IFirebaseSmsGateway, FirebaseSmsGateway>();
             services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
-            services.AddHttpClient<IBookMetadataService, GoogleBooksService>(client =>
+            services.AddHttpClient<IBookMetadataService, OpenLibraryService>(client =>
             {
-                client.BaseAddress = new Uri(configuration["GoogleBooks:BaseUrl"] ?? "https://www.googleapis.com/");
+                client.BaseAddress = new Uri(configuration["OpenLibrary:BaseUrl"] ?? "https://openlibrary.org/");
                 client.Timeout = TimeSpan.FromSeconds(10);
                 client.DefaultRequestHeaders.Add("User-Agent", "QuraaaPlatformApp/1.0");
             });
