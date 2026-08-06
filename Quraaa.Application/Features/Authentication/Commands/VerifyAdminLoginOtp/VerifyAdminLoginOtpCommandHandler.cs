@@ -65,7 +65,11 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
 
                 if (!OtpCodesMatch(cachedOtp, request.OtpCode))
                 {
-                    await RecordFailedAttemptAsync(formattedPhone, clientTargetKey, cancellationToken);
+                    await RecordFailedAttemptAsync(
+                        formattedPhone,
+                        clientTargetKey,
+                        cachedOtp,
+                        CancellationToken.None);
                     throw new ApplicationBusinessException(InvalidAdminVerificationMessage);
                 }
 
@@ -74,10 +78,20 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
                 var isAdminIdentity = identity is not null
                     && await _identityService.IsInRoleAsync(identity.UserId, Role.Admin.ToString());
 
+                var consumed = await _otpCacheService.TryConsumeOtpAsync(
+                    formattedPhone,
+                    cachedOtp,
+                    OtpKeyPrefix,
+                    cancellationToken);
+
+                if (!consumed)
+                {
+                    throw new ApplicationBusinessException(InvalidAdminVerificationMessage);
+                }
+
                 if (identity is null || adminProfile?.Role != Role.Admin || !isAdminIdentity)
                 {
-                    await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-                    await ClearVerificationStateAsync(formattedPhone, clientTargetKey, cancellationToken);
+                    await ClearVerificationStateAsync(formattedPhone, clientTargetKey, CancellationToken.None);
                     throw new ApplicationBusinessException(InvalidAdminVerificationMessage);
                 }
 
@@ -90,8 +104,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
                     }
                 }
 
-                await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-                await ClearVerificationStateAsync(formattedPhone, clientTargetKey, cancellationToken);
+                await ClearVerificationStateAsync(formattedPhone, clientTargetKey, CancellationToken.None);
 
                 return await _identityService.GenerateAuthTokensAsync(identity.UserId, formattedPhone);
             }, "Admin login verified successfully");
@@ -100,6 +113,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
         private async Task RecordFailedAttemptAsync(
             string formattedPhone,
             string? clientTargetKey,
+            string inspectedOtp,
             CancellationToken cancellationToken)
         {
             var phoneAttempts = await _otpCacheService.IncrementFailedVerificationAttemptAsync(
@@ -123,7 +137,14 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
                 return;
             }
 
-            await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+            // Invalidate the inspected OTP if it is still current. A concurrent
+            // resend must not prevent the threshold lockout below.
+            await _otpCacheService.TryConsumeOtpAsync(
+                formattedPhone,
+                inspectedOtp,
+                OtpKeyPrefix,
+                cancellationToken);
+
             await _otpCacheService.RecordVerificationLockoutAsync(formattedPhone, VerificationLockout, OtpKeyPrefix, cancellationToken);
             await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
 
@@ -155,13 +176,22 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
             string? clientTargetKey,
             CancellationToken cancellationToken)
         {
-            await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-            await _otpCacheService.ClearVerificationLockoutAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-
-            if (clientTargetKey is not null)
+            try
             {
-                await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
-                await _otpCacheService.ClearVerificationLockoutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+                await _otpCacheService.ClearVerificationLockoutAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+
+                if (clientTargetKey is not null)
+                {
+                    await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                    await _otpCacheService.ClearVerificationLockoutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                }
+            }
+            catch (Exception exception)
+            {
+                Logger.LogWarning(
+                    exception,
+                    "Failed to clear admin-login OTP verification state after consuming the code.");
             }
         }
 

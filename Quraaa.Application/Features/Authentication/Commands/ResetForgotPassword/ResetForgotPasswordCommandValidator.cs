@@ -24,7 +24,8 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
                     .WithMessage($"New password must be at least {AuthenticationPasswordPolicy.MinimumLength} characters long.")
                 .MaximumLength(AuthenticationPasswordPolicy.MaximumLength)
                     .WithMessage($"New password must not exceed {AuthenticationPasswordPolicy.MaximumLength} characters.")
-                .Matches(@"[0-9]").WithMessage("New password must contain at least one digit.");
+                .Must(AuthenticationPasswordPolicy.MeetsComplexityRequirements)
+                    .WithMessage("New password must contain an uppercase letter, a lowercase letter, a digit, and a non-alphanumeric character.");
         }
 
         private bool BeAValidInternationalPhoneNumber(string phoneNumber)

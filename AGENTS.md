@@ -681,7 +681,7 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 - Ebook PDF paths are omitted from public ebook responses. `/uploads/books/*.pdf` is blocked, and paid buyers receive PDFs only through the authenticated order-item download route.
 - Firebase service-account credentials and `.env` secrets must never be committed.
 - `Notifications:AllowTestEndpoint` is enabled in `appsettings.json` and `appsettings.Development.json`. Disable it in production unless you intend to allow unauthenticated test notification dispatch.
-- `Otp:AllowInMemoryCacheInProduction` is `true` in the base settings.
+- `Otp:AllowInMemoryCacheInProduction` is `false` in the base settings; production startup fails when Redis is missing.
 - HTTPS redirection and forwarded headers are enabled in the middleware pipeline. Forwarded headers trust loopback proxies by default; configure explicit arrays under `ForwardedHeaders:KnownProxies` and/or `ForwardedHeaders:KnownNetworks` when deploying behind another reverse proxy.
 - `AdminSeeder` creates or synchronizes the configured admin Identity/profile, role, confirmed-phone state, and password on startup. Ensure `ADMIN_PHONE_NUMBER` and `ADMIN_PASSWORD` are strong and kept secret; changing the configured password resets the seeded admin password.
 
@@ -835,7 +835,7 @@ POST   /api/notifications/test                    anonymous when enabled
   "firstName": "Ali",
   "lastName": "Hassan",
   "phoneNumber": "+9639XXXXXXXX",
-  "password": "abc123",
+  "password": "User@12345",
   "gender": 1,
   "dateOfBirth": "2000-01-01",
   "interests": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"]
@@ -943,7 +943,7 @@ Password reset request body maps to `ResetPasswordRequest`; the controller creat
 ```json
 {
   "oldPassword": "oldPass123",
-  "newPassword": "newPass123"
+  "newPassword": "New@Pass456"
 }
 ```
 
@@ -961,7 +961,7 @@ Forgot-password verify request body:
 {
   "phoneNumber": "+9647XXXXXXXXX",
   "otpCode": "123456",
-  "newPassword": "newPass123"
+  "newPassword": "New@Pass456"
 }
 ```
 
@@ -1335,7 +1335,7 @@ Validation rules:
 - `FirstName`: required, max 50 characters.
 - `LastName`: required, max 50 characters.
 - `PhoneNumber`: required, must start with `+963`, and must be valid for the Syrian `SY` region according to libphonenumber.
-- `Password`: required, 6 through 256 characters, must contain at least one digit.
+- `Password`: required, 6 through 256 characters, with uppercase, lowercase, digit, and non-alphanumeric characters.
 - `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
 - `Gender`: must be a valid enum value.
 - `Interests`: required and not empty; each value must be an existing `CategoryAggregate.Id`.
@@ -1361,8 +1361,8 @@ HTTP POST /api/auth/register
   -> creates the new ASP.NET Identity user, User role membership, UserAggregate, and interests inside one database transaction
   -> commits before generating or sending an OTP; a failed persistence write leaves no partial Identity/profile account
   -> handler stores an owner-tagged OTP in IDistributedCache under "register-otp" keys
-  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp)
-  -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends an FCM data message to the gateway device token
+  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp, purpose)
+  -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends a high-priority FCM data message with a 45-second dispatch TTL plus request/purpose/expiry metadata
   -> Success, no tokens yet
 
 HTTP POST /api/auth/register/verify
@@ -1375,12 +1375,12 @@ HTTP POST /api/auth/register/verify
   -> BaseApplicationService validates VerifyRegisterOtpCommand
   -> IPhoneService.FormatToE164(phone)
   -> handler reads OTP from IDistributedCache under the "register-otp" namespace
-  -> handler compares code using fixed-time comparison
+  -> handler compares in fixed time and atomically consumes only the inspected OTP generation
   -> failed attempts are tracked; 5 failures in 5 minutes trigger a 5-minute lockout
   -> a valid OTP can clear a legacy incomplete regular registration only when it has no profile, or has a matching User profile but no Identity role; privileged/mixed-role identities are never auto-repaired
   -> requires the pending profile domain role and exact Identity role set to both be User
   -> IIdentityService.ConfirmPhoneNumberAsync(userId) sets PhoneNumberConfirmed = true
-  -> success clears OTP and verification state under the "register-otp" namespace
+  -> success clears verification state after the OTP has been atomically consumed under the "register-otp" namespace
   -> IIdentityService.GenerateRegularUserAuthTokensAsync(id, phone)
   -> AuthResponse
 ```
@@ -1404,7 +1404,7 @@ Important registration details:
 - `FirstName`: required, max 50 characters.
 - `LastName`: required, max 50 characters.
 - `PhoneNumber`: required, must start with `+963`, and must be valid for the Syrian `SY` region according to libphonenumber.
-- `Password`: required, 6 through 256 characters, must contain at least one digit.
+- `Password`: required, 6 through 256 characters, with uppercase, lowercase, digit, and non-alphanumeric characters.
 - `DateOfBirth`: required, must be older than or equal to 5 years and younger than 100 years based on UTC date.
 - `Gender`: must be a valid enum value.
 - `Interests`: required and not empty.
@@ -1535,7 +1535,7 @@ POST /api/auth/admin/login
   -> validate/normalize phone and password
   -> enforce credential lockout by phone and client IP
   -> require matching admin profile plus Identity Admin role
-  -> generate/store five-minute OTP in `admin-login-otp`
+  -> generate/store ten-minute OTP in `admin-login-otp`
   -> throttle sends for 60 seconds and dispatch through FirebaseSmsGateway
 
 POST /api/auth/admin/login/verify
@@ -1592,8 +1592,8 @@ Authorization: Bearer <access-token>
 Validation rules:
 
 - `UserId`: required on the command, sourced from the authenticated JWT rather than the request body.
-- `OldPassword`: required string, min 8 characters, max 64 characters.
-- `NewPassword`: required string, min 8 characters, max 64 characters, must be different from `OldPassword`.
+- `OldPassword`: required string, 6 through 256 characters.
+- `NewPassword`: required string, 6 through 256 characters, with uppercase, lowercase, digit, and non-alphanumeric characters; must be different from `OldPassword`.
 
 Flow:
 
@@ -1658,7 +1658,7 @@ Validation rules:
 - `PhoneNumber`: required, must start with `+`, must be valid according to libphonenumber.
 - `OTP_DEVICE_TOKEN`: required server-side configuration read by `FirebaseSmsGateway`; not accepted in the request body.
 - `OtpCode`: required, exactly 6 digits.
-- `NewPassword`: required, min 8 characters, max 64 characters, must contain at least one digit.
+- `NewPassword`: required, 6 through 256 characters, with uppercase, lowercase, digit, and non-alphanumeric characters.
 
 Flow:
 
@@ -1675,8 +1675,8 @@ HTTP POST /api/auth/forgot-password
   -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
   -> if user is null, records the request lockout and returns generic success without sending an OTP to avoid leaking registration status
   -> handler generates OTP and stores it in IDistributedCache under the `forgot-password-otp` namespace
-  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp)
-  -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends an FCM data message to the gateway device token
+  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp, "forgot-password")
+  -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends a high-priority FCM data message with a 45-second dispatch TTL plus request/purpose/expiry metadata
 
 HTTP POST /api/auth/forgot-password/verify
   -> AuthController.VerifyForgotPassword(body request)
@@ -1686,9 +1686,9 @@ HTTP POST /api/auth/forgot-password/verify
   -> ResetForgotPasswordCommandHandler.Handle(...)
   -> BaseApplicationService validates ResetForgotPasswordCommand
   -> IPhoneService.FormatToE164(phone)
-  -> handler reads OTP from IDistributedCache under the `forgot-password-otp` namespace and verifies with fixed-time comparison
+  -> handler reads the OTP, compares in fixed time, and atomically consumes only that generation under the `forgot-password-otp` namespace
   -> failed attempts are tracked; 5 failures in 5 minutes trigger a 5-minute lockout
-  -> success clears OTP and verification state under the `forgot-password-otp` namespace
+  -> success clears verification state after the OTP has been atomically consumed under the `forgot-password-otp` namespace
   -> IUserRepository.GetUserByPhoneNumberAsync(formattedPhone)
   -> handler throws NotFoundException if the user profile is null
   -> IIdentityService.ResetPasswordAsync(user.Id, newPassword)
@@ -2254,11 +2254,12 @@ AllowAnonymous
 OTP behavior:
 
 - The API generates a 6-digit OTP with `RandomNumberGenerator`.
-- OTPs expire after 5 minutes.
+- OTPs expire after 10 minutes.
 - Send requests are throttled for 60 seconds per normalized phone number and client IP.
+- Definite pre-dispatch failures and permanent FCM device-token rejections clear only the owner-matched OTP and request leases; ambiguous dispatch outcomes retain them.
 - Verification allows up to 5 failed attempts in a 5-minute window.
-- After too many invalid attempts, the OTP is cleared and verification is locked for 5 minutes.
-- Successful verification clears the OTP and failed-attempt state.
+- After too many invalid attempts, the inspected OTP is consumed when it is still current, and verification is locked for 5 minutes even if a concurrent resend replaced it.
+- Successful verification atomically consumes one OTP and then clears failed-attempt state.
 - The standalone OTP flow stores its state under the `standalone-otp` cache namespace, so it never collides with registration (`register-otp`) or forgot-password (`forgot-password-otp`) OTP state.
 - The standalone OTP feature does not mark a user or phone number as verified and is not used by login. Login only uses the registration OTP namespace when valid credentials belong to an unverified pending registration.
 
@@ -2273,8 +2274,8 @@ HTTP POST /api/otp/send
   -> IPhoneService.FormatToE164(phone)
   -> IOtpCacheService checks send and verification lockouts
   -> handler generates OTP and stores it in IDistributedCache under the `standalone-otp` namespace
-  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp)
-  -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends an FCM data message to the gateway device token
+  -> IFirebaseSmsGateway.SendSmsRequestAsync(phone, otp, "standalone")
+  -> FirebaseSmsGateway reads OTP_DEVICE_TOKEN and sends a high-priority FCM data message with a 45-second dispatch TTL plus request/purpose/expiry metadata
 
 HTTP POST /api/otp/verify
   -> OtpController.VerifyOtp(body request)
@@ -2282,8 +2283,8 @@ HTTP POST /api/otp/verify
   -> VerifyOtpCommandHandler.Handle(...)
   -> BaseApplicationService validates VerifyOtpCommand
   -> handler reads OTP from IDistributedCache under the `standalone-otp` namespace
-  -> handler compares code using fixed-time comparison
-  -> success clears OTP state; invalid attempts update failed-attempt counters
+  -> handler compares in fixed time and atomically consumes only the inspected OTP generation
+  -> success clears failed-attempt state; invalid attempts update failed-attempt counters
 ```
 
 ### Notifications Flow

@@ -23,6 +23,8 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetPassword
                     .WithMessage($"New password must be at least {AuthenticationPasswordPolicy.MinimumLength} characters long.")
                 .MaximumLength(AuthenticationPasswordPolicy.MaximumLength)
                     .WithMessage($"New password must not exceed {AuthenticationPasswordPolicy.MaximumLength} characters.")
+                .Must(AuthenticationPasswordPolicy.MeetsComplexityRequirements)
+                    .WithMessage("New password must contain an uppercase letter, a lowercase letter, a digit, and a non-alphanumeric character.")
                 .NotEqual(x => x.OldPassword).WithMessage("New password must be different from old password.");
         }
     }
