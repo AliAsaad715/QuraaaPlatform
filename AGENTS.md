@@ -510,8 +510,8 @@ OTP cache configuration:
 
 - Redis is preferred when any of `ConnectionStrings:Redis`, `Redis:ConnectionString`, `REDIS_URL`, or `REDIS_TLS_URL` is configured.
 - Heroku-style `redis://...` and `rediss://...` URLs are supported.
-- If Redis is missing, in-memory cache is allowed only in Development or when `Otp:AllowInMemoryCacheInProduction=true`.
-- `Otp:AllowInMemoryCacheInProduction=true` is for temporary testing only; OTPs are lost on dyno/app restart and are not shared across multiple instances.
+- Base `Quraaa.API/appsettings.json` sets `Otp:AllowInMemoryCacheInProduction=false`; it is intentionally omitted from `.env.example`, and no `.env` entry is required.
+- If Redis is missing, in-memory cache is allowed only in Development or when another configuration source explicitly overrides `Otp:AllowInMemoryCacheInProduction=true`. Such an override is for temporary testing only because OTPs are lost on restart and are not shared across multiple instances.
 
 `OTP_DEVICE_TOKEN` is the FCM registration token for the secondary Android SMS gateway app that has SMS permission. It is server-side configuration and is not accepted in the `POST /api/otp/send` request body.
 
