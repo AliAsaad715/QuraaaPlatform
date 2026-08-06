@@ -16,8 +16,11 @@ namespace Quraaa.Infrastructure.Services
             "return current";
 
         private const string CompareAndDeleteScript =
-            "if redis.call('GET', KEYS[1]) == ARGV[1] then " +
-            "return redis.call('DEL', KEYS[1]) else return 0 end";
+            "local current = redis.pcall('GET', KEYS[1]) " +
+            "if type(current) == 'table' and current.err then " +
+            "current = redis.call('HGET', KEYS[1], 'data') end " +
+            "if current == ARGV[1] then return redis.call('DEL', KEYS[1]) " +
+            "else return 0 end";
 
         private const string SetOwnedOtpScript =
             "if redis.call('GET', KEYS[1]) == ARGV[1] then " +
@@ -61,26 +64,6 @@ namespace Quraaa.Infrastructure.Services
         private static string GetVerificationLockoutKey(string targetKey, string keyPrefix) =>
             $"{keyPrefix}:otp_verify_lockout:{targetKey}";
 
-        public async Task SetOtpAsync(string phoneNumber, string otpCode, TimeSpan expiration, string keyPrefix, CancellationToken cancellationToken = default)
-        {
-            if (_redis is not null)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await _redis.GetDatabase().StringSetAsync(
-                    GetRedisKey(GetOtpKey(phoneNumber, keyPrefix)),
-                    otpCode,
-                    expiration);
-                return;
-            }
-
-            var options = new DistributedCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = expiration
-            };
-
-            await _cache.SetStringAsync(GetOtpKey(phoneNumber, keyPrefix), otpCode, options, cancellationToken);
-        }
-
         public async Task<string?> GetOtpAsync(string phoneNumber, string keyPrefix, CancellationToken cancellationToken = default)
         {
             var otpKey = GetOtpKey(phoneNumber, keyPrefix);
@@ -121,46 +104,81 @@ namespace Quraaa.Infrastructure.Services
             return DecodeOtpValue(cachedValue);
         }
 
-        public async Task ClearOtpAsync(string phoneNumber, string keyPrefix, CancellationToken cancellationToken = default)
+        public async Task<bool> TryConsumeOtpAsync(
+            string phoneNumber,
+            string expectedOtpCode,
+            string keyPrefix,
+            CancellationToken cancellationToken = default)
         {
             var otpKey = GetOtpKey(phoneNumber, keyPrefix);
             var taggedOtpMarkerKey = GetTaggedOtpMarkerKey(phoneNumber, keyPrefix);
+
             if (_redis is not null)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var database = _redis.GetDatabase();
-                await database.KeyDeleteAsync(GetRedisKey(otpKey));
-                await database.KeyDeleteAsync(
-                    new RedisKey[]
-                    {
-                        GetOtpRedisKey(otpKey, phoneNumber, keyPrefix),
-                        GetOtpRedisKey(taggedOtpMarkerKey, phoneNumber, keyPrefix)
-                    });
-                return;
+                var taggedRedisKey = GetOtpRedisKey(otpKey, phoneNumber, keyPrefix);
+                var cachedValue = await GetRedisOtpValueAsync(
+                    taggedRedisKey,
+                    distributedCacheKey: null,
+                    cancellationToken);
+
+                if (!string.IsNullOrEmpty(cachedValue))
+                {
+                    return OtpValuesMatch(cachedValue, expectedOtpCode)
+                        && await CompareAndDeleteAsync(
+                            otpKey,
+                            cachedValue,
+                            cancellationToken,
+                            redisKey: taggedRedisKey);
+                }
+
+                var hasTaggedOtpMarker = await _redis.GetDatabase().KeyExistsAsync(
+                    GetOtpRedisKey(taggedOtpMarkerKey, phoneNumber, keyPrefix));
+
+                if (hasTaggedOtpMarker)
+                {
+                    return false;
+                }
+
+                // Consume legacy untagged entries during their short remaining
+                // lifetime after deployment. Compare-and-delete supports both
+                // direct Redis strings and RedisCache hash entries.
+                var legacyRedisKey = GetRedisKey(otpKey);
+                cachedValue = await GetRedisOtpValueAsync(
+                    legacyRedisKey,
+                    otpKey,
+                    cancellationToken);
+
+                return !string.IsNullOrEmpty(cachedValue)
+                    && OtpValuesMatch(cachedValue, expectedOtpCode)
+                    && await CompareAndDeleteAsync(
+                        otpKey,
+                        cachedValue,
+                        cancellationToken,
+                        redisKey: legacyRedisKey);
             }
 
-            await _cache.RemoveAsync(otpKey, cancellationToken);
-        }
-
-        public async Task<bool> HasRecentOtpRequestAsync(string phoneNumber, TimeSpan lockoutPeriod, string keyPrefix, CancellationToken cancellationToken = default)
-        {
-            var lockout = await _cache.GetStringAsync(GetLockoutKey(phoneNumber, keyPrefix), cancellationToken);
-            return !string.IsNullOrEmpty(lockout);
-        }
-
-        public async Task RecordOtpRequestAsync(string phoneNumber, TimeSpan lockoutPeriod, string keyPrefix, CancellationToken cancellationToken = default)
-        {
-            var options = new DistributedCacheEntryOptions
+            // Use the same stripe as TrySetOwnedOtpAsync so a resend cannot
+            // replace the value between this comparison and removal.
+            var entryLock = GetLockStripe(
+                CacheEntryLocks,
+                GetLockoutKey(phoneNumber, keyPrefix));
+            await entryLock.WaitAsync(cancellationToken);
+            try
             {
-                AbsoluteExpirationRelativeToNow = lockoutPeriod
-            };
+                var cachedValue = await _cache.GetStringAsync(otpKey, cancellationToken);
+                if (!OtpValuesMatch(cachedValue, expectedOtpCode))
+                {
+                    return false;
+                }
 
-            await _cache.SetStringAsync(GetLockoutKey(phoneNumber, keyPrefix), "1", options, cancellationToken);
-        }
-
-        public async Task ClearOtpRequestAsync(string phoneNumber, string keyPrefix, CancellationToken cancellationToken = default)
-        {
-            await _cache.RemoveAsync(GetLockoutKey(phoneNumber, keyPrefix), cancellationToken);
+                await _cache.RemoveAsync(otpKey, cancellationToken);
+                return true;
+            }
+            finally
+            {
+                entryLock.Release();
+            }
         }
 
         public async Task<bool> TryAcquireOtpRequestAsync(
@@ -373,7 +391,7 @@ namespace Quraaa.Infrastructure.Services
             return checked((int)(long)result);
         }
 
-        private async Task CompareAndDeleteAsync(
+        private async Task<bool> CompareAndDeleteAsync(
             string key,
             string expectedValue,
             CancellationToken cancellationToken,
@@ -383,11 +401,11 @@ namespace Quraaa.Infrastructure.Services
             if (_redis is not null)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await _redis.GetDatabase().ScriptEvaluateAsync(
+                var result = await _redis.GetDatabase().ScriptEvaluateAsync(
                     CompareAndDeleteScript,
                     new RedisKey[] { redisKey ?? GetRedisKey(key) },
                     new RedisValue[] { expectedValue });
-                return;
+                return (long)result == 1;
             }
 
             var entryLock = GetLockStripe(
@@ -400,7 +418,10 @@ namespace Quraaa.Infrastructure.Services
                 if (string.Equals(currentValue, expectedValue, StringComparison.Ordinal))
                 {
                     await _cache.RemoveAsync(key, cancellationToken);
+                    return true;
                 }
+
+                return false;
             }
             finally
             {
@@ -474,6 +495,19 @@ namespace Quraaa.Infrastructure.Services
             return codeSeparatorIndex < OwnedOtpValuePrefix.Length
                 ? null
                 : cachedValue[(codeSeparatorIndex + 1)..];
+        }
+
+        private static bool OtpValuesMatch(string? cachedValue, string expectedOtpCode)
+        {
+            var decodedOtp = DecodeOtpValue(cachedValue);
+            if (string.IsNullOrEmpty(decodedOtp) || string.IsNullOrEmpty(expectedOtpCode))
+            {
+                return false;
+            }
+
+            var cachedBytes = Encoding.UTF8.GetBytes(decodedOtp);
+            var expectedBytes = Encoding.UTF8.GetBytes(expectedOtpCode);
+            return CryptographicOperations.FixedTimeEquals(cachedBytes, expectedBytes);
         }
 
         public async Task ClearFailedVerificationAttemptsAsync(string targetKey, string keyPrefix, CancellationToken cancellationToken = default)

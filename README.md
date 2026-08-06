@@ -213,7 +213,7 @@ ASP.NET Core configuration is loaded from appsettings files, `.env`, environment
 | `ConnectionStrings__Redis` / `Redis__ConnectionString` | Production recommended   | Redis connection string for distributed OTP and revocation data.                                                     |
 | `REDIS_URL` / `REDIS_TLS_URL`                          | Alternative Redis option | Supports Heroku-style `redis://` and `rediss://` URLs.                                                               |
 | `Redis__InstanceName`                                  | No                       | Cache-key prefix; defaults to `Quraaa:Otp:`.                                                                         |
-| `Otp__AllowInMemoryCacheInProduction`                  | No                       | Allows a non-shared, restart-volatile fallback. Keep `false` in real production.                                     |
+| `Otp:AllowInMemoryCacheInProduction`                   | Set in base appsettings  | Defaults to `false` in `Quraaa.API/appsettings.json`; no `.env` entry is required.                                    |
 | `Notifications__AllowTestEndpoint`                     | No                       | Enables the anonymous notification test endpoint outside Development. Keep `false` in production.                    |
 | `GoogleBooks__ApiKey`                                  | No                       | API key used during external ISBN lookup.                                                                            |
 | `GoogleBooks__BaseUrl`                                 | No                       | Defaults to `https://www.googleapis.com/`.                                                                           |
@@ -422,7 +422,7 @@ Before deploying publicly:
 - Store PostgreSQL, JWT, Stripe, Firebase, Redis, admin, and Google API credentials in the platform's secret store; never commit `.env` or service-account JSON files.
 - Add and verify a `.dockerignore` before building with secrets in the working tree. The current repository has no `.dockerignore`, and `COPY . .` sends the full build context to Docker.
 - Resolve the library-uploaded ebook storage mismatch described above; paid source PDFs must live outside the static web root.
-- Configure Redis and set `Otp__AllowInMemoryCacheInProduction=false` for durable, shared OTP and revocation state.
+- Configure Redis for durable, shared OTP and revocation state. Base `Quraaa.API/appsettings.json` sets `Otp:AllowInMemoryCacheInProduction=false`, so no `.env` entry is required and production startup fails when Redis is unavailable.
 - Set `Notifications__AllowTestEndpoint=false`. The committed appsettings currently enable it.
 - Decide whether Swagger UI and OpenAPI should remain public; they are currently mapped in every environment.
 - Review the startup `Database.Migrate()` and seeding policy for environments where the application should not hold schema-change permissions.

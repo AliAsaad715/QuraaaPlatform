@@ -35,7 +35,8 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
                     .WithMessage($"Password must be at least {AuthenticationPasswordPolicy.MinimumLength} characters long.")
                 .MaximumLength(AuthenticationPasswordPolicy.MaximumLength)
                     .WithMessage($"Password must not exceed {AuthenticationPasswordPolicy.MaximumLength} characters.")
-                .Matches(@"[0-9]").WithMessage("Password must contain at least one digit.");
+                .Must(AuthenticationPasswordPolicy.MeetsComplexityRequirements)
+                    .WithMessage("Password must contain an uppercase letter, a lowercase letter, a digit, and a non-alphanumeric character.");
 
             // 4. Validate date of birth (prevent future dates, ensure reasonable age)
             RuleFor(x => x.DateOfBirth)

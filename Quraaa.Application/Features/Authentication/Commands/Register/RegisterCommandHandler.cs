@@ -2,6 +2,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
+using Quraaa.Application.Features.Otp.Exceptions;
 using Quraaa.Application.Features.Otp.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Results;
@@ -22,7 +23,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
         private readonly IAuthenticationUnitOfWork _authenticationUnitOfWork;
 
         private const string OtpKeyPrefix = "register-otp";
-        private static readonly TimeSpan OtpExpiration = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan OtpExpiration = TimeSpan.FromMinutes(10);
         private static readonly TimeSpan OtpLockout = TimeSpan.FromSeconds(60);
         private static readonly TimeSpan VerificationLockout = TimeSpan.FromMinutes(5);
 
@@ -136,7 +137,6 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
                     await CleanupFailedOtpRequestAsync(
                         formattedPhone,
                         requestLease,
-                        otpCode: null,
                         CancellationToken.None);
                     throw;
                 }
@@ -175,14 +175,34 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
                 await _firebaseSmsGateway.SendSmsRequestAsync(
                     formattedPhone,
                     otpCode,
+                    purpose: "registration",
                     cancellationToken: cancellationToken);
+            }
+            catch (SmsDispatchException exception)
+                when (ownsOtp && exception.Outcome == SmsDispatchOutcome.DefinitelyNotDispatched)
+            {
+                Logger.LogWarning(
+                    exception,
+                    "Clearing a stored registration OTP because the SMS request was definitely not dispatched.");
+                await CleanupFailedOtpRequestAsync(
+                    formattedPhone,
+                    requestLease,
+                    CancellationToken.None,
+                    ownedOtpCode: otpCode);
+                throw;
+            }
+            catch (Exception exception) when (ownsOtp)
+            {
+                Logger.LogWarning(
+                    exception,
+                    "Retaining a stored registration OTP because the SMS gateway dispatch outcome is unknown.");
+                throw;
             }
             catch
             {
                 await CleanupFailedOtpRequestAsync(
                     formattedPhone,
                     requestLease,
-                    ownsOtp ? otpCode : null,
                     CancellationToken.None);
                 throw;
             }
@@ -240,7 +260,6 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
                 await CleanupFailedOtpRequestAsync(
                     formattedPhone,
                     new OtpRequestLease(ownerToken, clientTargetKey),
-                    otpCode: null,
                     CancellationToken.None);
                 throw;
             }
@@ -249,16 +268,16 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
         private async Task CleanupFailedOtpRequestAsync(
             string formattedPhone,
             OtpRequestLease requestLease,
-            string? otpCode,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            string? ownedOtpCode = null)
         {
-            if (otpCode is not null)
+            if (ownedOtpCode is not null)
             {
                 try
                 {
                     await _otpCacheService.ClearOwnedOtpAsync(
                         formattedPhone,
-                        otpCode,
+                        ownedOtpCode,
                         requestLease.OwnerToken,
                         OtpKeyPrefix,
                         cancellationToken);
@@ -267,7 +286,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
                 {
                     Logger.LogWarning(
                         cleanupException,
-                        "Failed to clear an owned registration OTP during registration cleanup.");
+                        "Failed to clear an owned registration OTP after a definite dispatch failure.");
                 }
             }
 

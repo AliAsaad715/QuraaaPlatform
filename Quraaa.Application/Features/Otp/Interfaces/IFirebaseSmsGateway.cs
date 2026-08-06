@@ -5,6 +5,7 @@ namespace Quraaa.Application.Features.Otp.Interfaces
         Task SendSmsRequestAsync(
             string phoneNumber,
             string otpCode,
+            string purpose,
             string? smsGatewayDeviceToken = null,
             CancellationToken cancellationToken = default);
     }
