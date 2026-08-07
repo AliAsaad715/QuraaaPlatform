@@ -142,7 +142,8 @@ namespace Quraaa.Application.Features.Orders.Services
                     item.Quantity,
                     item.UnitPriceMinor / 100m,
                     order.Id,
-                    item.Id));
+                    item.Id,
+                    item.DigitalAssetUrlSnapshot));
 
             await _bookPurchaseRepository.AddRangeAsync(
                 purchases,

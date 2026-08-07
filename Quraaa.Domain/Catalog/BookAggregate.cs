@@ -12,6 +12,12 @@ namespace Quraaa.Domain.Catalog
         public string Language { get; private set; } = null!;
         public string? Isbn { get; private set; }
 
+        // Master digital files for this book, captured once at the catalog level
+        // (e.g. via bulk upload) so every merchant listing this book can reuse them
+        // instead of each merchant re-uploading its own copy.
+        public string? CanonicalPdfUrl { get; private set; }
+        public string? CanonicalWordDocUrl { get; private set; }
+
         private BookAggregate() { }
 
         public BookAggregate(
@@ -22,7 +28,9 @@ namespace Quraaa.Domain.Catalog
             string coverImageUrl,
             string language,
             Guid? categoryId = null,
-            string? isbn = null)
+            string? isbn = null,
+            string? canonicalPdfUrl = null,
+            string? canonicalWordDocUrl = null)
         {
             Id = id;
             Title = title;
@@ -32,6 +40,8 @@ namespace Quraaa.Domain.Catalog
             CategoryId = categoryId;
             Language = language;
             Isbn = isbn;
+            CanonicalPdfUrl = canonicalPdfUrl;
+            CanonicalWordDocUrl = canonicalWordDocUrl;
         }
 
         public void UpdateDetails(

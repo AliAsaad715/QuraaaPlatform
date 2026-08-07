@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Domain.Catalog;
+using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -28,11 +30,63 @@ namespace Quraaa.Persistence.Repositories
                     EF.Functions.ILike(b.Language, language),
                     cancellationToken);
 
+        public async Task<IReadOnlyList<(string Title, string Author, string Language)>>
+            FindExistingCandidatesAsync(
+                IReadOnlyList<string> normalizedTitles,
+                CancellationToken cancellationToken = default)
+        {
+            if (normalizedTitles.Count == 0)
+                return [];
+
+            // EF Core + Npgsql translates string.ToLower() → lower() in PostgreSQL.
+            // normalizedTitles.Contains(...) → lower("Title") IN ('t1', 't2', ...)
+            // This can leverage the expression index on lower("Title") created by migration
+            // AddCaseInsensitiveBookIndexes.
+            var matches = await _context.Books
+                .AsNoTracking()
+                .Where(b => normalizedTitles.Contains(b.Title.ToLower()))
+                .Select(b => new { b.Title, b.Author, b.Language })
+                .ToListAsync(cancellationToken);
+
+            return matches
+                .Select(m => (m.Title, m.Author, m.Language))
+                .ToList();
+        }
+
         public async Task AddAsync(
             BookAggregate book, CancellationToken cancellationToken = default) =>
             await _context.Books.AddAsync(book, cancellationToken);
 
+        public async Task BulkInsertAsync(
+            IReadOnlyList<BookAggregate> books,
+            CancellationToken cancellationToken = default)
+        {
+            await _context.Books.AddRangeAsync(books, cancellationToken);
+
+            try
+            {
+                // EF Core + Npgsql batches multiple inserts into a single round-trip
+                // using PostgreSQL multi-row INSERT syntax (up to the configured batch size).
+                // For 1 000+ rows, swap this for EFCore.BulkExtensions:
+                //   await _context.BulkInsertAsync(books, cancellationToken: cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+            {
+                // Detach pending entities so the DbContext remains usable after the failure.
+                foreach (var entry in _context.ChangeTracker.Entries<BookAggregate>().ToList())
+                    entry.State = EntityState.Detached;
+
+                throw new ConflictException(
+                    "One or more books already exist with the same Title, Author, and Language combination.");
+            }
+        }
+
         public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
             _context.SaveChangesAsync(cancellationToken);
+
+        // PostgreSQL error code 23505 = unique_violation
+        private static bool IsUniqueViolation(DbUpdateException ex) =>
+            ex.InnerException is PostgresException { SqlState: "23505" };
     }
 }

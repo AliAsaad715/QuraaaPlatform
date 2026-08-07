@@ -27,7 +27,7 @@ namespace Quraaa.Persistence.Repositories
                     on listing.BookId equals book.Id
                 where listing.Format == ListingFormat.Digital
                     && listing.Status == ListingStatus.Active
-                    && listing.DigitalAssetUrl != null
+                    && listing.CustomDigitalAssetUrl != null
                 select new
                 {
                     listing.Id,

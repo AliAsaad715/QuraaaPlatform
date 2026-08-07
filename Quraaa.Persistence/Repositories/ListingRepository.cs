@@ -153,6 +153,22 @@ namespace Quraaa.Persistence.Repositories
             ListingAggregate listing, CancellationToken cancellationToken = default) =>
             await _context.Listings.AddAsync(listing, cancellationToken);
 
+        public async Task<HashSet<string>> FilterReferencedDigitalAssetPathsAsync(
+            IReadOnlyCollection<string> relativePaths,
+            CancellationToken cancellationToken = default)
+        {
+            if (relativePaths.Count == 0)
+                return [];
+
+            var referenced = await _context.Listings
+                .AsNoTracking()
+                .Where(l => l.CustomDigitalAssetUrl != null && relativePaths.Contains(l.CustomDigitalAssetUrl))
+                .Select(l => l.CustomDigitalAssetUrl!)
+                .ToListAsync(cancellationToken);
+
+            return referenced.ToHashSet(StringComparer.Ordinal);
+        }
+
         public async Task SaveChangesAsync(
             CancellationToken cancellationToken = default)
         {

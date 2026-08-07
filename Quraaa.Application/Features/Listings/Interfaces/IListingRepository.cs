@@ -35,6 +35,15 @@ namespace Quraaa.Application.Features.Listings.Interfaces
         Task AddAsync(ListingAggregate listing,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Returns the subset of <paramref name="relativePaths"/> that are still referenced by
+        /// some listing's current digital asset column, regardless of the listing's status —
+        /// a removed or out-of-stock listing still owns its file.
+        /// </summary>
+        Task<HashSet<string>> FilterReferencedDigitalAssetPathsAsync(
+            IReadOnlyCollection<string> relativePaths,
+            CancellationToken cancellationToken = default);
+
         Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

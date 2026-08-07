@@ -13,7 +13,11 @@ namespace Quraaa.Domain.Marketplace
         public ListingFormat Format { get; private set; }
         public decimal Price { get; private set; }
         public BookCondition? Condition { get; private set; }
-        public string? DigitalAssetUrl { get; private set; }
+
+        // The digital file served for this listing. Named "Custom" to distinguish it
+        // from BookAggregate's canonical files, since a merchant may need a listing-
+        // specific file that differs from the book's catalog-level copy.
+        public string? CustomDigitalAssetUrl { get; private set; }
         public int? Stock { get; private set; }
         public ListingStatus Status { get; private set; }
 
@@ -28,7 +32,7 @@ namespace Quraaa.Domain.Marketplace
             Guid? userId,
             decimal price,
             BookCondition? condition,
-            string? digitalAssetUrl,
+            string? customDigitalAssetUrl,
             int? stock)
         {
             Id = id;
@@ -39,7 +43,7 @@ namespace Quraaa.Domain.Marketplace
             UserId = userId;
             Price = price;
             Condition = condition;
-            DigitalAssetUrl = digitalAssetUrl;
+            CustomDigitalAssetUrl = customDigitalAssetUrl;
             Stock = stock;
             Status = ListingStatus.Active;
         }
@@ -72,21 +76,21 @@ namespace Quraaa.Domain.Marketplace
             Guid bookId,
             Guid libraryId,
             decimal price,
-            string digitalAssetUrl)
+            string customDigitalAssetUrl)
         {
             if (price <= 0)
             {
                 throw new DomainException("Price must be greater than zero.");
             }
 
-            if (string.IsNullOrWhiteSpace(digitalAssetUrl))
+            if (string.IsNullOrWhiteSpace(customDigitalAssetUrl))
             {
                 throw new DomainException("A digital asset reference is required for digital listings.");
             }
 
             return new ListingAggregate(
                 id, bookId, ListingFormat.Digital, SellerType.Library,
-                libraryId, null, price, null, digitalAssetUrl, 1);
+                libraryId, null, price, null, customDigitalAssetUrl, 1);
         }
 
         // Users can sell either format (per your note). Physical listings need
@@ -98,7 +102,7 @@ namespace Quraaa.Domain.Marketplace
             ListingFormat format,
             decimal price,
             BookCondition? condition = null,
-            string? digitalAssetUrl = null)
+            string? customDigitalAssetUrl = null)
         {
             if (price <= 0)
             {
@@ -112,14 +116,14 @@ namespace Quraaa.Domain.Marketplace
                     throw new DomainException("Condition is required for physical listings.");
                 }
             }
-            else if (string.IsNullOrWhiteSpace(digitalAssetUrl))
+            else if (string.IsNullOrWhiteSpace(customDigitalAssetUrl))
             {
                 throw new DomainException("A digital asset reference is required for digital listings.");
             }
 
             return new ListingAggregate(
                 id, bookId, format, SellerType.User,
-                null, userId, price, condition, digitalAssetUrl, 1);
+                null, userId, price, condition, customDigitalAssetUrl, 1);
         }
 
         public void Remove(Guid modifiedBy)
@@ -236,6 +240,22 @@ namespace Quraaa.Domain.Marketplace
                 throw new DomainException("Only physical listings have a condition.");
 
             Condition = newCondition;
+            UpdateAudit(modifiedBy);
+        }
+
+        // Replaces the digital asset for FUTURE purchases only.
+        // All existing BookPurchaseAggregate records hold their own
+        // PurchasedDigitalAssetUrl snapshot, so buyers who already paid
+        // are completely unaffected.
+        public void UpdateCustomDigitalAsset(string newUrl, Guid modifiedBy)
+        {
+            if (Format != ListingFormat.Digital)
+                throw new DomainException("Only digital listings have a digital asset.");
+
+            if (string.IsNullOrWhiteSpace(newUrl))
+                throw new DomainException("A digital asset URL is required.");
+
+            CustomDigitalAssetUrl = newUrl.Trim();
             UpdateAudit(modifiedBy);
         }
     }

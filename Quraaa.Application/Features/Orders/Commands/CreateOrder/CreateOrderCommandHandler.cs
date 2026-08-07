@@ -193,7 +193,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
                         details.Book.Author,
                         details.Book.CoverImageUrl,
                         sellerName,
-                        listing.DigitalAssetUrl,
+                        listing.CustomDigitalAssetUrl,
                         listing.Condition,
                         cartItem.Quantity,
                         ToUsdMinorUnits(listing.Price)));

@@ -13,6 +13,10 @@ namespace Quraaa.Domain.Purchases
         public int Quantity { get; private set; }
         public decimal UnitPrice { get; private set; }
         public decimal TotalPrice => Quantity * UnitPrice;
+        // Snapshot of the digital asset URL at the moment of purchase.
+        // NULL for physical books. Immutable after creation — seller file
+        // updates never affect this record.
+        public string? PurchasedDigitalAssetUrl { get; private set; }
 
         private BookPurchaseAggregate() { }
 
@@ -24,7 +28,8 @@ namespace Quraaa.Domain.Purchases
             Guid? orderId,
             Guid? orderItemId,
             int quantity,
-            decimal unitPrice)
+            decimal unitPrice,
+            string? purchasedDigitalAssetUrl)
         {
             Id = id;
             UserId = userId;
@@ -34,6 +39,7 @@ namespace Quraaa.Domain.Purchases
             OrderItemId = orderItemId;
             Quantity = quantity;
             UnitPrice = unitPrice;
+            PurchasedDigitalAssetUrl = purchasedDigitalAssetUrl;
         }
 
         public static BookPurchaseAggregate Create(
@@ -41,7 +47,8 @@ namespace Quraaa.Domain.Purchases
             Guid bookId,
             Guid listingId,
             int quantity,
-            decimal unitPrice)
+            decimal unitPrice,
+            string? purchasedDigitalAssetUrl = null)
         {
             return Create(
                 userId,
@@ -50,7 +57,8 @@ namespace Quraaa.Domain.Purchases
                 quantity,
                 unitPrice,
                 null,
-                null);
+                null,
+                purchasedDigitalAssetUrl);
         }
 
         public static BookPurchaseAggregate Create(
@@ -60,7 +68,8 @@ namespace Quraaa.Domain.Purchases
             int quantity,
             decimal unitPrice,
             Guid? orderId,
-            Guid? orderItemId)
+            Guid? orderItemId,
+            string? purchasedDigitalAssetUrl = null)
         {
             if (userId == Guid.Empty)
             {
@@ -110,7 +119,10 @@ namespace Quraaa.Domain.Purchases
                 orderId,
                 orderItemId,
                 quantity,
-                unitPrice);
+                unitPrice,
+                string.IsNullOrWhiteSpace(purchasedDigitalAssetUrl)
+                    ? null
+                    : purchasedDigitalAssetUrl.Trim());
         }
     }
 }

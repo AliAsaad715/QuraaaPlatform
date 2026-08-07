@@ -44,6 +44,10 @@ namespace Quraaa.Persistence.Configurations
                    .HasColumnType("decimal(10,2)")
                    .IsRequired();
 
+            builder.Property(p => p.PurchasedDigitalAssetUrl)
+                   .HasMaxLength(500)
+                   .IsRequired(false);
+
             builder.Ignore(p => p.TotalPrice);
 
             builder.HasIndex(p => p.BookId);
@@ -55,6 +59,11 @@ namespace Quraaa.Persistence.Configurations
                    .HasFilter("\"OrderItemId\" IS NOT NULL");
             builder.HasIndex(p => p.CreationTime);
             builder.HasIndex(p => new { p.BookId, p.CreationTime });
+
+            // Drives the "is this path still referenced" lookup the file retention
+            // worker runs before hard-deleting a candidate.
+            builder.HasIndex(p => p.PurchasedDigitalAssetUrl)
+                   .HasFilter("\"PurchasedDigitalAssetUrl\" IS NOT NULL");
 
             builder.HasOne<UserAggregate>()
                    .WithMany()
