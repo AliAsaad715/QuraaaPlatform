@@ -72,7 +72,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
                     bookId: book.Id,
                     libraryId: library.Id,
                     price: request.Price,
-                    digitalAssetUrl: digitalAssetUrl);
+                    customDigitalAssetUrl: digitalAssetUrl);
 
                 await _listingRepository.AddAsync(listing, cancellationToken);
                 await _listingRepository.SaveChangesAsync(cancellationToken);

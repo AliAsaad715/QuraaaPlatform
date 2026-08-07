@@ -39,6 +39,14 @@ namespace Quraaa.Persistence.Configurations
                    .HasMaxLength(20)
                    .IsRequired(false);
 
+            builder.Property(b => b.CanonicalPdfUrl)
+                   .HasMaxLength(500)
+                   .IsRequired(false);
+
+            builder.Property(b => b.CanonicalWordDocUrl)
+                   .HasMaxLength(500)
+                   .IsRequired(false);
+
             builder.Property(b => b.CategoryId)
                    .IsRequired(false);
 
@@ -48,10 +56,22 @@ namespace Quraaa.Persistence.Configurations
                    .OnDelete(DeleteBehavior.Restrict);
 
             builder.HasIndex(b => b.CategoryId);
+
+            // Fast path for the broad title-IN lookup used by FindExistingCandidatesAsync.
             builder.HasIndex(b => b.Title);
-            builder.HasIndex(b => b.Isbn).IsUnique();
-            builder.HasIndex(b => new { b.Title, b.Author, b.Language })
-                   .IsUnique();
+
+            // Partial unique index: the WHERE clause keeps the index small and allows
+            // multiple rows with Isbn = NULL (ISBN is assigned later, not during bulk upload).
+            builder.HasIndex(b => b.Isbn)
+                   .IsUnique()
+                   .HasFilter("\"Isbn\" IS NOT NULL");
+
+            // The raw-value composite unique index is intentionally ABSENT here.
+            // Migration AddCaseInsensitiveBookIndexes replaces it with a functional
+            // unique index on (lower("Title"), lower("Author"), lower("Language")),
+            // which enforces case-insensitive uniqueness at the database level.
+            // Application-side pre-checks use BookTextNormalizer to avoid round-trips
+            // on duplicate attempts before they hit the DB constraint.
         }
     }
 }

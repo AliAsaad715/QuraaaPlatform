@@ -5,8 +5,10 @@ using Quraaa.API.Services;
 using Quraaa.Application.Extensions;
 using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Application.Features.Authentication.Interfaces;
+using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Shared.Files;
 using Quraaa.Persistence.Extensions;
 using System.IdentityModel.Tokens.Jwt;
 using System.Globalization;
@@ -22,9 +24,15 @@ namespace Quraaa.API.Extensions
         {
             services.AddJwtAuthentication(configuration);
             services.AddAuthenticationRateLimiting();
+            services.Configure<FileStorageOptions>(configuration.GetSection("Storage"));
+            services.Configure<FileRetentionOptions>(configuration.GetSection("Storage:FileRetention"));
+            services.AddScoped<IFileStorageService, PrivateFileStorageService>();
+            services.AddScoped<IFileAccessService, FileAccessService>();
             services.AddScoped<ILibraryImageStorageService, LibraryImageStorageService>();
             services.AddScoped<ILibraryBookStorageService, LibraryBookStorageService>();
+            services.AddScoped<IBulkBookStorageService, BulkBookStorageService>();
             services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
+            services.AddHostedService<FileRetentionCleanupService>();
             PersistenceDependencyInjectionHandler.AddPersistenceDependencies(services, configuration);
             ApplicationPackagesRegisterExtensions.AddApplicationDependencies(services);
         }

@@ -388,7 +388,8 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
                         listing.BookId,
                         listing.Id,
                         cartItem.Quantity,
-                        cartItem.UnitPriceSnapshot));
+                        cartItem.UnitPriceSnapshot,
+                        listing.CustomDigitalAssetUrl));
 
                     if (listing.Format != ListingFormat.Physical)
                     {

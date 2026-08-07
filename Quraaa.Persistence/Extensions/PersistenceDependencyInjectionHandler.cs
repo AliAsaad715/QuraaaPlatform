@@ -6,6 +6,7 @@ using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
 using Quraaa.Application.Features.Ebooks.Interfaces;
 using Quraaa.Application.Features.FavoriteBooks.Interfaces;
+using Quraaa.Application.Features.Files.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Orders.Interfaces;
@@ -35,6 +36,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IBookPurchaseRepository, BookPurchaseRepository>();
             services.AddScoped<IOrderRepository, OrderRepository>();
             services.AddScoped<IPaymentEventInbox, PaymentEventInboxRepository>();
+            services.AddScoped<IOrphanFileCandidateRepository, OrphanFileCandidateRepository>();
             return services;
         }
     }

@@ -8,6 +8,7 @@ namespace Quraaa.Application.Features.Purchases.Queries.GetBuyHistory
         int Quantity,
         decimal UnitPrice,
         decimal TotalPrice,
-        DateTime PurchasedAt
+        DateTime PurchasedAt,
+        string? PurchasedDigitalAssetUrl
     );
 }

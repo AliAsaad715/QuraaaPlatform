@@ -246,6 +246,14 @@ namespace Quraaa.Persistence.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
 
+                    b.Property<string>("CanonicalPdfUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("CanonicalWordDocUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<Guid?>("CategoryId")
                         .HasColumnType("uuid");
 
@@ -296,12 +304,10 @@ namespace Quraaa.Persistence.Migrations
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("Isbn")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"Isbn\" IS NOT NULL");
 
                     b.HasIndex("Title");
-
-                    b.HasIndex("Title", "Author", "Language")
-                        .IsUnique();
 
                     b.ToTable("Books", (string)null);
                 });
@@ -481,15 +487,15 @@ namespace Quraaa.Persistence.Migrations
                     b.Property<DateTime>("CreationTime")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CustomDigitalAssetUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTime?>("DeleationTime")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("DigitalAssetUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
 
                     b.Property<int>("Format")
                         .HasColumnType("integer");
@@ -525,6 +531,9 @@ namespace Quraaa.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BookId");
+
+                    b.HasIndex("CustomDigitalAssetUrl")
+                        .HasFilter("\"CustomDigitalAssetUrl\" IS NOT NULL");
 
                     b.HasIndex("LibraryId");
 
@@ -874,6 +883,10 @@ namespace Quraaa.Persistence.Migrations
                     b.Property<Guid?>("OrderItemId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("PurchasedDigitalAssetUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
@@ -896,6 +909,9 @@ namespace Quraaa.Persistence.Migrations
                     b.HasIndex("OrderItemId")
                         .IsUnique()
                         .HasFilter("\"OrderItemId\" IS NOT NULL");
+
+                    b.HasIndex("PurchasedDigitalAssetUrl")
+                        .HasFilter("\"PurchasedDigitalAssetUrl\" IS NOT NULL");
 
                     b.HasIndex("UserId");
 
@@ -1143,6 +1159,35 @@ namespace Quraaa.Persistence.Migrations
                     b.HasIndex("UserId", "FamilyId");
 
                     b.ToTable("ConsumedRefreshTokens", (string)null);
+                });
+
+            modelBuilder.Entity("Quraaa.Persistence.Data.OrphanFileCandidate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("DetectedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RelativePath")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "DetectedAtUtc");
+
+                    b.ToTable("OrphanFileCandidates", (string)null);
                 });
 
             modelBuilder.Entity("Quraaa.Persistence.Data.ProcessedPaymentEvent", b =>

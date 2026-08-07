@@ -44,18 +44,6 @@ var app = builder.Build();
 app.UseForwardedHeaders();
 app.UseSwaggerDashboard();
 app.UseHttpsRedirection();
-app.Use(async (context, next) =>
-{
-    if (IsProtectedBookPdfRequest(
-            context.Request.Path,
-            app.Environment.WebRootPath))
-    {
-        context.Response.StatusCode = StatusCodes.Status404NotFound;
-        return;
-    }
-
-    await next();
-});
 app.UseStaticFiles();
 app.UseRouting();
 app.UseRateLimiter();
@@ -81,55 +69,6 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
-
-static bool IsProtectedBookPdfRequest(
-    PathString requestPath,
-    string? webRootPath)
-{
-    if (!requestPath.HasValue || string.IsNullOrWhiteSpace(webRootPath))
-    {
-        return false;
-    }
-
-    var relativePath = requestPath.Value!
-        .Replace('\\', '/')
-        .TrimStart('/');
-
-    if (string.IsNullOrWhiteSpace(relativePath))
-    {
-        return false;
-    }
-
-    try
-    {
-        var normalizedWebRoot = Path.GetFullPath(webRootPath);
-        var booksRoot = Path.GetFullPath(
-            Path.Combine(normalizedWebRoot, "uploads", "books"));
-        var candidatePath = Path.GetFullPath(
-            Path.Combine(
-                normalizedWebRoot,
-                relativePath.Replace('/', Path.DirectorySeparatorChar)));
-        var pathComparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-        var booksRootPrefix = booksRoot.TrimEnd(
-            Path.DirectorySeparatorChar,
-            Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-
-        return candidatePath.StartsWith(booksRootPrefix, pathComparison)
-            && string.Equals(
-                Path.GetExtension(candidatePath),
-                ".pdf",
-                StringComparison.OrdinalIgnoreCase);
-    }
-    catch (Exception exception) when (
-        exception is ArgumentException
-            or NotSupportedException
-            or PathTooLongException)
-    {
-        return false;
-    }
-}
 
 static void CreateFirebaseCredentialsFile(string contentRootPath)
 {
