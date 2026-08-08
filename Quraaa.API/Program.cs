@@ -86,7 +86,7 @@ app.UseRouting();
 // after routing so it can see endpoint-level CORS metadata, and before auth so
 // unauthenticated CORS preflight (OPTIONS) requests aren't rejected before the
 // CORS headers are ever added to the response.
-app.UseCors(ServiceCollectionExtensions.LibraryDashboardCorsPolicy);
+app.UseCors("Default");
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
