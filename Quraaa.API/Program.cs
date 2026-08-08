@@ -33,7 +33,9 @@ builder.Services.Configure<RouteOptions>(options =>
 });
 
 builder.Services.AddDatabaseConfiguration(builder.Configuration);
-builder.Services.AddApplicationServices(builder.Configuration);
+builder.Services.AddApplicationServices(
+    builder.Configuration,
+    builder.Environment.IsDevelopment());
 builder.Services.AddInfrastructureDependencies(builder.Configuration, builder.Environment.IsDevelopment());
 builder.Services.AddSwaggerConfiguration(builder.Configuration);
 
@@ -46,8 +48,9 @@ app.UseSwaggerDashboard();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
-app.UseRateLimiter();
+app.UseCors(ServiceCollectionExtensions.LibraryDashboardCorsPolicy);
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 

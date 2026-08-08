@@ -2,6 +2,7 @@
 using IdentityServer.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using Quraaa.Application.Features.Orders.Services;
+using Quraaa.Application.Features.Libraries.Services;
 using System.Reflection;
 
 namespace Quraaa.Application.Extensions
@@ -18,6 +19,7 @@ namespace Quraaa.Application.Extensions
             });
 
             services.AddScoped<IPhoneService, PhoneService>();
+            services.AddScoped<LibraryRegistrationSessionService>();
             services.AddScoped<IOrderCheckoutService, OrderCheckoutService>();
             services.AddScoped<
                 IOrderPaymentFinalizationService,

@@ -24,6 +24,7 @@ namespace Quraaa.Persistence.Extensions
 
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<ILibraryRepository, LibraryRepository>();
+            services.AddScoped<ILibraryRegistrationRepository, LibraryRegistrationRepository>();
             services.AddScoped<IIdentityService, IdentityService>();
             services.AddScoped<IAuthenticationUnitOfWork, AuthenticationUnitOfWork>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();

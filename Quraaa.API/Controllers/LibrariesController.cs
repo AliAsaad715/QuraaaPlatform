@@ -1,12 +1,18 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
+using Quraaa.API.Extensions;
 using Quraaa.API.Requests.Files;
 using Quraaa.API.Requests.Libraries;
 using Quraaa.Application.Features.Libraries.Commands.RegisterLibrary;
+using Quraaa.Application.Features.Libraries.Commands.IssueLibraryRegistrationLink;
+using Quraaa.Application.Features.Libraries.Commands.ResendLibraryEmailOtp;
 using Quraaa.Application.Features.Libraries.Commands.UpdateLibraryApprovalStatus;
+using Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraries;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
+using Quraaa.Application.Features.Libraries.Queries.GetLibraryRegistrationContext;
 using Quraaa.Application.Features.Libraries.Queries.GetMyProfile;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Results;
@@ -15,29 +21,133 @@ namespace Quraaa.API.Controllers
 {
     public class LibrariesController : ApiClientController
     {
-        [Authorize]
+        /// <summary>
+        /// Issues a temporary, single-purpose link to the library dashboard.
+        /// Reissuing this link invalidates the previous registration link.
+        /// </summary>
+        [Authorize(Roles = "User")]
+        [EnableRateLimiting(ServiceCollectionExtensions.LibraryRegistrationLinkRateLimitPolicy)]
         [HttpPost("register")]
-        [Consumes("multipart/form-data")]
-        [ProducesResponseType(typeof(LibraryResponse), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(LibraryRegistrationLinkResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> Register([FromForm] RegisterLibraryRequest request)
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        public async Task<IActionResult> IssueRegistrationLink(CancellationToken cancellationToken = default)
         {
-            if (!TryGetCurrentUserId(out var userId))
+            SetNoStoreHeaders();
+
+            if (!TryGetCurrentUserId(out var userId)
+                || !TryGetCurrentSessionId(out var authenticationSessionId))
             {
                 return InvalidUserIdResult();
             }
 
+            var result = await Mediator.Send(
+                new IssueLibraryRegistrationLinkCommand(userId, authenticationSessionId),
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Resolves the current dashboard registration stage without exposing the owner id.
+        /// The token must be sent in the JSON body so it is not written to API query logs.
+        /// </summary>
+        [AllowAnonymous]
+        [EnableRateLimiting(ServiceCollectionExtensions.LibraryRegistrationPublicRateLimitPolicy)]
+        [HttpPost("register/context")]
+        [ProducesResponseType(typeof(LibraryRegistrationContextResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        public async Task<IActionResult> GetRegistrationContext(
+            [FromBody] LibraryRegistrationTokenRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            SetNoStoreHeaders();
+            var result = await Mediator.Send(
+                new GetLibraryRegistrationContextQuery(request.Token),
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Submits library details from the dashboard using the temporary registration token.
+        /// </summary>
+        [AllowAnonymous]
+        [EnableRateLimiting(ServiceCollectionExtensions.LibraryRegistrationPublicRateLimitPolicy)]
+        [HttpPost("register/submit")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(typeof(LibraryRegistrationSubmissionResponse), StatusCodes.Status202Accepted)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        public async Task<IActionResult> SubmitRegistration(
+            [FromForm] RegisterLibraryRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            SetNoStoreHeaders();
             var command = new RegisterLibraryCommand(
+                request.Token,
                 request.LibraryName,
                 request.Location,
                 request.LibraryImage is null ? null : new FormFileUploadedFile(request.LibraryImage),
                 request.HeaderImage is null ? null : new FormFileUploadedFile(request.HeaderImage),
-                request.Email,
-                userId
+                request.Email
             );
 
-            var result = await Mediator.Send(command);
+            var result = await Mediator.Send(command, cancellationToken);
+            return HandleResult(result, data => Accepted(data));
+        }
+
+        /// <summary>
+        /// Sends a replacement email OTP for an already submitted registration.
+        /// </summary>
+        [AllowAnonymous]
+        [EnableRateLimiting(ServiceCollectionExtensions.LibraryRegistrationPublicRateLimitPolicy)]
+        [HttpPost("register/email/resend")]
+        [ProducesResponseType(typeof(LibraryEmailOtpResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        public async Task<IActionResult> ResendRegistrationEmailOtp(
+            [FromBody] LibraryRegistrationTokenRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            SetNoStoreHeaders();
+            var result = await Mediator.Send(
+                new ResendLibraryEmailOtpCommand(request.Token),
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Verifies the submitted library email and moves the application into admin review.
+        /// </summary>
+        [AllowAnonymous]
+        [EnableRateLimiting(ServiceCollectionExtensions.LibraryRegistrationPublicRateLimitPolicy)]
+        [HttpPost("register/email/verify")]
+        [ProducesResponseType(typeof(LibraryEmailVerificationResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        public async Task<IActionResult> VerifyRegistrationEmail(
+            [FromBody] VerifyLibraryEmailRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            SetNoStoreHeaders();
+            var result = await Mediator.Send(
+                new VerifyLibraryEmailOtpCommand(
+                    request.Token,
+                    request.VerificationId,
+                    request.OtpCode),
+                cancellationToken);
+
             return HandleResult(result);
         }
 
@@ -107,6 +217,7 @@ namespace Quraaa.API.Controllers
         /// <param name="request">
         /// Pagination, filtering, and sorting parameters.
         /// Filter by status using the LibraryApprovalStatus enum (1=Pending, 2=Approved, 3=Rejected).
+        /// AwaitingEmailVerification (4) applications are intentionally not exposed to admins.
         /// </param>
         /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
         /// <returns>
@@ -117,6 +228,7 @@ namespace Quraaa.API.Controllers
         /// - Pending (1): Awaiting admin review.
         /// - Approved (2): Request has been approved.
         /// - Rejected (3): Request has been rejected.
+        /// - AwaitingEmailVerification (4): Hidden until the applicant verifies the library email.
         /// </remarks>
         /// <response code="200">A paged collection of library requests was returned successfully.</response>
         [HttpGet("requests")]
@@ -162,6 +274,13 @@ namespace Quraaa.API.Controllers
                 cancellationToken);
 
             return HandleResult(result);
+        }
+
+        private void SetNoStoreHeaders()
+        {
+            Response.Headers.CacheControl = "no-store";
+            Response.Headers.Pragma = "no-cache";
+            Response.Headers.Append("Referrer-Policy", "no-referrer");
         }
     }
 }

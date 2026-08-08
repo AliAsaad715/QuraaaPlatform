@@ -2,7 +2,7 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
-Last audited against the repository: **2026-08-02**.
+Last audited against the repository: **2026-08-06**.
 
 ## Project Overview
 
@@ -23,7 +23,8 @@ Current implemented business capabilities:
 - Authenticated profile retrieval through `GET /api/profile/me`.
 - Authenticated profile update through `PUT /api/profile/me`.
 - Authenticated profile location upsert/delete through `POST /api/profile/location` and `DELETE /api/profile/location`.
-- Library registration through `POST /api/libraries/register`.
+- Authenticated mobile library-registration link issuance through `POST /api/libraries/register`.
+- Token-authenticated dashboard registration context/detail submission and SMTP email-OTP verification through `/api/libraries/register/*`; only verified applications enter the admin queue.
 - Public, searchable library listing through `GET /api/libraries`.
 - Paged/searchable/sortable active physical-book listing by library through `GET /api/libraries/{libraryId}/books`.
 - Public ebook listing through `GET /api/ebooks`.
@@ -69,6 +70,7 @@ Core technologies:
 - Firebase Admin SDK for FCM push notifications and OTP SMS gateway data messages
 - `IDistributedCache`, with Redis support for production OTP cache and in-memory cache for local/development fallback
 - Stripe.net for Checkout session creation and signed webhook parsing
+- MailKit for SMTP/STARTTLS library email verification
 - Typed `HttpClient` integration with Google Books for ISBN metadata lookup
 - DotNetEnv plus environment variables for runtime secrets/configuration
 - OpenAPI 3.0 / Swagger UI in development
@@ -348,6 +350,7 @@ Consolidated NuGet packages by project:
 | `Microsoft.Extensions.Caching.StackExchangeRedis`   | 10.0.8  | `Quraaa.Infrastructure`                    |
 | `Microsoft.Extensions.Http`                         | 10.0.9  | `Quraaa.Infrastructure`                    |
 | `Stripe.net`                                        | 52.1.0  | `Quraaa.Infrastructure`                    |
+| `MailKit`                                           | 4.17.0  | `Quraaa.Infrastructure`                    |
 | `Microsoft.EntityFrameworkCore.SqlServer`           | 10.0.8  | `Quraaa.Persistence`                       |
 | `Npgsql.EntityFrameworkCore.PostgreSQL`             | 10.0.2  | `Quraaa.Persistence`                       |
 
@@ -494,6 +497,9 @@ Startup calls `DotNetEnv.Env.Load()` before creating the builder, then also load
 | Google Books  | `GoogleBooks:ApiKey`, `GoogleBooks:BaseUrl` (defaults to `https://www.googleapis.com/`)                                                       |
 | Swagger       | `Swagger:ServerUrl`                                                                                                                           |
 | Reverse proxy | `ForwardedHeaders:KnownProxies`, `ForwardedHeaders:KnownNetworks`                                                                             |
+| Library link  | `LIBRARY_DASHBOARD_REGISTER_URL`                                                                                                            |
+| Email OTP     | `LIBRARY_EMAIL_OTP_PEPPER`                                                                                                                  |
+| SMTP          | `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_ENCRYPTION`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME`          |
 
 `JWT_SECRET_KEY` is required by `IdentityService.GenerateAuthTokensAsync` and by `ServiceCollectionExtensions.AddJwtAuthentication`. If it is missing, the application throws `InvalidOperationException` at startup.
 `JWT_DURATION_IN_MINUTES` defaults to `60` and is validated at startup as an invariant finite number greater than zero and no greater than `10080` (seven days).
@@ -510,8 +516,8 @@ OTP cache configuration:
 
 - Redis is preferred when any of `ConnectionStrings:Redis`, `Redis:ConnectionString`, `REDIS_URL`, or `REDIS_TLS_URL` is configured.
 - Heroku-style `redis://...` and `rediss://...` URLs are supported.
-- Base `Quraaa.API/appsettings.json` sets `Otp:AllowInMemoryCacheInProduction=false`; it is intentionally omitted from `.env.example`, and no `.env` entry is required.
-- If Redis is missing, in-memory cache is allowed only in Development or when another configuration source explicitly overrides `Otp:AllowInMemoryCacheInProduction=true`. Such an override is for temporary testing only because OTPs are lost on restart and are not shared across multiple instances.
+- Base `Quraaa.API/appsettings.json` currently sets `Otp:AllowInMemoryCacheInProduction=true`, so a production instance without Redis falls back to process-local memory.
+- Production should configure Redis and explicitly override `Otp:AllowInMemoryCacheInProduction=false`; with that setting, startup fails when Redis is missing. The in-memory fallback is suitable only for temporary testing because OTPs are lost on restart and are not shared across multiple instances.
 
 `OTP_DEVICE_TOKEN` is the FCM registration token for the secondary Android SMS gateway app that has SMS permission. It is server-side configuration and is not accepted in the `POST /api/otp/send` request body.
 
@@ -527,7 +533,7 @@ Secrets handling:
 
 - `.env` is listed in `.gitignore` and must not be committed.
 - Firebase service-account JSON files under `Quraaa.API/storage/firebase/*.json` are `.gitignore`d and must not be committed.
-- Stripe, Google Books, PostgreSQL, Redis, JWT, admin, and Firebase credentials must remain outside committed configuration.
+- Stripe, Google Books, PostgreSQL, Redis, JWT, admin, Firebase, SMTP, and library-email OTP pepper credentials must remain outside committed configuration.
 
 ## Database & Migrations
 
@@ -549,6 +555,8 @@ DbSets:
 - `Orders` (`OrderAggregate`; `OrderItem` and `PaymentAttempt` are mapped as child entities)
 - `ProcessedPaymentEvents` (`ProcessedPaymentEvent`; the Stripe webhook idempotency inbox)
 - `ConsumedRefreshTokens` (`ConsumedRefreshToken`; hashed, rotated-token history used for family logout and replay detection)
+- `LibraryRegistrationSessions` (`LibraryRegistrationSession`; hashed temporary dashboard credentials bound to the issuing refresh family)
+- `LibraryEmailVerificationChallenges` (`LibraryEmailVerificationChallenge`; durable HMAC-hashed email OTP, cooldown, attempt, and lockout state)
 
 It applies all `IEntityTypeConfiguration` classes from the Persistence assembly and adds a global query filter for active categories only:
 
@@ -576,8 +584,9 @@ Located in `Quraaa.Persistence/Migrations/`:
 14. `20260726145336_AddOrdersAndPaymentTracking`
 15. `20260731131240_EnforceSingleOpenCartPerUser`
 16. `20260801123016_AddRefreshTokenFamiliesAndIndexes`
+17. `20260806151215_AddLibraryMagicLinkEmailVerification`
 
-The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, and consumed-refresh-token storage; add library/favorite uniqueness and engagement foreign keys; add nullable latitude/longitude columns to `UsersProfiles`; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; and add partial unique indexes for the current refresh-token hash/family plus unique consumed-token hash history. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, and library-email-challenge storage; add library/favorite uniqueness and engagement foreign keys; add nullable latitude/longitude columns to `UsersProfiles`; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add partial unique indexes for the current refresh-token hash/family plus unique consumed-token hash history; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
 `Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
 
@@ -681,7 +690,7 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 - Ebook PDF paths are omitted from public ebook responses. `/uploads/books/*.pdf` is blocked, and paid buyers receive PDFs only through the authenticated order-item download route.
 - Firebase service-account credentials and `.env` secrets must never be committed.
 - `Notifications:AllowTestEndpoint` is enabled in `appsettings.json` and `appsettings.Development.json`. Disable it in production unless you intend to allow unauthenticated test notification dispatch.
-- `Otp:AllowInMemoryCacheInProduction` is `false` in the base settings; production startup fails when Redis is missing.
+- `Otp:AllowInMemoryCacheInProduction` is currently `true` in the base settings. Production should configure Redis and override it to `false`, which makes startup fail when Redis is missing.
 - HTTPS redirection and forwarded headers are enabled in the middleware pipeline. Forwarded headers trust loopback proxies by default; configure explicit arrays under `ForwardedHeaders:KnownProxies` and/or `ForwardedHeaders:KnownNetworks` when deploying behind another reverse proxy.
 - `AdminSeeder` creates or synchronizes the configured admin Identity/profile, role, confirmed-phone state, and password on startup. Ensure `ADMIN_PHONE_NUMBER` and `ADMIN_PASSWORD` are strong and kept secret; changing the configured password resets the seeded admin password.
 
@@ -772,7 +781,11 @@ PUT    /api/profile/me                            authenticated
 POST   /api/profile/location                      authenticated
 DELETE /api/profile/location                      authenticated
 
-POST   /api/libraries/register                    authenticated
+POST   /api/libraries/register                    User; issues temporary dashboard URL
+POST   /api/libraries/register/context            anonymous + registration token in body
+POST   /api/libraries/register/submit             anonymous + token; multipart details
+POST   /api/libraries/register/email/resend        anonymous + submitted registration token
+POST   /api/libraries/register/email/verify        anonymous + submitted registration token + verificationId + OTP
 GET    /api/libraries                             anonymous
 GET    /api/libraries/{libraryId}/books           User or LibraryOwner
 
@@ -1025,9 +1038,12 @@ Forgot-password verify request body:
 
 ### Library
 
-`POST /api/libraries/register` uses `multipart/form-data`:
+`POST /api/libraries/register` requires a `User` bearer token and no request body. It returns a temporary dashboard URL whose fragment contains an opaque registration token. The raw token is never stored; PostgreSQL stores its SHA-256 hash, expiry, optimistic-concurrency stamp, and the issuing JWT refresh-family id. Reissuing replaces the prior token. An existing unverified application can be resumed with a new link.
+
+The dashboard calls `POST /api/libraries/register/context` with `{ "token": "..." }`. It then submits `POST /api/libraries/register/submit` as `multipart/form-data`:
 
 ```text
+token: opaque token copied from the dashboard URL fragment
 libraryName: Central Library
 location: Baghdad
 libraryImage: uploaded image file
@@ -1035,7 +1051,7 @@ headerImage: uploaded image file
 email: library@example.com
 ```
 
-The request does not accept `userId`; `LibrariesController` reads it from the JWT. New libraries are created with `ApprovalStatus = Pending`. Both owner and email are unique; duplicate owner/email errors map to `409 Conflict`.
+The dashboard request does not accept `userId`; the validated session supplies it. New libraries start as `AwaitingEmailVerification`. The API creates a durable, generation-bound HMAC-SHA256 challenge, attempts SMTP delivery, and returns `202 Accepted` with `verificationId` plus `emailDeliveryStatus` (`Sent`, `NotSent`, or `Unknown`). `POST /api/libraries/register/email/resend` redelivers the same derived code and verification id subject to a 60-second cooldown and a fixed five-send/hour window; definite non-delivery restores the quota slot. `POST /api/libraries/register/email/verify` requires that verification id plus exactly six ASCII digits, allows five failures, applies a five-minute lockout, and atomically changes the library to `Pending`. Only verified pending libraries appear in the admin queue or can be approved/rejected. Approval also promotes the domain profile and Identity role transactionally.
 
 `GET /api/libraries` is anonymous and returns approved libraries only. It supports `pageNumber`, `pageSize`, and `searchTerm` (library name/location). `GetLibrariesQuery` inherits `PaginationRequestDTO`, which coerces non-positive page numbers to `1` and any page size outside `1..20` to `10`.
 
@@ -1814,91 +1830,22 @@ DELETE /api/profile/location
 
 ### Library Registration Flow
 
-Files:
+The authenticated mobile entry point is `POST /api/libraries/register`. It extracts both `UserId` and the access token's `sid`, creates a 32-byte Base64URL credential, stores only a `sha256:` hash, and returns `${LIBRARY_DASHBOARD_REGISTER_URL}#token=<credential>` with `Cache-Control: no-store`. The dashboard URL must use HTTPS outside Development; Development permits HTTP only for a loopback URL. Its origin is the sole origin allowed by the registered `library-dashboard` CORS policy. The token is valid for 15 minutes and remains bound to the issuing active refresh family.
+
+Dashboard endpoints send the token in a body, never a query string:
 
 ```text
-Quraaa.API/Controllers/LibrariesController.cs
-Quraaa.API/Requests/Files/FormFileUploadedFile.cs
-Quraaa.API/Services/LibraryImageStorageService.cs
-Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommand.cs
-Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommandValidator.cs
-Quraaa.Application/Features/Libraries/Commands/RegisterLibrary/RegisterLibraryCommandHandler.cs
-Quraaa.Application/Features/Libraries/Common/LibraryResponse.cs
-Quraaa.Application/Features/Libraries/Interfaces/ILibraryImageStorageService.cs
-Quraaa.Application/Features/Libraries/Interfaces/ILibraryRepository.cs
-Quraaa.Persistence/Repositories/LibraryRepository.cs
-Quraaa.Persistence/Configurations/LibraryConfiguration.cs
-Quraaa.Domain/Library/LibraryAggregate.cs
+POST /api/libraries/register/context
+POST /api/libraries/register/submit
+POST /api/libraries/register/email/resend
+POST /api/libraries/register/email/verify
 ```
 
-Route:
+Details submission requires `token`, `libraryName`, `location`, `libraryImage`, `headerImage`, and `email`. Images remain JPG/PNG with the existing 5 MB limits. Submission marks the session used, extends it for 24 hours, stores the images and `AwaitingEmailVerification` library, and persists the first HMAC-hashed OTP challenge in one EF save before SMTP handoff. The committed response reports `Sent`, definite `NotSent`, or ambiguous `Unknown`; a database failure cleans up uploaded files, while an SMTP failure does not delete files referenced by the committed application and can be recovered by reissuing a mobile link and redelivering the same code.
 
-```text
-POST /api/libraries/register
-```
+The OTP is never stored in plaintext. `LIBRARY_EMAIL_OTP_PEPPER` is an independent secret used both to derive the six-digit code and to HMAC it with separate purposes and the library id, user id, normalized email, and generation. Resends retain that generation/code and failed-attempt state; the client must echo the exposed `verificationId`, and mismatched generations fail without consuming an attempt from the current challenge. EF concurrency prevents a stale resend/verification mutation from winning. Successful verification atomically sets `EmailVerifiedAtUtc`, changes `AwaitingEmailVerification` to `Pending`, consumes the challenge, and completes the temporary session.
 
-Authentication:
-
-```text
-Authorization: Bearer <access-token>
-```
-
-Request body:
-
-```text
-Content-Type: multipart/form-data
-
-libraryName: Central Library
-location: Baghdad
-libraryImage: uploaded image file
-headerImage: uploaded image file
-email: library@example.com
-```
-
-The request does not accept `userId`. `LibrariesController` reads the user id from JWT claims and sends that value to the application command.
-
-The successful `LibraryResponse` does not expose `UserId`; ownership stays internal and token-derived.
-
-Library ownership is one-to-one: one authenticated user profile can register at most one library. `RegisterLibraryCommandHandler` checks `ILibraryRepository.ExistsByUserIdAsync(userId)` before storing uploaded images. Library email is normalized to lowercase and must also be unique. Duplicate owner or email errors map to `409 Conflict`.
-
-The image fields are uploaded files. `LibrariesController` wraps ASP.NET `IFormFile` values in the application-level `IUploadedFile` abstraction. `RegisterLibraryCommandValidator` validates the uploaded files before storage. After validation succeeds, `RegisterLibraryCommandHandler` stores them through `ILibraryImageStorageService`; the API implementation writes files under `wwwroot/uploads/libraries` with generated file names. The database stores the path strings, for example `/uploads/libraries/<generated-name>.jpg`.
-
-The request does not accept approval status. New libraries are always created as `Pending`; future admin logic should transition them to `Approved` or `Rejected`.
-
-Validation rules:
-
-- `LibraryName`: required, max 100 characters.
-- `Location`: required, max 250 characters.
-- `LibraryImage`: required uploaded file, JPG/PNG, max 5 MB.
-- `HeaderImage`: required uploaded file, JPG/PNG, max 5 MB.
-- `Email`: required, valid email format, max 256 characters.
-- `UserId`: required on the command, sourced from the authenticated JWT rather than the form body.
-
-Flow:
-
-```text
-HTTP POST /api/libraries/register
-  -> LibrariesController.Register(form request)
-  -> [Authorize] validates JWT bearer token
-  -> LibrariesController extracts UserId from token claims
-  -> LibrariesController wraps form files as IUploadedFile
-  -> LibrariesController creates RegisterLibraryCommand with uploaded files and token UserId
-  -> Mediator.Send(command)
-  -> RegisterLibraryCommandHandler.Handle(...)
-  -> BaseApplicationService validates RegisterLibraryCommand
-  -> RegisterLibraryCommandValidator validates image presence, size, extension, and content type
-  -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
-  -> handler throws NotFoundException if the user profile is null
-  -> ILibraryRepository.ExistsByUserIdAsync(userId) confirms the user does not already own a library
-  -> ILibraryRepository.ExistsByEmailAsync(email) confirms the email is unique
-  -> handler throws a duplicate domain error if owner or email already exists
-  -> ILibraryImageStorageService.SaveAsync(...) stores images in wwwroot/uploads/libraries
-  -> new LibraryAggregate(...)
-  -> ILibraryRepository.AddLibraryAsync(library)
-  -> ILibraryRepository.SaveChangesAsync()
-  -> handler deletes stored image files if persistence fails
-  -> LibraryResponse
-```
+The admin request repository excludes `AwaitingEmailVerification` and legacy unverified `Pending` rows. `LibraryAggregate.Approve` and `Reject` independently require both `Pending` and `EmailVerifiedAtUtc`, so a direct PATCH cannot bypass email verification. Approval runs in the shared EF transaction, changes `UserAggregate.Role`, adds the Identity `LibraryOwner` role, and invalidates the old refresh family immediately; startup reconciliation remains an idempotent repair path.
 
 ### Library Listing Flow
 

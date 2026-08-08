@@ -13,6 +13,7 @@ using Quraaa.Domain.Library;
 using Quraaa.Domain.Library.Enums;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
+using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -193,7 +194,11 @@ namespace Quraaa.Persistence.Repositories
                         _context.UsersProfiles.AsNoTracking(),
                         l => l.UserId,
                         u => u.Id,
-                        (l, u) => new { Library = l, User = u });
+                        (l, u) => new { Library = l, User = u })
+                    .Where(x =>
+                        x.Library.ApprovalStatus != LibraryApprovalStatus.AwaitingEmailVerification &&
+                        (x.Library.ApprovalStatus != LibraryApprovalStatus.Pending ||
+                         x.Library.EmailVerifiedAtUtc.HasValue));
 
                 if (status.HasValue)
                 {
@@ -223,6 +228,7 @@ namespace Quraaa.Persistence.Repositories
                         x.Library.LibraryImage,
                         x.Library.HeaderImage,
                         x.Library.Email,
+                        x.Library.EmailVerifiedAtUtc,
                         x.Library.ApprovalStatus,
                         x.Library.CreationTime,
                         new RequesterInfo(
@@ -239,11 +245,23 @@ namespace Quraaa.Persistence.Repositories
             (Guid id, CancellationToken cancellationToken = default) => 
                 await _context.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
 
+        public async Task<LibraryAggregate?> GetByUserIdAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default) =>
+                await _context.Libraries.FirstOrDefaultAsync(
+                    library => library.UserId == userId,
+                    cancellationToken);
+
         public async Task SaveChangesAsync()
         {
             try
             {
                 await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConflictException(
+                    "The library changed concurrently. Reload it and retry the operation.");
             }
             catch (DbUpdateException ex) when (IsDuplicateLibraryForUserViolation(ex))
             {
