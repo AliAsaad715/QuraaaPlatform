@@ -9,7 +9,12 @@ namespace Quraaa.Persistence.Configurations
        {
               public void Configure(EntityTypeBuilder<LibraryAggregate> builder)
               {
-                     builder.ToTable("Libraries");
+                     builder.ToTable("Libraries", table =>
+                     {
+                            table.HasCheckConstraint(
+                                   "CK_Libraries_ApprovalStatus_EmailVerification",
+                                   "\"ApprovalStatus\" = 4 OR (\"ApprovalStatus\" IN (1, 2, 3) AND \"EmailVerifiedAtUtc\" IS NOT NULL)");
+                     });
 
                      builder.HasKey(l => l.Id);
                      builder.Property(l => l.Id)
@@ -40,6 +45,12 @@ namespace Quraaa.Persistence.Configurations
 
                      builder.Property(l => l.ApprovalStatus)
                             .IsRequired();
+
+                     builder.Property(l => l.EmailVerifiedAtUtc);
+
+                     builder.Property(l => l.ConcurrencyStamp)
+                            .IsRequired()
+                            .IsConcurrencyToken();
 
                      builder.HasOne<UserAggregate>()
                             .WithOne()

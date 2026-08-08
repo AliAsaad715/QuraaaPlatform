@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Carts.Interfaces;
+using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Otp.Interfaces;
@@ -10,6 +11,8 @@ using Quraaa.Application.Features.Payments.Interfaces;
 using Quraaa.Infrastructure.Services;
 using StackExchange.Redis;
 using Stripe;
+using System.Globalization;
+using MimeKit;
 
 namespace Quraaa.Infrastructure.Extensions
 {
@@ -22,6 +25,7 @@ namespace Quraaa.Infrastructure.Extensions
         {
             FirebaseExtensions.AddFirebaseConfiguration(services, configuration);
             AddOtpCache(services, configuration, isDevelopment);
+            AddLibraryEmailServices(services, configuration);
 
             services.AddOptions<StripeOptions>()
                 .Bind(configuration.GetSection("Stripe"))
@@ -81,6 +85,93 @@ namespace Quraaa.Infrastructure.Extensions
             });
 
             return services;
+        }
+
+        private static void AddLibraryEmailServices(
+            IServiceCollection services,
+            IConfiguration configuration)
+        {
+            services.AddOptions<SmtpOptions>()
+                .Configure(options =>
+                {
+                    options.Mailer = configuration["MAIL_MAILER"]?.Trim() ?? string.Empty;
+                    options.Host = configuration["MAIL_HOST"]?.Trim() ?? string.Empty;
+                    options.Port = int.TryParse(
+                        configuration["MAIL_PORT"],
+                        NumberStyles.None,
+                        CultureInfo.InvariantCulture,
+                        out var port)
+                            ? port
+                            : 0;
+                    options.Username = configuration["MAIL_USERNAME"]?.Trim() ?? string.Empty;
+                    options.Password = configuration["MAIL_PASSWORD"] ?? string.Empty;
+                    options.Encryption = configuration["MAIL_ENCRYPTION"]?.Trim().ToLowerInvariant()
+                        ?? string.Empty;
+                    options.FromAddress = configuration["MAIL_FROM_ADDRESS"]?.Trim() ?? string.Empty;
+                    options.FromName = configuration["MAIL_FROM_NAME"]?.Trim() ?? string.Empty;
+                })
+                .Validate(
+                    options => string.Equals(
+                        options.Mailer,
+                        "smtp",
+                        StringComparison.OrdinalIgnoreCase),
+                    "MAIL_MAILER must be configured as smtp.")
+                .Validate(
+                    options => !string.IsNullOrWhiteSpace(options.Host),
+                    "MAIL_HOST is required.")
+                .Validate(
+                    options => options.Port is > 0 and <= 65535,
+                    "MAIL_PORT must be an integer between 1 and 65535.")
+                .Validate(
+                    options => !string.IsNullOrWhiteSpace(options.Username),
+                    "MAIL_USERNAME is required.")
+                .Validate(
+                    options => !string.IsNullOrEmpty(options.Password),
+                    "MAIL_PASSWORD is required.")
+                .Validate(
+                    options => options.Encryption is "tls" or "starttls" or "ssl" or "smtps",
+                    "MAIL_ENCRYPTION must be tls, starttls, ssl, or smtps.")
+                .Validate(
+                    options => IsPlainMailboxAddress(options.FromAddress),
+                    "MAIL_FROM_ADDRESS must be a valid email address.")
+                .Validate(
+                    options => !string.IsNullOrWhiteSpace(options.FromName)
+                        && !options.FromName.Contains('\r')
+                        && !options.FromName.Contains('\n'),
+                    "MAIL_FROM_NAME is required and must be a single-line value.")
+                .ValidateOnStart();
+
+            services.AddOptions<LibraryEmailOtpOptions>()
+                .Configure(options =>
+                {
+                    options.Pepper = configuration["LIBRARY_EMAIL_OTP_PEPPER"]
+                        ?? string.Empty;
+                })
+                .Validate(
+                    options => !string.IsNullOrWhiteSpace(options.Pepper)
+                        && options.Pepper.Length >= 32,
+                    "LIBRARY_EMAIL_OTP_PEPPER must contain at least 32 characters.")
+                .Validate(
+                    options => !string.Equals(
+                        options.Pepper,
+                        configuration["JWT_SECRET_KEY"],
+                        StringComparison.Ordinal),
+                    "LIBRARY_EMAIL_OTP_PEPPER must be independent from JWT_SECRET_KEY.")
+                .ValidateOnStart();
+
+            services.AddTransient<ILibraryEmailSender, SmtpLibraryEmailSender>();
+            services.AddSingleton<ILibraryRegistrationTokenService, LibraryRegistrationTokenService>();
+            services.AddSingleton<ILibraryEmailOtpProtector, LibraryEmailOtpProtector>();
+        }
+
+        private static bool IsPlainMailboxAddress(string value)
+        {
+            var trimmedValue = value.Trim();
+            return MailboxAddress.TryParse(trimmedValue, out var mailboxAddress)
+                && string.Equals(
+                    mailboxAddress.Address,
+                    trimmedValue,
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         private static void AddOtpCache(IServiceCollection services, IConfiguration configuration, bool isDevelopment)
