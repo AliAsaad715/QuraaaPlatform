@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.AiAssistant.Interfaces;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -47,7 +48,26 @@ namespace Quraaa.Infrastructure.Services
                 var response = await _httpClient.PostAsJsonAsync("chat/completions", request, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning("OpenAI API returned {StatusCode}", response.StatusCode);
+                    if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    {
+                        // Expected under the free tier's request-per-minute cap, not
+                        // exceptional — the resilience handler on this HttpClient (see
+                        // InfrastructureDependencyInjectionHandler) already retried with
+                        // backoff before this response got here, so reaching this branch
+                        // means retries are exhausted. Retry-After is logged (when the
+                        // API sent one) to distinguish rate-limit throttling from an
+                        // actual outage when reading logs.
+                        var retryAfter = response.Headers.RetryAfter?.Delta?.ToString()
+                            ?? response.Headers.RetryAfter?.Date?.ToString()
+                            ?? "not provided";
+                        _logger.LogWarning(
+                            "OpenAI API rate-limited (429) after retries. Retry-After: {RetryAfter}", retryAfter);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("OpenAI API returned {StatusCode}", response.StatusCode);
+                    }
+
                     return null;
                 }
 

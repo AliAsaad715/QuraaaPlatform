@@ -6,5 +6,6 @@ namespace Quraaa.Persistence.Data
     {
         public string? RefreshToken { get; set; }
         public DateTime RefreshTokenExpiryTime { get; set; }
+        public Guid? RefreshTokenFamilyId { get; set; }
     }
 }

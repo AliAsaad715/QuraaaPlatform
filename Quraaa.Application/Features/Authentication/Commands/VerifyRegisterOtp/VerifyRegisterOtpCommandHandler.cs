@@ -7,6 +7,7 @@ using Quraaa.Application.Features.Otp.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
+using Quraaa.Domain.User.Enums;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -66,12 +67,6 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyRegisterOtp
                     throw new ApplicationBusinessException("Phone number is already verified.");
                 }
 
-                var userProfile = await _userRepository.GetUserByPhoneNumberAsync(formattedPhone);
-                if (userProfile is null)
-                {
-                    throw new ApplicationBusinessException("Pending registration profile was not found. Please start registration again.");
-                }
-
                 var cachedOtp = await _otpCacheService.GetOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
                 if (string.IsNullOrEmpty(cachedOtp))
                 {
@@ -80,9 +75,62 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyRegisterOtp
 
                 if (!OtpCodesMatch(cachedOtp, request.OtpCode))
                 {
-                    await RecordFailedAttemptAsync(formattedPhone, clientTargetKey, cancellationToken);
+                    await RecordFailedAttemptAsync(
+                        formattedPhone,
+                        clientTargetKey,
+                        cachedOtp,
+                        CancellationToken.None);
                     throw new ApplicationBusinessException("Invalid OTP code.");
                 }
+
+                var userProfile = await _userRepository.GetUserByIdAsync(identity.UserId);
+                var profileMatchesRegularRegistration = userProfile is not null
+                    && string.Equals(
+                        userProfile.PhoneNumber,
+                        formattedPhone,
+                        StringComparison.Ordinal)
+                    && userProfile.Role == Role.User;
+                var isRegularUserIdentity = await _identityService
+                    .IsRegularUserIdentityAsync(identity.UserId);
+
+                if (!profileMatchesRegularRegistration || !isRegularUserIdentity)
+                {
+                    var recoveryCandidate = userProfile is null
+                        || (profileMatchesRegularRegistration && !isRegularUserIdentity);
+
+                    if (!recoveryCandidate)
+                    {
+                        throw new ApplicationBusinessException("Pending registration is invalid.");
+                    }
+
+                    await EnsureOtpConsumedAsync(
+                        formattedPhone,
+                        cachedOtp,
+                        cancellationToken);
+
+                    var incompleteRegistrationDeleted = await _identityService
+                        .TryDeleteIncompleteUnconfirmedRegularRegistrationAsync(
+                            identity.UserId,
+                            cancellationToken);
+
+                    if (!incompleteRegistrationDeleted)
+                    {
+                        throw new ApplicationBusinessException("Pending registration is invalid.");
+                    }
+
+                    await ClearVerificationStateAsync(
+                        formattedPhone,
+                        clientTargetKey,
+                        CancellationToken.None);
+
+                    throw new ApplicationBusinessException(
+                        "Incomplete registration was cleared. Please wait up to 60 seconds, then start registration again.");
+                }
+
+                await EnsureOtpConsumedAsync(
+                    formattedPhone,
+                    cachedOtp,
+                    cancellationToken);
 
                 var confirmResult = await _identityService.ConfirmPhoneNumberAsync(identity.UserId);
                 if (!confirmResult.Succeeded)
@@ -91,16 +139,37 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyRegisterOtp
                     throw new ApplicationBusinessException(allErrors);
                 }
 
-                await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-                await ClearVerificationStateAsync(formattedPhone, clientTargetKey, cancellationToken);
+                await ClearVerificationStateAsync(formattedPhone, clientTargetKey, CancellationToken.None);
 
-                return await _identityService.GenerateAuthTokensAsync(identity.UserId, formattedPhone);
+                var authResponse = await _identityService
+                    .GenerateRegularUserAuthTokensAsync(identity.UserId, formattedPhone);
+                return authResponse
+                    ?? throw new ApplicationBusinessException("Pending registration is invalid.");
             }, "Registration verified successfully");
+        }
+
+        private async Task EnsureOtpConsumedAsync(
+            string formattedPhone,
+            string cachedOtp,
+            CancellationToken cancellationToken)
+        {
+            var consumed = await _otpCacheService.TryConsumeOtpAsync(
+                formattedPhone,
+                cachedOtp,
+                OtpKeyPrefix,
+                cancellationToken);
+
+            if (!consumed)
+            {
+                throw new ApplicationBusinessException(
+                    "OTP code is expired or was replaced by a newer code.");
+            }
         }
 
         private async Task RecordFailedAttemptAsync(
             string formattedPhone,
             string? clientTargetKey,
+            string inspectedOtp,
             CancellationToken cancellationToken)
         {
             var phoneAttempts = await _otpCacheService.IncrementFailedVerificationAttemptAsync(
@@ -124,7 +193,14 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyRegisterOtp
                 return;
             }
 
-            await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+            // Invalidate the inspected OTP if it is still current. A concurrent
+            // resend must not prevent the threshold lockout below.
+            await _otpCacheService.TryConsumeOtpAsync(
+                formattedPhone,
+                inspectedOtp,
+                OtpKeyPrefix,
+                cancellationToken);
+
             await _otpCacheService.RecordVerificationLockoutAsync(formattedPhone, VerificationLockout, OtpKeyPrefix, cancellationToken);
             await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
 
@@ -156,13 +232,22 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyRegisterOtp
             string? clientTargetKey,
             CancellationToken cancellationToken)
         {
-            await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-            await _otpCacheService.ClearVerificationLockoutAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-
-            if (clientTargetKey is not null)
+            try
             {
-                await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
-                await _otpCacheService.ClearVerificationLockoutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+                await _otpCacheService.ClearVerificationLockoutAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+
+                if (clientTargetKey is not null)
+                {
+                    await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                    await _otpCacheService.ClearVerificationLockoutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                }
+            }
+            catch (Exception exception)
+            {
+                Logger.LogWarning(
+                    exception,
+                    "Failed to clear registration OTP verification state after consuming the code.");
             }
         }
 

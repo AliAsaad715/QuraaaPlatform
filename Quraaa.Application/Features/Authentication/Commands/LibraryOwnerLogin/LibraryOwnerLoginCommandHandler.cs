@@ -82,7 +82,8 @@ namespace Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin
                     await RecordCredentialFailureAndThrowAsync(normalizedEmail, clientTargetKey, cancellationToken);
                 }
 
-                var isLibraryOwnerIdentity = await _identityService.IsInRoleAsync(identity.UserId, Role.LibraryOwner.ToString());
+                var isLibraryOwnerIdentity = await _identityService
+                    .IsLibraryOwnerIdentityAsync(identity.UserId);
 
                 if (ownerProfile.Role != Role.LibraryOwner || !isLibraryOwnerIdentity)
                 {
@@ -91,7 +92,18 @@ namespace Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin
 
                 await ClearCredentialStateAsync(normalizedEmail, clientTargetKey, cancellationToken);
 
-                return await _identityService.GenerateAuthTokensAsync(identity.UserId, ownerProfile.PhoneNumber);
+                var authResponse = await _identityService.GenerateLibraryOwnerAuthTokensAsync(
+                    identity.UserId,
+                    ownerProfile.PhoneNumber);
+                if (authResponse is null)
+                {
+                    await RecordCredentialFailureAndThrowAsync(
+                        normalizedEmail,
+                        clientTargetKey,
+                        cancellationToken);
+                }
+
+                return authResponse!;
             }, "Library owner logged in successfully");
         }
 

@@ -1,5 +1,6 @@
 ﻿using FluentValidation;
 using PhoneNumbers;
+using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Application.Features.Categories.Interfaces;
 
 namespace Quraaa.Application.Features.Authentication.Commands.Register
@@ -30,8 +31,12 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
             // 3. Validate password strength to meet Identity requirements and avoid early exceptions
             RuleFor(x => x.Password)
                 .NotEmpty().WithMessage("Password is required.")
-                .MinimumLength(6).WithMessage("Password must be at least 6 characters long.")
-                .Matches(@"[0-9]").WithMessage("Password must contain at least one digit.");
+                .MinimumLength(AuthenticationPasswordPolicy.MinimumLength)
+                    .WithMessage($"Password must be at least {AuthenticationPasswordPolicy.MinimumLength} characters long.")
+                .MaximumLength(AuthenticationPasswordPolicy.MaximumLength)
+                    .WithMessage($"Password must not exceed {AuthenticationPasswordPolicy.MaximumLength} characters.")
+                .Must(AuthenticationPasswordPolicy.MeetsComplexityRequirements)
+                    .WithMessage("Password must contain an uppercase letter, a lowercase letter, a digit, and a non-alphanumeric character.");
 
             // 4. Validate date of birth (prevent future dates, ensure reasonable age)
             RuleFor(x => x.DateOfBirth)

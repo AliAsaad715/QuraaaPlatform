@@ -67,7 +67,8 @@ namespace Quraaa.Application.Features.Carts.Commands.ProcessStripeWebhook
                         listing.BookId,
                         listing.Id,
                         item.Quantity,
-                        item.UnitPriceSnapshot));
+                        item.UnitPriceSnapshot,
+                        listing.CustomDigitalAssetUrl));
 
                     if (listing.Format == ListingFormat.Physical)
                     {

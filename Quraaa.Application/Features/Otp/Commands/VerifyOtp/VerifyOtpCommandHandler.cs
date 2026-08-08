@@ -56,12 +56,26 @@ namespace Quraaa.Application.Features.Otp.Commands.VerifyOtp
 
                 if (!OtpCodesMatch(cachedOtp, request.Code))
                 {
-                    await RecordFailedAttemptAsync(formattedPhone, clientTargetKey, cancellationToken);
+                    await RecordFailedAttemptAsync(
+                        formattedPhone,
+                        clientTargetKey,
+                        cachedOtp,
+                        CancellationToken.None);
                     throw new ApplicationBusinessException("Invalid OTP code.");
                 }
 
-                await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-                await ClearVerificationStateAsync(formattedPhone, clientTargetKey, cancellationToken);
+                var consumed = await _otpCacheService.TryConsumeOtpAsync(
+                    formattedPhone,
+                    cachedOtp,
+                    OtpKeyPrefix,
+                    cancellationToken);
+
+                if (!consumed)
+                {
+                    throw new ApplicationBusinessException("OTP code is expired or was replaced by a newer code.");
+                }
+
+                await ClearVerificationStateAsync(formattedPhone, clientTargetKey, CancellationToken.None);
 
             }, "OTP verified successfully");
         }
@@ -69,6 +83,7 @@ namespace Quraaa.Application.Features.Otp.Commands.VerifyOtp
         private async Task RecordFailedAttemptAsync(
             string formattedPhone,
             string? clientTargetKey,
+            string inspectedOtp,
             CancellationToken cancellationToken)
         {
             var phoneAttempts = await _otpCacheService.IncrementFailedVerificationAttemptAsync(
@@ -92,7 +107,14 @@ namespace Quraaa.Application.Features.Otp.Commands.VerifyOtp
                 return;
             }
 
-            await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+            // Invalidate the inspected OTP if it is still current. A concurrent
+            // resend must not prevent the threshold lockout below.
+            await _otpCacheService.TryConsumeOtpAsync(
+                formattedPhone,
+                inspectedOtp,
+                OtpKeyPrefix,
+                cancellationToken);
+
             await _otpCacheService.RecordVerificationLockoutAsync(formattedPhone, VerificationLockout, OtpKeyPrefix, cancellationToken);
             await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
 
@@ -124,13 +146,22 @@ namespace Quraaa.Application.Features.Otp.Commands.VerifyOtp
             string? clientTargetKey,
             CancellationToken cancellationToken)
         {
-            await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-            await _otpCacheService.ClearVerificationLockoutAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-
-            if (clientTargetKey is not null)
+            try
             {
-                await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
-                await _otpCacheService.ClearVerificationLockoutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                await _otpCacheService.ClearFailedVerificationAttemptsAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+                await _otpCacheService.ClearVerificationLockoutAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
+
+                if (clientTargetKey is not null)
+                {
+                    await _otpCacheService.ClearFailedVerificationAttemptsAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                    await _otpCacheService.ClearVerificationLockoutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                }
+            }
+            catch (Exception exception)
+            {
+                Logger.LogWarning(
+                    exception,
+                    "Failed to clear standalone OTP verification state after consuming the code.");
             }
         }
 

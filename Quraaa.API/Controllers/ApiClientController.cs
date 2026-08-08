@@ -46,7 +46,7 @@ namespace Quraaa.API.Controllers
         {
             return result.Match(
                 // 200 OK
-                success => Ok(new { message = "Operation successful." }),
+                success => Ok(new { message = success.Message }),
 
                 // 400 Bad Request (Validation)
                 validationFailed => BadRequest(new
@@ -62,6 +62,14 @@ namespace Quraaa.API.Controllers
                     type = "NotFound",
                     title = "Resource Not Found",
                     detail = "Requested resource was not found."
+                }),
+
+                // 401 Unauthorized
+                unauthorized => StatusCode(StatusCodes.Status401Unauthorized, new
+                {
+                    type = "Unauthorized",
+                    title = "Authentication Failed",
+                    detail = "Authentication credentials are invalid, expired, or revoked."
                 }),
 
                 // 403 Forbidden
@@ -102,22 +110,26 @@ namespace Quraaa.API.Controllers
                     }),
 
                 // 409 Conflict
-                Conflict => StatusCode(StatusCodes.Status409Conflict, new
+                conflict => StatusCode(StatusCodes.Status409Conflict, new
                 {
                     type = "Conflict",
                     title = "Conflict",
-                    detail = "Conflict this resource."
+                    detail = conflict.Message
                 })
             );
         }
 
         protected IActionResult HandleResult<T>(AppResult<T> result)
         {
+            return HandleResult(result, data => Ok(data));
+        }
+
+        protected IActionResult HandleResult<T>(
+            AppResult<T> result,
+            Func<T, IActionResult> onSuccess)
+        {
             return result.Match(
-                // 200 OK / 201 Created (for created resources)
-                data => // data is Dto
-                        // ? StatusCode(StatusCodes.Status201Created, data)
-                    Ok(data),
+                onSuccess,
 
                 // 400 Bad Request (Validation)
                 validationFailed => BadRequest(new
@@ -133,6 +145,14 @@ namespace Quraaa.API.Controllers
                     type = "NotFound",
                     title = "Resource Not Found",
                     detail = "Requested resource was not found."
+                }),
+
+                // 401 Unauthorized
+                unauthorized => StatusCode(StatusCodes.Status401Unauthorized, new
+                {
+                    type = "Unauthorized",
+                    title = "Authentication Failed",
+                    detail = "Authentication credentials are invalid, expired, or revoked."
                 }),
 
                 // 403 Forbidden

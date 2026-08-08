@@ -8,6 +8,7 @@ using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Category;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
+using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -22,6 +23,14 @@ namespace Quraaa.Persistence.Repositories
             Guid listingId, CancellationToken cancellationToken = default) =>
             await _context.Listings
                 .FirstOrDefaultAsync(l => l.Id == listingId && l.Status == ListingStatus.Active, cancellationToken);
+
+        public async Task<ListingAggregate?> GetByIdForInventoryAsync(
+            Guid listingId,
+            CancellationToken cancellationToken = default) =>
+            await _context.Listings
+                .FirstOrDefaultAsync(
+                    l => l.Id == listingId,
+                    cancellationToken);
 
         public async Task<ListingDetailsResponse?> GetByIdWithDetailsAsync(
         Guid listingId, CancellationToken cancellationToken = default) =>
@@ -123,6 +132,7 @@ namespace Quraaa.Persistence.Repositories
                     x.Listing.Price,
                     x.Listing.Stock,
                     x.Listing.Condition,
+                    x.Listing.Status,
                     new BookDetails(
                         x.Book.Id,
                         x.Book.Title,
@@ -143,8 +153,35 @@ namespace Quraaa.Persistence.Repositories
             ListingAggregate listing, CancellationToken cancellationToken = default) =>
             await _context.Listings.AddAsync(listing, cancellationToken);
 
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
-            _context.SaveChangesAsync(cancellationToken);
+        public async Task<HashSet<string>> FilterReferencedDigitalAssetPathsAsync(
+            IReadOnlyCollection<string> relativePaths,
+            CancellationToken cancellationToken = default)
+        {
+            if (relativePaths.Count == 0)
+                return [];
+
+            var referenced = await _context.Listings
+                .AsNoTracking()
+                .Where(l => l.CustomDigitalAssetUrl != null && relativePaths.Contains(l.CustomDigitalAssetUrl))
+                .Select(l => l.CustomDigitalAssetUrl!)
+                .ToListAsync(cancellationToken);
+
+            return referenced.ToHashSet(StringComparer.Ordinal);
+        }
+
+        public async Task SaveChangesAsync(
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConflictException(
+                    "Listing changed concurrently. Reload it and retry the operation.");
+            }
+        }
 
         private static IQueryable<UserListingFlatProjection> ApplySorting(
             IQueryable<UserListingFlatProjection> query,

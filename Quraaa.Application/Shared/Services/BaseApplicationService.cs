@@ -52,7 +52,7 @@ namespace Quraaa.Application.Shared.Services
                 Logger.LogInformation("{SuccessMessage} | User: {User}",
                     successMessage, SafeGetCurrentUserIdForLog());
 
-                return Result.Success();
+                return Result.Success(successMessage);
             }
             catch (NotFoundException ex)
             {
@@ -67,12 +67,20 @@ namespace Quraaa.Application.Shared.Services
             catch (ApplicationBusinessException ex)
             {
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
-                return Result.ValidationFailed("Auth", ex.Message);
+                // ex.PropertyName lets specific call sites name the real field (e.g.
+                // "PageNumber") instead of the historical "Auth" placeholder — kept as
+                // the default so every pre-existing caller's response shape is unchanged.
+                return Result.ValidationFailed(ex.PropertyName ?? "Auth", ex.Message);
             }
             catch (ConflictException ex)
             {
                 Logger.LogWarning("Conflict: {Message}", ex.Message);
                 return Result.Conflict(ex.Message);
+            }
+            catch (UnauthenticatedException ex)
+            {
+                Logger.LogWarning("Authentication failed: {Message}", ex.Message);
+                return Result.Unauthorized();
             }
             catch (UnauthorizedAccessException)
             {
@@ -131,12 +139,20 @@ namespace Quraaa.Application.Shared.Services
             catch (ApplicationBusinessException ex)
             {
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
-                return Result.ValidationFailed("Auth", ex.Message);
+                // ex.PropertyName lets specific call sites name the real field (e.g.
+                // "PageNumber") instead of the historical "Auth" placeholder — kept as
+                // the default so every pre-existing caller's response shape is unchanged.
+                return Result.ValidationFailed(ex.PropertyName ?? "Auth", ex.Message);
             }
             catch (ConflictException ex)
             {
                 Logger.LogWarning("Conflict: {Message}", ex.Message);
                 return Result.Conflict(ex.Message);
+            }
+            catch (UnauthenticatedException ex)
+            {
+                Logger.LogWarning("Authentication failed: {Message}", ex.Message);
+                return Result.Unauthorized();
             }
             catch (UnauthorizedAccessException)
             {
@@ -176,12 +192,20 @@ namespace Quraaa.Application.Shared.Services
             catch (ApplicationBusinessException ex)
             {
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
-                return Result.ValidationFailed("Auth", ex.Message);
+                // ex.PropertyName lets specific call sites name the real field (e.g.
+                // "PageNumber") instead of the historical "Auth" placeholder — kept as
+                // the default so every pre-existing caller's response shape is unchanged.
+                return Result.ValidationFailed(ex.PropertyName ?? "Auth", ex.Message);
             }
             catch (ConflictException ex)
             {
                 Logger.LogWarning("Conflict: {Message}", ex.Message);
                 return Result.Conflict(ex.Message);
+            }
+            catch (UnauthenticatedException ex)
+            {
+                Logger.LogWarning("Authentication failed: {Message}", ex.Message);
+                return Result.Unauthorized();
             }
             catch (UnauthorizedAccessException)
             {
@@ -199,14 +223,13 @@ namespace Quraaa.Application.Shared.Services
     Func<Task> businessLogic,
     string successMessage = "Operation successful")
         {
-
             try
             {
                 await businessLogic();
 
                 Logger.LogInformation("{SuccessMessage} | User: {User}",
                     successMessage, SafeGetCurrentUserIdForLog());
-                return Result.Success();
+                return Result.Success(successMessage);
             }
             catch (NotFoundException ex)
             {
@@ -221,12 +244,20 @@ namespace Quraaa.Application.Shared.Services
             catch (ApplicationBusinessException ex)
             {
                 Logger.LogWarning(ex, "Application business rule violation: {Message}", ex.Message);
-                return Result.ValidationFailed("Auth", ex.Message);
+                // ex.PropertyName lets specific call sites name the real field (e.g.
+                // "PageNumber") instead of the historical "Auth" placeholder — kept as
+                // the default so every pre-existing caller's response shape is unchanged.
+                return Result.ValidationFailed(ex.PropertyName ?? "Auth", ex.Message);
             }
             catch (ConflictException ex)
             {
                 Logger.LogWarning("Conflict: {Message}", ex.Message);
                 return Result.Conflict(ex.Message);
+            }
+            catch (UnauthenticatedException ex)
+            {
+                Logger.LogWarning("Authentication failed: {Message}", ex.Message);
+                return Result.Unauthorized();
             }
             catch (UnauthorizedAccessException)
             {

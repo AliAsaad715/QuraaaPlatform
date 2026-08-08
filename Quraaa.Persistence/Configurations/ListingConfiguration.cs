@@ -38,14 +38,16 @@ namespace Quraaa.Persistence.Configurations
                    .IsRequired();
 
             // Nullable by design: Condition/Stock only apply to physical
-            // listings, DigitalAssetUrl only to digital ones - enforced in
+            // listings, CustomDigitalAssetUrl only to digital ones - enforced in
             // ListingAggregate's factory methods, not here.
             builder.Property(l => l.Condition);
 
-            builder.Property(l => l.DigitalAssetUrl)
+            builder.Property(l => l.CustomDigitalAssetUrl)
                    .HasMaxLength(500);
 
             builder.Property(l => l.Stock);
+            builder.Property(l => l.LastModificationTime)
+                   .IsConcurrencyToken();
 
             builder.HasOne<BookAggregate>()
                    .WithMany()
@@ -66,6 +68,11 @@ namespace Quraaa.Persistence.Configurations
             builder.HasIndex(l => l.LibraryId);
             builder.HasIndex(l => l.UserId);
             builder.HasIndex(l => l.Status);
+
+            // Drives the "is this path still referenced" lookup the file retention
+            // worker runs before hard-deleting a candidate.
+            builder.HasIndex(l => l.CustomDigitalAssetUrl)
+                   .HasFilter("\"CustomDigitalAssetUrl\" IS NOT NULL");
         }
     }
 }

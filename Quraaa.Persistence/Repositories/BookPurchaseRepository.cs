@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Quraaa.Application.Features.Catalog.Common;
 using Quraaa.Application.Features.Categories.Common;
+using Quraaa.Application.Features.Purchases.Common;
 using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Features.Purchases.Queries.GetBuyHistory;
 using Quraaa.Application.Features.Purchases.Queries.GetSellHistory;
@@ -27,6 +28,57 @@ namespace Quraaa.Persistence.Repositories
         public Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             return _context.SaveChangesAsync(cancellationToken);
+        }
+
+        public Task<bool> HasUserPurchasedListingAsync(
+            Guid userId,
+            Guid listingId,
+            CancellationToken cancellationToken = default) =>
+            _context.BookPurchases
+                .AsNoTracking()
+                .AnyAsync(p => p.UserId == userId && p.ListingId == listingId, cancellationToken);
+
+        public Task<PurchaseDigitalAssetInfo?> GetDigitalAssetInfoAsync(
+            Guid purchaseId,
+            CancellationToken cancellationToken = default) =>
+            _context.BookPurchases
+                .AsNoTracking()
+                .Where(p => p.Id == purchaseId)
+                .Join(
+                    _context.Books.AsNoTracking(),
+                    p => p.BookId,
+                    b => b.Id,
+                    (p, b) => new PurchaseDigitalAssetInfo(p.UserId, p.PurchasedDigitalAssetUrl, b.Title))
+                .FirstOrDefaultAsync(cancellationToken);
+
+        public Task<PurchaseBookContext?> GetPurchaseBookContextAsync(
+            Guid purchaseId,
+            CancellationToken cancellationToken = default) =>
+            _context.BookPurchases
+                .AsNoTracking()
+                .Where(p => p.Id == purchaseId)
+                .Join(
+                    _context.Books.AsNoTracking(),
+                    p => p.BookId,
+                    b => b.Id,
+                    (p, b) => new PurchaseBookContext(
+                        p.UserId, b.Id, b.Title, b.Author, b.Description, b.CanonicalPdfUrl, b.CanonicalWordDocUrl))
+                .FirstOrDefaultAsync(cancellationToken);
+
+        public async Task<HashSet<string>> FilterReferencedDigitalAssetPathsAsync(
+            IReadOnlyCollection<string> relativePaths,
+            CancellationToken cancellationToken = default)
+        {
+            if (relativePaths.Count == 0)
+                return [];
+
+            var referenced = await _context.BookPurchases
+                .AsNoTracking()
+                .Where(p => p.PurchasedDigitalAssetUrl != null && relativePaths.Contains(p.PurchasedDigitalAssetUrl))
+                .Select(p => p.PurchasedDigitalAssetUrl!)
+                .ToListAsync(cancellationToken);
+
+            return referenced.ToHashSet(StringComparer.Ordinal);
         }
 
         public async Task<(IReadOnlyCollection<BuyHistoryItemResponse> Items, int TotalCount)> GetBuyHistoryAsync(
@@ -81,7 +133,8 @@ namespace Quraaa.Persistence.Repositories
                     x.Purchase.Quantity,
                     x.Purchase.UnitPrice,
                     x.Purchase.Quantity * x.Purchase.UnitPrice,
-                    x.Purchase.CreationTime))
+                    x.Purchase.CreationTime,
+                    x.Purchase.PurchasedDigitalAssetUrl))
                 .ToListAsync(cancellationToken);
 
             return (items, totalCount);

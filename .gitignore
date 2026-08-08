@@ -365,3 +365,7 @@ MigrationBackup/
 FodyWeavers.xsd
 
 .env
+
+wwwroot/
+
+storage/

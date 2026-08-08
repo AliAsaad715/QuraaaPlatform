@@ -8,9 +8,15 @@ namespace Quraaa.Domain.Purchases
         public Guid UserId { get; private set; }
         public Guid BookId { get; private set; }
         public Guid ListingId { get; private set; }
+        public Guid? OrderId { get; private set; }
+        public Guid? OrderItemId { get; private set; }
         public int Quantity { get; private set; }
         public decimal UnitPrice { get; private set; }
         public decimal TotalPrice => Quantity * UnitPrice;
+        // Snapshot of the digital asset URL at the moment of purchase.
+        // NULL for physical books. Immutable after creation — seller file
+        // updates never affect this record.
+        public string? PurchasedDigitalAssetUrl { get; private set; }
 
         private BookPurchaseAggregate() { }
 
@@ -19,15 +25,21 @@ namespace Quraaa.Domain.Purchases
             Guid userId,
             Guid bookId,
             Guid listingId,
+            Guid? orderId,
+            Guid? orderItemId,
             int quantity,
-            decimal unitPrice)
+            decimal unitPrice,
+            string? purchasedDigitalAssetUrl)
         {
             Id = id;
             UserId = userId;
             BookId = bookId;
             ListingId = listingId;
+            OrderId = orderId;
+            OrderItemId = orderItemId;
             Quantity = quantity;
             UnitPrice = unitPrice;
+            PurchasedDigitalAssetUrl = purchasedDigitalAssetUrl;
         }
 
         public static BookPurchaseAggregate Create(
@@ -35,7 +47,29 @@ namespace Quraaa.Domain.Purchases
             Guid bookId,
             Guid listingId,
             int quantity,
-            decimal unitPrice)
+            decimal unitPrice,
+            string? purchasedDigitalAssetUrl = null)
+        {
+            return Create(
+                userId,
+                bookId,
+                listingId,
+                quantity,
+                unitPrice,
+                null,
+                null,
+                purchasedDigitalAssetUrl);
+        }
+
+        public static BookPurchaseAggregate Create(
+            Guid userId,
+            Guid bookId,
+            Guid listingId,
+            int quantity,
+            decimal unitPrice,
+            Guid? orderId,
+            Guid? orderItemId,
+            string? purchasedDigitalAssetUrl = null)
         {
             if (userId == Guid.Empty)
             {
@@ -62,13 +96,33 @@ namespace Quraaa.Domain.Purchases
                 throw new DomainException("Unit price cannot be negative.");
             }
 
+            if (orderId.HasValue != orderItemId.HasValue)
+            {
+                throw new DomainException("Order id and order item id must be provided together.");
+            }
+
+            if (orderId == Guid.Empty)
+            {
+                throw new DomainException("Order id cannot be empty.");
+            }
+
+            if (orderItemId == Guid.Empty)
+            {
+                throw new DomainException("Order item id cannot be empty.");
+            }
+
             return new BookPurchaseAggregate(
                 Guid.NewGuid(),
                 userId,
                 bookId,
                 listingId,
+                orderId,
+                orderItemId,
                 quantity,
-                unitPrice);
+                unitPrice,
+                string.IsNullOrWhiteSpace(purchasedDigitalAssetUrl)
+                    ? null
+                    : purchasedDigitalAssetUrl.Trim());
         }
     }
 }

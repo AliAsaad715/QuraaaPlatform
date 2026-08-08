@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Domain.Cart;
 using Quraaa.Domain.Cart.Enums;
+using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -19,7 +21,20 @@ namespace Quraaa.Persistence.Repositories
         {
             return await _context.Set<CartAggregate>()
                 .Include(x => x.Items)
-                .FirstOrDefaultAsync(x => x.UserId == userId && x.Status != CartStatus.Paid && !x.IsDeleted, cancellationToken);
+                .FirstOrDefaultAsync(
+                    x => x.UserId == userId
+                        && (x.Status == CartStatus.Active || x.Status == CartStatus.PendingPayment)
+                        && !x.IsDeleted,
+                    cancellationToken);
+        }
+
+        public async Task<CartAggregate?> GetByIdAsync(
+            Guid cartId,
+            CancellationToken cancellationToken = default)
+        {
+            return await _context.Set<CartAggregate>()
+                .Include(x => x.Items)
+                .FirstOrDefaultAsync(x => x.Id == cartId && !x.IsDeleted, cancellationToken);
         }
 
         public async Task<CartAggregate?> GetByStripeSessionIdAsync(string stripeCheckoutSessionId, CancellationToken cancellationToken = default)
@@ -34,9 +49,36 @@ namespace Quraaa.Persistence.Repositories
             await _context.Set<CartAggregate>().AddAsync(cart, cancellationToken);
         }
 
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default)
+        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
-            return _context.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConflictException(
+                    "Cart changed concurrently. Reload it and retry the operation.");
+            }
+            catch (DbUpdateException exception)
+                when (IsOpenCartUniqueViolation(exception))
+            {
+                foreach (var entry in exception.Entries.Where(
+                    entry => entry.Entity is CartAggregate))
+                {
+                    entry.State = EntityState.Detached;
+                }
+
+                throw new ConflictException(
+                    "Another open cart was created concurrently. Reload your cart and retry the operation.");
+            }
         }
+
+        private static bool IsOpenCartUniqueViolation(DbUpdateException exception) =>
+            exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+                ConstraintName: "IX_Carts_UserId_Open"
+            };
     }
 }

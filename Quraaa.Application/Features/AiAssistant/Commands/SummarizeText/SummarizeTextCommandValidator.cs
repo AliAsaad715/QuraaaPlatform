@@ -6,11 +6,9 @@ namespace Quraaa.Application.Features.AiAssistant.Commands.SummarizeText
     {
         public SummarizeTextCommandValidator()
         {
-            RuleFor(x => x.Text)
+            RuleFor(x => x.PurchaseId)
                 .NotEmpty()
-                .WithMessage("Text is required.")
-                .MaximumLength(20_000)
-                .WithMessage("Selected text is too long to summarize in one request (max 20,000 characters — a chapter or so). Assumed cap, not specified in the requirement; tune freely.");
+                .WithMessage("PurchaseId is required.");
         }
     }
 }

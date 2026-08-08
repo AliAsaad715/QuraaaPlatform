@@ -14,7 +14,7 @@ namespace Quraaa.Persistence.Seed
         private const string Title = "Ebook One";
         private const string Author = "Quraaa Seed Data";
         private const string Language = "en";
-        private const string DigitalAssetUrl = "/uploads/books/book1.pdf";
+        private const string DigitalAssetUrl = "books/book1.pdf";
 
         public static async Task SeedAsync(ApplicationDbContext context, CancellationToken cancellationToken = default)
         {
@@ -49,20 +49,20 @@ namespace Quraaa.Persistence.Seed
             }
 
             var existingListing = await context.Listings
-                .Where(listing => listing.Id == EbookListingId || listing.DigitalAssetUrl == DigitalAssetUrl)
-                .Select(listing => new { listing.Id, listing.DigitalAssetUrl })
+                .Where(listing => listing.Id == EbookListingId || listing.CustomDigitalAssetUrl == DigitalAssetUrl)
+                .Select(listing => new { listing.Id, listing.CustomDigitalAssetUrl })
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (existingListing is not null)
             {
                 if (existingListing.Id == EbookListingId &&
-                    existingListing.DigitalAssetUrl != DigitalAssetUrl)
+                    existingListing.CustomDigitalAssetUrl != DigitalAssetUrl)
                 {
                     await context.Listings
                         .Where(listing => listing.Id == EbookListingId)
                         .ExecuteUpdateAsync(
                             setters => setters.SetProperty(
-                                listing => listing.DigitalAssetUrl,
+                                listing => listing.CustomDigitalAssetUrl,
                                 DigitalAssetUrl),
                             cancellationToken);
                 }
@@ -86,9 +86,7 @@ namespace Quraaa.Persistence.Seed
                 sellerUserId,
                 ListingFormat.Digital,
                 price: 1.00m,
-                digitalAssetUrl: DigitalAssetUrl);
-
-            ebookListing.Approve(sellerUserId);
+                customDigitalAssetUrl: DigitalAssetUrl);
 
             await context.Listings.AddAsync(ebookListing, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);

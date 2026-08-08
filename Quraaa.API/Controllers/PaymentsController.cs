@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Quraaa.Application.Features.Carts.Commands.ProcessStripeWebhook;
+using Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook;
+using Quraaa.Application.Features.Payments.Exceptions;
 
 namespace Quraaa.API.Controllers
 {
@@ -11,11 +12,26 @@ namespace Quraaa.API.Controllers
         public async Task<IActionResult> StripeWebhook()
         {
             using var reader = new StreamReader(Request.Body);
-            var payload = await reader.ReadToEndAsync();
+            var payload = await reader.ReadToEndAsync(HttpContext.RequestAborted);
             var signature = Request.Headers["Stripe-Signature"].ToString();
 
-            var result = await Mediator.Send(new ProcessStripeWebhookCommand(payload, signature));
-            return HandleResult(result);
+            try
+            {
+                var result = await Mediator.Send(
+                    new ProcessPaymentWebhookCommand(payload, signature),
+                    HttpContext.RequestAborted);
+
+                return HandleResult(result);
+            }
+            catch (PaymentWebhookVerificationException exception)
+            {
+                return BadRequest(new
+                {
+                    type = "InvalidWebhookSignature",
+                    title = "Invalid Stripe Webhook",
+                    detail = exception.Message
+                });
+            }
         }
     }
 }

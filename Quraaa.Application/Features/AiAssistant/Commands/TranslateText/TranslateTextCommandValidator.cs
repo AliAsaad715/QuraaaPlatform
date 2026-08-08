@@ -9,11 +9,13 @@ namespace Quraaa.Application.Features.AiAssistant.Commands.TranslateText
 
         public TranslateTextCommandValidator()
         {
-            RuleFor(x => x.Text)
+            RuleFor(x => x.PurchaseId)
                 .NotEmpty()
-                .WithMessage("Text is required.")
-                .MaximumLength(5_000)
-                .WithMessage("Selected text is too long to translate in one request (max 5,000 characters).");
+                .WithMessage("PurchaseId is required.");
+
+            RuleFor(x => x.PageNumber)
+                .GreaterThan(0)
+                .WithMessage("PageNumber must be a positive, 1-based page number.");
 
             RuleFor(x => x.TargetLanguage)
                 .Must(lang => SupportedLanguages.Contains(lang))

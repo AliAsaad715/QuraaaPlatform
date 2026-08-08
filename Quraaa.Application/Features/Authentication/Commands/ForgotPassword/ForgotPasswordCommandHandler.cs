@@ -2,10 +2,13 @@ using IdentityServer.Helpers;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
+using Quraaa.Application.Features.Otp.Exceptions;
 using Quraaa.Application.Features.Otp.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
+using Quraaa.Domain.User;
+using System.Security.Cryptography;
 
 namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
 {
@@ -17,7 +20,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
         private readonly IFirebaseSmsGateway _firebaseSmsGateway;
 
         private const string OtpKeyPrefix = "forgot-password-otp";
-        private static readonly TimeSpan OtpExpiration = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan OtpExpiration = TimeSpan.FromMinutes(10);
         private static readonly TimeSpan OtpLockout = TimeSpan.FromSeconds(60);
         private static readonly TimeSpan VerificationLockout = TimeSpan.FromMinutes(5);
 
@@ -52,51 +55,96 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
                     throw new ApplicationBusinessException($"Too many invalid OTP attempts. Please wait {VerificationLockout.TotalMinutes} minutes before requesting another OTP.");
                 }
 
-                if (await HasRecentRequestAsync(formattedPhone, clientTargetKey, cancellationToken))
-                {
-                    throw new ApplicationBusinessException($"Please wait at least {OtpLockout.TotalSeconds} seconds before requesting another OTP.");
-                }
+                var requestLease = await AcquireRequestLeaseAsync(
+                    formattedPhone,
+                    clientTargetKey,
+                    cancellationToken);
 
-                var user = await _userRepository.GetUserByPhoneNumberAsync(formattedPhone);
-                if (user == null)
-                {
-                    await RecordRequestLockoutAsync(formattedPhone, clientTargetKey, cancellationToken);
-                    return;
-                }
-
-                var otpCode = System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1_000_000).ToString();
-
-                await _otpCacheService.SetOtpAsync(formattedPhone, otpCode, OtpExpiration, OtpKeyPrefix, cancellationToken);
-
+                UserAggregate? user;
                 try
                 {
-                    await RecordRequestLockoutAsync(formattedPhone, clientTargetKey, cancellationToken);
-                    await _firebaseSmsGateway.SendSmsRequestAsync(
-                        formattedPhone,
-                        otpCode,
-                        cancellationToken: cancellationToken);
+                    user = await _userRepository.GetUserByPhoneNumberAsync(formattedPhone);
                 }
                 catch
                 {
-                    await ClearRequestStateAsync(formattedPhone, clientTargetKey, cancellationToken);
+                    await CleanupFailedOtpRequestAsync(
+                        formattedPhone,
+                        requestLease,
+                        CancellationToken.None);
                     throw;
                 }
+
+                if (user == null)
+                {
+                    return;
+                }
+
+                await SendForgotPasswordOtpAsync(
+                    formattedPhone,
+                    requestLease,
+                    cancellationToken);
 
             }, "Forgot password request processed");
         }
 
-        private async Task<bool> HasRecentRequestAsync(
+        private async Task SendForgotPasswordOtpAsync(
             string formattedPhone,
-            string? clientTargetKey,
+            OtpRequestLease requestLease,
             CancellationToken cancellationToken)
         {
-            if (await _otpCacheService.HasRecentOtpRequestAsync(formattedPhone, OtpLockout, OtpKeyPrefix, cancellationToken))
-            {
-                return true;
-            }
+            var otpCode = RandomNumberGenerator.GetInt32(100000, 1_000_000).ToString();
+            var ownsOtp = false;
 
-            return clientTargetKey is not null
-                && await _otpCacheService.HasRecentOtpRequestAsync(clientTargetKey, OtpLockout, OtpKeyPrefix, cancellationToken);
+            try
+            {
+                ownsOtp = await _otpCacheService.TrySetOwnedOtpAsync(
+                    formattedPhone,
+                    otpCode,
+                    requestLease.OwnerToken,
+                    OtpExpiration,
+                    OtpKeyPrefix,
+                    cancellationToken);
+
+                if (!ownsOtp)
+                {
+                    throw new ApplicationBusinessException(
+                        $"Please wait at least {OtpLockout.TotalSeconds} seconds before requesting another OTP.");
+                }
+
+                await _firebaseSmsGateway.SendSmsRequestAsync(
+                    formattedPhone,
+                    otpCode,
+                    purpose: "forgot-password",
+                    cancellationToken: cancellationToken);
+            }
+            catch (SmsDispatchException exception)
+                when (ownsOtp && exception.Outcome == SmsDispatchOutcome.DefinitelyNotDispatched)
+            {
+                Logger.LogWarning(
+                    exception,
+                    "Clearing a stored forgot-password OTP because the SMS request was definitely not dispatched.");
+                await CleanupFailedOtpRequestAsync(
+                    formattedPhone,
+                    requestLease,
+                    CancellationToken.None,
+                    ownedOtpCode: otpCode);
+                throw;
+            }
+            catch (Exception exception) when (ownsOtp)
+            {
+                Logger.LogWarning(
+                    exception,
+                    "Retaining a stored forgot-password OTP because the SMS gateway dispatch outcome is unknown.");
+                throw;
+            }
+            catch
+            {
+                await CleanupFailedOtpRequestAsync(
+                    formattedPhone,
+                    requestLease,
+                    CancellationToken.None);
+                throw;
+            }
         }
 
         private async Task<bool> IsVerificationLockedOutAsync(
@@ -113,30 +161,111 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
                 && await _otpCacheService.IsVerificationLockedOutAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
         }
 
-        private async Task RecordRequestLockoutAsync(
+        private async Task<OtpRequestLease> AcquireRequestLeaseAsync(
             string formattedPhone,
             string? clientTargetKey,
             CancellationToken cancellationToken)
         {
-            await _otpCacheService.RecordOtpRequestAsync(formattedPhone, OtpLockout, OtpKeyPrefix, cancellationToken);
+            var ownerToken = Guid.NewGuid().ToString("N");
+            var phoneAcquired = await _otpCacheService.TryAcquireOtpRequestAsync(
+                formattedPhone,
+                ownerToken,
+                OtpLockout,
+                OtpKeyPrefix,
+                cancellationToken);
 
-            if (clientTargetKey is not null)
+            if (!phoneAcquired)
             {
-                await _otpCacheService.RecordOtpRequestAsync(clientTargetKey, OtpLockout, OtpKeyPrefix, cancellationToken);
+                throw new ApplicationBusinessException(
+                    $"Please wait at least {OtpLockout.TotalSeconds} seconds before requesting another OTP.");
+            }
+
+            try
+            {
+                if (clientTargetKey is not null)
+                {
+                    var clientAcquired = await _otpCacheService.TryAcquireOtpRequestAsync(
+                        clientTargetKey,
+                        ownerToken,
+                        OtpLockout,
+                        OtpKeyPrefix,
+                        cancellationToken);
+
+                    if (!clientAcquired)
+                    {
+                        throw new ApplicationBusinessException(
+                            $"Please wait at least {OtpLockout.TotalSeconds} seconds before requesting another OTP.");
+                    }
+                }
+
+                return new OtpRequestLease(ownerToken, clientTargetKey);
+            }
+            catch
+            {
+                await CleanupFailedOtpRequestAsync(
+                    formattedPhone,
+                    new OtpRequestLease(ownerToken, clientTargetKey),
+                    CancellationToken.None);
+                throw;
             }
         }
 
-        private async Task ClearRequestStateAsync(
+        private async Task CleanupFailedOtpRequestAsync(
             string formattedPhone,
-            string? clientTargetKey,
-            CancellationToken cancellationToken)
+            OtpRequestLease requestLease,
+            CancellationToken cancellationToken,
+            string? ownedOtpCode = null)
         {
-            await _otpCacheService.ClearOtpAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-            await _otpCacheService.ClearOtpRequestAsync(formattedPhone, OtpKeyPrefix, cancellationToken);
-
-            if (clientTargetKey is not null)
+            if (ownedOtpCode is not null)
             {
-                await _otpCacheService.ClearOtpRequestAsync(clientTargetKey, OtpKeyPrefix, cancellationToken);
+                try
+                {
+                    await _otpCacheService.ClearOwnedOtpAsync(
+                        formattedPhone,
+                        ownedOtpCode,
+                        requestLease.OwnerToken,
+                        OtpKeyPrefix,
+                        cancellationToken);
+                }
+                catch (Exception cleanupException)
+                {
+                    Logger.LogWarning(
+                        cleanupException,
+                        "Failed to clear an owned forgot-password OTP after a definite dispatch failure.");
+                }
+            }
+
+            if (requestLease.ClientTargetKey is not null)
+            {
+                try
+                {
+                    await _otpCacheService.ReleaseOtpRequestAsync(
+                        requestLease.ClientTargetKey,
+                        requestLease.OwnerToken,
+                        OtpKeyPrefix,
+                        cancellationToken);
+                }
+                catch (Exception cleanupException)
+                {
+                    Logger.LogWarning(
+                        cleanupException,
+                        "Failed to release a forgot-password OTP client lease during cleanup.");
+                }
+            }
+
+            try
+            {
+                await _otpCacheService.ReleaseOtpRequestAsync(
+                    formattedPhone,
+                    requestLease.OwnerToken,
+                    OtpKeyPrefix,
+                    cancellationToken);
+            }
+            catch (Exception cleanupException)
+            {
+                Logger.LogWarning(
+                    cleanupException,
+                    "Failed to release a forgot-password OTP phone lease during cleanup.");
             }
         }
 
@@ -146,5 +275,9 @@ namespace Quraaa.Application.Features.Authentication.Commands.ForgotPassword
                 ? null
                 : $"ip:{clientIpAddress.Trim()}";
         }
+
+        private sealed record OtpRequestLease(
+            string OwnerToken,
+            string? ClientTargetKey);
     }
 }

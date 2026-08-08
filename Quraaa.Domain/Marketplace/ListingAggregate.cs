@@ -13,7 +13,11 @@ namespace Quraaa.Domain.Marketplace
         public ListingFormat Format { get; private set; }
         public decimal Price { get; private set; }
         public BookCondition? Condition { get; private set; }
-        public string? DigitalAssetUrl { get; private set; }
+
+        // The digital file served for this listing. Named "Custom" to distinguish it
+        // from BookAggregate's canonical files, since a merchant may need a listing-
+        // specific file that differs from the book's catalog-level copy.
+        public string? CustomDigitalAssetUrl { get; private set; }
         public int? Stock { get; private set; }
         public ListingStatus Status { get; private set; }
 
@@ -28,7 +32,7 @@ namespace Quraaa.Domain.Marketplace
             Guid? userId,
             decimal price,
             BookCondition? condition,
-            string? digitalAssetUrl,
+            string? customDigitalAssetUrl,
             int? stock)
         {
             Id = id;
@@ -39,9 +43,9 @@ namespace Quraaa.Domain.Marketplace
             UserId = userId;
             Price = price;
             Condition = condition;
-            DigitalAssetUrl = digitalAssetUrl;
+            CustomDigitalAssetUrl = customDigitalAssetUrl;
             Stock = stock;
-            Status = ListingStatus.PendingReview;
+            Status = ListingStatus.Active;
         }
 
         public static ListingAggregate CreateForLibrary(
@@ -67,6 +71,28 @@ namespace Quraaa.Domain.Marketplace
                 libraryId, null, price, condition, null, stock);
         }
 
+        public static ListingAggregate CreateDigitalForLibrary(
+            Guid id,
+            Guid bookId,
+            Guid libraryId,
+            decimal price,
+            string customDigitalAssetUrl)
+        {
+            if (price <= 0)
+            {
+                throw new DomainException("Price must be greater than zero.");
+            }
+
+            if (string.IsNullOrWhiteSpace(customDigitalAssetUrl))
+            {
+                throw new DomainException("A digital asset reference is required for digital listings.");
+            }
+
+            return new ListingAggregate(
+                id, bookId, ListingFormat.Digital, SellerType.Library,
+                libraryId, null, price, null, customDigitalAssetUrl, 1);
+        }
+
         // Users can sell either format (per your note). Physical listings need
         // a condition + stock count; digital listings need an asset reference.
         public static ListingAggregate CreateForUser(
@@ -76,7 +102,7 @@ namespace Quraaa.Domain.Marketplace
             ListingFormat format,
             decimal price,
             BookCondition? condition = null,
-            string? digitalAssetUrl = null)
+            string? customDigitalAssetUrl = null)
         {
             if (price <= 0)
             {
@@ -90,31 +116,30 @@ namespace Quraaa.Domain.Marketplace
                     throw new DomainException("Condition is required for physical listings.");
                 }
             }
-            else if (string.IsNullOrWhiteSpace(digitalAssetUrl))
+            else if (string.IsNullOrWhiteSpace(customDigitalAssetUrl))
             {
                 throw new DomainException("A digital asset reference is required for digital listings.");
             }
 
             return new ListingAggregate(
                 id, bookId, format, SellerType.User,
-                null, userId, price, condition, digitalAssetUrl, 1);
+                null, userId, price, condition, customDigitalAssetUrl, 1);
         }
-
-        public void Approve(Guid modifiedBy)
-        {
-            if (Status != ListingStatus.PendingReview)
-            {
-                throw new DomainException("Only listings pending review can be approved.");
-            }
-
-            Status = ListingStatus.Active;
-            UpdateAudit(modifiedBy);
-        }
-
 
         public void Remove(Guid modifiedBy)
         {
             Status = ListingStatus.Removed;
+            UpdateAudit(modifiedBy);
+        }
+
+        public void Reactivate(Guid modifiedBy)
+        {
+            if (Status != ListingStatus.Removed)
+            {
+                throw new DomainException("Only removed listings can be reactivated.");
+            }
+
+            Status = ListingStatus.Active;
             UpdateAudit(modifiedBy);
         }
 
@@ -131,17 +156,27 @@ namespace Quraaa.Domain.Marketplace
 
         public void DecrementStock(Guid modifiedBy)
         {
+            ReserveStock(1, modifiedBy);
+        }
+
+        public void ReserveStock(int quantity, Guid modifiedBy)
+        {
             if (Format != ListingFormat.Physical || Stock is null)
             {
                 throw new DomainException("Only physical listings track stock.");
             }
 
-            if (Stock <= 0)
+            if (quantity <= 0)
             {
-                throw new DomainException("No stock remaining for this listing.");
+                throw new DomainException("Reserved stock quantity must be greater than zero.");
             }
 
-            Stock--;
+            if (Stock < quantity)
+            {
+                throw new DomainException("Insufficient stock remaining for this listing.");
+            }
+
+            Stock -= quantity;
 
             if (Stock == 0)
             {
@@ -153,6 +188,28 @@ namespace Quraaa.Domain.Marketplace
                 {
                     Status = ListingStatus.Sold;
                 }
+            }
+
+            UpdateAudit(modifiedBy);
+        }
+
+        public void ReleaseReservedStock(int quantity, Guid modifiedBy)
+        {
+            if (Format != ListingFormat.Physical || Stock is null)
+            {
+                throw new DomainException("Only physical listings track stock.");
+            }
+
+            if (quantity <= 0)
+            {
+                throw new DomainException("Released stock quantity must be greater than zero.");
+            }
+
+            Stock = checked(Stock.Value + quantity);
+
+            if (Status is ListingStatus.OutOfStock or ListingStatus.Sold)
+            {
+                Status = ListingStatus.Active;
             }
 
             UpdateAudit(modifiedBy);
@@ -183,6 +240,22 @@ namespace Quraaa.Domain.Marketplace
                 throw new DomainException("Only physical listings have a condition.");
 
             Condition = newCondition;
+            UpdateAudit(modifiedBy);
+        }
+
+        // Replaces the digital asset for FUTURE purchases only.
+        // All existing BookPurchaseAggregate records hold their own
+        // PurchasedDigitalAssetUrl snapshot, so buyers who already paid
+        // are completely unaffected.
+        public void UpdateCustomDigitalAsset(string newUrl, Guid modifiedBy)
+        {
+            if (Format != ListingFormat.Digital)
+                throw new DomainException("Only digital listings have a digital asset.");
+
+            if (string.IsNullOrWhiteSpace(newUrl))
+                throw new DomainException("A digital asset URL is required.");
+
+            CustomDigitalAssetUrl = newUrl.Trim();
             UpdateAudit(modifiedBy);
         }
     }

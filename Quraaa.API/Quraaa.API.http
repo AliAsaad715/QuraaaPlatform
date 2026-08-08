@@ -1,4 +1,6 @@
 @Quraaa.API_HostAddress = http://localhost:5153
+@accessToken = replace-with-access-token
+@refreshToken = replace-with-refresh-token
 
 GET {{Quraaa.API_HostAddress}}/weatherforecast/
 Accept: application/json
@@ -41,6 +43,27 @@ Content-Type: application/json
 {
   "phoneNumber": "+9647XXXXXXXXX",
   "password": "abc123"
+}
+
+###
+
+# @name Logout
+POST {{Quraaa.API_HostAddress}}/api/auth/logout
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+###
+
+# @name RefreshToken
+POST {{Quraaa.API_HostAddress}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
 }
 
 ###

@@ -6,6 +6,7 @@ using Quraaa.Infrastructure.Extensions;
 using Quraaa.Infrastructure.Services;
 using Quraaa.Persistence.Data;
 using Quraaa.Persistence.Seed;
+using System.Net.Http.Headers;
 using System.Text.Json.Serialization;
 
 DotNetEnv.Env.Load();
@@ -34,26 +35,56 @@ builder.Services.Configure<RouteOptions>(options =>
     options.LowercaseUrls = true;
 });
 
-// في Program.cs
-builder.Services.AddHttpClient<IOpenAiService, OpenAiService>(client =>
-{
-    // تغيير الرابط ليشير إلى OpenRouter
-    client.BaseAddress = new Uri("https://openrouter.ai/api/v1/");
-});
-
 builder.Services.AddDatabaseConfiguration(builder.Configuration);
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddInfrastructureDependencies(builder.Configuration, builder.Environment.IsDevelopment());
 builder.Services.AddSwaggerConfiguration(builder.Configuration);
 
+// CORS: origins are configurable via Cors:AllowedOrigins (see appsettings/.env)
+// so production can be locked down to real frontend origins once they're known.
+// With no allow-list configured, fall back to allowing any origin — Bearer-token
+// auth travels in the Authorization header, not cookies, so AllowAnyOrigin() here
+// never needs (and must never be combined with) AllowCredentials().
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? [];
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Default", policy =>
+    {
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+    });
+});
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
+// Configure the HTTP request pipeline.
+// UseForwardedHeaders must run first so Request.Scheme/Host already reflect the
+// original client request (from X-Forwarded-Proto/Host) before anything below —
+// HTTPS redirection, CORS origin checks, and Swagger's server URL — reads them.
 app.UseForwardedHeaders();
 app.UseSwaggerDashboard();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+app.UseRouting();
+// UseCors must sit between UseRouting and UseAuthentication/UseAuthorization:
+// after routing so it can see endpoint-level CORS metadata, and before auth so
+// unauthenticated CORS preflight (OPTIONS) requests aren't rejected before the
+// CORS headers are ever added to the response.
+app.UseCors("Default");
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

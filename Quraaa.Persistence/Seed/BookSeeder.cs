@@ -137,7 +137,6 @@ namespace Quraaa.Persistence.Seed
                     stock
                 );
 
-                listing.Approve(Guid.Empty);
                 listings.Add(listing);
             }
 

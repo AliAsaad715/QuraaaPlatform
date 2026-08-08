@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.Application.Features.Carts.Commands.AddCartItem;
 using Quraaa.Application.Features.Carts.Commands.ClearCart;
-using Quraaa.Application.Features.Carts.Commands.CreateCheckoutSession;
 using Quraaa.Application.Features.Carts.Commands.RemoveCartItem;
 using Quraaa.Application.Features.Carts.Commands.UpdateCartItemQuantity;
 using Quraaa.Application.Features.Carts.Common;
@@ -75,19 +74,6 @@ namespace Quraaa.API.Controllers
             }
 
             var result = await Mediator.Send(new ClearCartCommand(userId));
-            return HandleResult(result);
-        }
-
-        [HttpPost("checkout")]
-        [ProducesResponseType(typeof(StripeCheckoutSessionResponse), StatusCodes.Status200OK)]
-        public async Task<IActionResult> Checkout([FromBody] CreateCheckoutSessionCommand command)
-        {
-            if (!TryGetCurrentUserId(out var userId))
-            {
-                return InvalidUserIdResult();
-            }
-
-            var result = await Mediator.Send(command with { UserId = userId });
             return HandleResult(result);
         }
     }

@@ -10,7 +10,11 @@ namespace Quraaa.Application.Shared.Results
     /// Represents a successful operation.
     /// It is a struct to avoid memory allocation (high performance).
     /// </summary>
-    public struct Success { }
+    public readonly struct Success
+    {
+        public string Message { get; }
+        public Success(string message) => Message = message;
+    }
 
     /// <summary>
     /// Represents a failure due to Invalid Data (Input Validation).
@@ -48,11 +52,13 @@ namespace Quraaa.Application.Shared.Results
 
     public static class Result
     {
+        // After
         /// <summary>
-        /// Returns a Success signal.
-        /// Usage: return Result.Success();
+        /// Returns a Success signal carrying the message the caller wants surfaced
+        /// to the client, not just logged.
+        /// Usage: return Result.Success("Item added successfully.");
         /// </summary>
-        public static Success Success() => new Success();
+        public static Success Success(string message = "Operation successful.") => new(message);
 
         /// <summary>
         /// Returns a Validation Failure with a list of errors.

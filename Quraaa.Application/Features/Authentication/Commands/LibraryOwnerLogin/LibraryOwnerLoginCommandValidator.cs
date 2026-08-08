@@ -1,4 +1,5 @@
 using FluentValidation;
+using Quraaa.Application.Features.Authentication.Common;
 
 namespace Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin
 {
@@ -13,7 +14,8 @@ namespace Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin
 
             RuleFor(x => x.Password)
                 .NotEmpty().WithMessage("Password is required.")
-                .MaximumLength(256).WithMessage("Password is too long.");
+                .MinimumLength(AuthenticationPasswordPolicy.MinimumLength).WithMessage("Password is too short.")
+                .MaximumLength(AuthenticationPasswordPolicy.MaximumLength).WithMessage("Password is too long.");
         }
     }
 }

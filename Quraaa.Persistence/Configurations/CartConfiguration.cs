@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Quraaa.Domain.Cart;
+using Quraaa.Domain.Cart.Enums;
 
 namespace Quraaa.Persistence.Configurations
 {
@@ -15,10 +16,22 @@ namespace Quraaa.Persistence.Configurations
 
             builder.Property(x => x.UserId).IsRequired();
             builder.Property(x => x.Status).HasConversion<int>().IsRequired();
+            builder.Property(x => x.PendingOrderId);
             builder.Property(x => x.StripeCheckoutSessionId).HasMaxLength(200);
             builder.Property(x => x.StripePaymentIntentId).HasMaxLength(200);
+            builder.Property(x => x.LastModificationTime)
+                .IsConcurrencyToken();
 
             builder.HasIndex(x => new { x.UserId, x.Status });
+            builder.HasIndex(x => x.UserId)
+                .HasDatabaseName("IX_Carts_UserId_Open")
+                .IsUnique()
+                .HasFilter(
+                    $"\"IsDeleted\" = false AND \"Status\" IN " +
+                    $"({(int)CartStatus.Active}, {(int)CartStatus.PendingPayment})");
+            builder.HasIndex(x => x.PendingOrderId)
+                .IsUnique()
+                .HasFilter("\"PendingOrderId\" IS NOT NULL");
             builder.HasIndex(x => x.StripeCheckoutSessionId);
 
             builder.HasMany(x => x.Items)

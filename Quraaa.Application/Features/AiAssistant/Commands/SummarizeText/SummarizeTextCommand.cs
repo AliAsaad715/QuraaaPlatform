@@ -8,11 +8,11 @@ namespace Quraaa.Application.Features.AiAssistant.Commands.SummarizeText
     {
         [JsonIgnore]
         public Guid UserId { get; init; }
-        public string Text { get; init; } = null!;
-        // Optional context only — nothing currently looks this up server-side
-        // (no book content is stored). Kept for future analytics / history
-        // without needing to change the request shape later.
-        public Guid? BookId { get; init; }
+
+        // PurchaseId rather than BookId: the handler resolves the book THROUGH the
+        // caller's own purchase record, so a request can't be used to summarize a
+        // book the caller never bought (IDOR prevention).
+        public Guid PurchaseId { get; init; }
     }
 
     public record SummarizeTextResponse(string Summary);

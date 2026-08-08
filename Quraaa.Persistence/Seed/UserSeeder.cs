@@ -245,6 +245,13 @@ namespace Quraaa.Persistence.Seed
                 return;
             }
 
+            if (!string.Equals(role, Role.User.ToString(), StringComparison.Ordinal))
+            {
+                applicationUser.RefreshToken = null;
+                applicationUser.RefreshTokenExpiryTime = DateTime.UtcNow;
+                applicationUser.RefreshTokenFamilyId = null;
+            }
+
             var roleResult = await userManager.AddToRoleAsync(applicationUser, role);
             if (!roleResult.Succeeded)
             {
