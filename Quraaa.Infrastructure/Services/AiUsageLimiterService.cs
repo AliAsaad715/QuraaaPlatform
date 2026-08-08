@@ -19,10 +19,8 @@ namespace Quraaa.Infrastructure.Services
         {
             _dailyLimit = configuration.GetValue<int?>("AiAssistant:DailyFreeLimit") ?? 5;
 
-            // محاولة جلب Redis (سيعود بـ null إذا لم يكن مسجلاً في بيئة التطوير)
             _redis = serviceProvider.GetService<IConnectionMultiplexer>();
 
-            // إذا لم يكن Redis موجوداً، نعتمد على IMemoryCache كبديل (Fallback)
             if (_redis == null)
             {
                 _memoryCache = serviceProvider.GetRequiredService<IMemoryCache>();
@@ -34,7 +32,6 @@ namespace Quraaa.Infrastructure.Services
         {
             var key = $"ai-usage:{userId}:{DateTime.UtcNow:yyyy-MM-dd}";
 
-            // 1. حالة الإنتاج (Production) - استخدام Redis
             if (_redis != null)
             {
                 var db = _redis.GetDatabase();
@@ -52,10 +49,8 @@ namespace Quraaa.Infrastructure.Services
                     DailyLimit: _dailyLimit,
                     RequestsUsedToday: (int)count);
             }
-            // 2. حالة التطوير (Development) - استخدام الذاكرة المحلية (In-Memory)
             else
             {
-                // محاكاة عمل Redis INCR باستخدام IMemoryCache
                 var currentCount = _memoryCache!.GetOrCreate(key, entry =>
                 {
                     entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(25);
