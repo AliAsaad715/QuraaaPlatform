@@ -8,6 +8,7 @@ using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Common;
+using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Shared.Files;
 using Quraaa.Persistence.Extensions;
@@ -29,7 +30,19 @@ namespace Quraaa.API.Extensions
             this IServiceCollection services,
             IConfiguration configuration,
             bool isDevelopment)
+        public const string LibraryDashboardCorsPolicy = "library-dashboard";
+        public const string LibraryRegistrationLinkRateLimitPolicy = "library-registration-link";
+        public const string LibraryRegistrationPublicRateLimitPolicy = "library-registration-public";
+
+        public static void AddApplicationServices(
+            this IServiceCollection services,
+            IConfiguration configuration,
+            bool isDevelopment)
         {
+            var libraryRegistrationOptions = CreateLibraryRegistrationOptions(
+                configuration,
+                isDevelopment);
+
             var libraryRegistrationOptions = CreateLibraryRegistrationOptions(
                 configuration,
                 isDevelopment);
@@ -66,6 +79,39 @@ namespace Quraaa.API.Extensions
             {
                 options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
                 options.AddPolicy("regular-login", httpContext =>
+                {
+                    var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString()
+                        ?? "unknown-client";
+
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: clientAddress,
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 30,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        });
+                });
+
+                options.AddPolicy(LibraryRegistrationLinkRateLimitPolicy, httpContext =>
+                {
+                    var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                    var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString()
+                        ?? "unknown-client";
+
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: userId ?? clientAddress,
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 5,
+                            Window = TimeSpan.FromMinutes(10),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        });
+                });
+
+                options.AddPolicy(LibraryRegistrationPublicRateLimitPolicy, httpContext =>
                 {
                     var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString()
                         ?? "unknown-client";
