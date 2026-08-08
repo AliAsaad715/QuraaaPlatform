@@ -64,6 +64,8 @@ namespace Quraaa.Persistence.Seed
                             userId
                         );
 
+                        library.VerifyEmail(DateTime.UtcNow);
+
                         if (libraryNumber % 4 != 0)
                         {
                             library.Approve(Guid.NewGuid());
