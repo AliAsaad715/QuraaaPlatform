@@ -1,6 +1,7 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.Application.Features.Libraries.Common;
+using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Application.Shared.Results;
 using System.Security.Claims;
 
@@ -26,6 +27,14 @@ namespace Quraaa.API.Controllers
                 ?? User.FindFirstValue("sub");
 
             return Guid.TryParse(claimValue, out userId);
+        }
+
+        protected bool TryGetCurrentSessionId(out Guid sessionId)
+        {
+            var claimValue = User.FindFirstValue(AuthenticationClaimNames.SessionId)
+                ?? User.FindFirstValue(ClaimTypes.Sid);
+
+            return Guid.TryParse(claimValue, out sessionId);
         }
 
         protected UnauthorizedObjectResult InvalidUserIdResult()

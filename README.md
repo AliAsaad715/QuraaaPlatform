@@ -150,7 +150,7 @@ Generated `bin/` and `obj/` directories are not source and should not be edited.
 
    On Bash-compatible shells, use `cp Quraaa.API/.env.example Quraaa.API/.env`.
 
-3. Update `Quraaa.API/.env` with at least PostgreSQL, JWT, and Stripe values:
+3. Update `Quraaa.API/.env` with at least PostgreSQL, JWT, Stripe, library-dashboard, and SMTP values:
 
    ```dotenv
    ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=quraaa;Username=postgres;Password=change-me
@@ -167,6 +167,17 @@ Generated `bin/` and `obj/` directories are not source and should not be edited.
 
    BaseAPIURL=http://localhost:5153
    OTP_DEVICE_TOKEN=replace-with-the-sms-gateway-fcm-token
+
+   LIBRARY_DASHBOARD_REGISTER_URL=http://localhost:3000/libraries/register
+   LIBRARY_EMAIL_OTP_PEPPER=replace-with-an-independent-random-secret-at-least-32-characters
+   MAIL_MAILER=smtp
+   MAIL_HOST=smtp.gmail.com
+   MAIL_PORT=587
+   MAIL_USERNAME=replace-with-sender@gmail.com
+   MAIL_PASSWORD=replace-with-a-google-app-password
+   MAIL_ENCRYPTION=tls
+   MAIL_FROM_ADDRESS=replace-with-sender@gmail.com
+   MAIL_FROM_NAME="Quraaa Platform"
    ```
 
 4. Configure Firebase using one of these supported approaches:
@@ -195,31 +206,38 @@ At startup, the API applies pending EF Core migrations and runs all configured s
 
 ASP.NET Core configuration is loaded from appsettings files, `.env`, environment variables, and command-line arguments. For nested environment keys, use double underscores, for example `Stripe__SecretKey` for `Stripe:SecretKey`. Environment variables override committed appsettings values.
 
-| Key                                                    | Required                 | Purpose / behavior                                                                                                   |
-| ------------------------------------------------------ | ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `ConnectionStrings__DefaultConnection`                 | Yes                      | Npgsql connection string for PostgreSQL.                                                                             |
-| `JWT_SECRET_KEY`                                       | Yes                      | Symmetric JWT signing key. Startup fails when it is missing.                                                         |
-| `JWT_ISSUER`                                           | No                       | Enables issuer validation when set.                                                                                  |
-| `JWT_AUDIENCE`                                         | No                       | Enables audience validation when set.                                                                                |
-| `JWT_DURATION_IN_MINUTES`                              | No                       | Access-token lifetime; defaults to `60`.                                                                             |
-| `Stripe__SecretKey`                                    | Yes                      | Must start with `sk_test_` or `sk_live_` according to `Stripe__IsTestMode`.                                          |
-| `Stripe__WebhookSecret`                                | Yes                      | Stripe endpoint signing secret; must start with `whsec_`.                                                            |
-| `Stripe__Currency`                                     | No                       | Must resolve to `usd`; the configured default is `usd`.                                                              |
-| `Stripe__IsTestMode`                                   | No                       | Selects test or live key validation; defaults to test mode.                                                          |
-| `GOOGLE_APPLICATION_CREDENTIALS`                       | One Firebase option      | Absolute path to a Firebase service-account file.                                                                    |
-| `Firebase__CredentialsPath`                            | One Firebase option      | Configured credential path; local appsettings uses `storage/firebase/quraa.json`.                                    |
-| `FIREBASE_CREDENTIALS_JSON`                            | One Firebase option      | Deployment-friendly full credential JSON; startup validates and writes it to the private Firebase storage directory. |
-| `OTP_DEVICE_TOKEN`                                     | For OTP delivery         | Server-side FCM token for the Android SMS-gateway device. It is not accepted from OTP request bodies.                |
-| `ConnectionStrings__Redis` / `Redis__ConnectionString` | Production recommended   | Redis connection string for distributed OTP and revocation data.                                                     |
-| `REDIS_URL` / `REDIS_TLS_URL`                          | Alternative Redis option | Supports Heroku-style `redis://` and `rediss://` URLs.                                                               |
-| `Redis__InstanceName`                                  | No                       | Cache-key prefix; defaults to `Quraaa:Otp:`.                                                                         |
-| `Otp:AllowInMemoryCacheInProduction`                   | Set in base appsettings  | Defaults to `false` in `Quraaa.API/appsettings.json`; no `.env` entry is required.                                    |
-| `Notifications__AllowTestEndpoint`                     | No                       | Enables the anonymous notification test endpoint outside Development. Keep `false` in production.                    |
-| `GoogleBooks__ApiKey`                                  | No                       | API key used during external ISBN lookup.                                                                            |
-| `GoogleBooks__BaseUrl`                                 | No                       | Defaults to `https://www.googleapis.com/`.                                                                           |
-| `BaseAPIURL`                                           | Recommended              | Prefix used when returning locally stored library image URLs.                                                        |
-| `Swagger__ServerUrl`                                   | No                       | Overrides the server URL advertised in OpenAPI.                                                                      |
-| `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`                | No                       | Creates or synchronizes the seeded administrator when both are set.                                                  |
+| Key                                                    | Required                 | Purpose / behavior                                                                                                                                       |
+| ------------------------------------------------------ | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ConnectionStrings__DefaultConnection`                 | Yes                      | Npgsql connection string for PostgreSQL.                                                                                                                 |
+| `JWT_SECRET_KEY`                                       | Yes                      | Symmetric JWT signing key. Startup fails when it is missing.                                                                                             |
+| `JWT_ISSUER`                                           | No                       | Enables issuer validation when set.                                                                                                                      |
+| `JWT_AUDIENCE`                                         | No                       | Enables audience validation when set.                                                                                                                    |
+| `JWT_DURATION_IN_MINUTES`                              | No                       | Access-token lifetime; defaults to `60`.                                                                                                                 |
+| `Stripe__SecretKey`                                    | Yes                      | Must start with `sk_test_` or `sk_live_` according to `Stripe__IsTestMode`.                                                                              |
+| `Stripe__WebhookSecret`                                | Yes                      | Stripe endpoint signing secret; must start with `whsec_`.                                                                                                |
+| `Stripe__Currency`                                     | No                       | Must resolve to `usd`; the configured default is `usd`.                                                                                                  |
+| `Stripe__IsTestMode`                                   | No                       | Selects test or live key validation; defaults to test mode.                                                                                              |
+| `GOOGLE_APPLICATION_CREDENTIALS`                       | One Firebase option      | Absolute path to a Firebase service-account file.                                                                                                        |
+| `Firebase__CredentialsPath`                            | One Firebase option      | Configured credential path; local appsettings uses `storage/firebase/quraa.json`.                                                                        |
+| `FIREBASE_CREDENTIALS_JSON`                            | One Firebase option      | Deployment-friendly full credential JSON; startup validates and writes it to the private Firebase storage directory.                                     |
+| `OTP_DEVICE_TOKEN`                                     | For OTP delivery         | Server-side FCM token for the Android SMS-gateway device. It is not accepted from OTP request bodies.                                                    |
+| `ConnectionStrings__Redis` / `Redis__ConnectionString` | Production recommended   | Redis connection string for distributed OTP and revocation data.                                                                                         |
+| `REDIS_URL` / `REDIS_TLS_URL`                          | Alternative Redis option | Supports Heroku-style `redis://` and `rediss://` URLs.                                                                                                   |
+| `Redis__InstanceName`                                  | No                       | Cache-key prefix; defaults to `Quraaa:Otp:`.                                                                                                             |
+| `Otp:AllowInMemoryCacheInProduction`                   | Set in base appsettings  | Currently defaults to `true` in `Quraaa.API/appsettings.json`; override it to `false` and configure Redis for production.                                |
+| `Notifications__AllowTestEndpoint`                     | No                       | Enables the anonymous notification test endpoint outside Development. Keep `false` in production.                                                        |
+| `GoogleBooks__ApiKey`                                  | No                       | API key used during external ISBN lookup.                                                                                                                |
+| `GoogleBooks__BaseUrl`                                 | No                       | Defaults to `https://www.googleapis.com/`.                                                                                                               |
+| `BaseAPIURL`                                           | Recommended              | Prefix used when returning locally stored library image URLs.                                                                                            |
+| `LIBRARY_DASHBOARD_REGISTER_URL`                       | Yes                      | Absolute HTTPS dashboard registration page URL. Development may use HTTP only on loopback; the API appends the temporary credential in the URL fragment. |
+| `LIBRARY_EMAIL_OTP_PEPPER`                             | Yes                      | Independent secret of at least 32 characters used to HMAC library email OTPs; it must differ from the JWT secret.                                        |
+| `MAIL_MAILER`                                          | Yes                      | Must be `smtp`.                                                                                                                                          |
+| `MAIL_HOST` / `MAIL_PORT`                              | Yes                      | SMTP server and port; Gmail STARTTLS uses `smtp.gmail.com:587`.                                                                                          |
+| `MAIL_USERNAME` / `MAIL_PASSWORD`                      | Yes                      | SMTP credentials. For Gmail, use an app password rather than the account password.                                                                       |
+| `MAIL_ENCRYPTION`                                      | Yes                      | `tls`/`starttls` uses STARTTLS; `ssl`/`smtps` uses implicit TLS.                                                                                         |
+| `MAIL_FROM_ADDRESS` / `MAIL_FROM_NAME`                 | Yes                      | Valid sender mailbox and single-line display name.                                                                                                       |
+| `Swagger__ServerUrl`                                   | No                       | Overrides the server URL advertised in OpenAPI.                                                                                                          |
+| `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`                | No                       | Creates or synchronizes the seeded administrator when both are set.                                                                                      |
 
 The process also respects normal ASP.NET Core settings such as `ASPNETCORE_ENVIRONMENT`, `ASPNETCORE_URLS`, and command-line `--urls`.
 
@@ -231,14 +249,14 @@ The process also respects normal ASP.NET Core settings such as `ASPNETCORE_ENVIR
 - Paged endpoints generally use `pageNumber` and `pageSize`, with feature-specific search, sort, status, or format filters.
 - Validation errors return `400`; missing resources return `404`; invalid or revoked authentication returns `401`; role/ownership failures return `403`; concurrency or state conflicts return `409`.
 - `GET /api/books/recommended` requires an `Accept-Language` header containing exactly `ar` or `en`.
-- Library registration and digital-book creation use `multipart/form-data`.
+- Dashboard library-detail submission and digital-book creation use `multipart/form-data`.
 - The Stripe webhook must receive the untouched request body and its `Stripe-Signature` header.
 
 Request and response schemas are available in Swagger UI and the generated OpenAPI document.
 
 ## Endpoint reference
 
-The current checkout exposes 62 controller actions.
+The current API exposes 66 controller actions.
 
 ### Authentication and profiles
 
@@ -267,7 +285,6 @@ The current checkout exposes 62 controller actions.
 | `GET`    | `/api/categories`              | Public        | List active categories.                              |
 | `GET`    | `/api/categories/{categoryId}` | Public        | Get one active category.                             |
 | `POST`   | `/api/categories`              | `Admin`       | Create a category.                                   |
-| `GET`    | `/api/ebooks`                  | Public        | Browse active digital listings.                      |
 | `GET`    | `/api/books/most-popular`      | Public        | Browse ranked popular books.                         |
 | `GET`    | `/api/books/recommended`       | Authenticated | Browse interest- and language-based recommendations. |
 | `GET`    | `/api/favorite-books`          | Authenticated | List the current account's favorite books.           |
@@ -278,7 +295,11 @@ The current checkout exposes 62 controller actions.
 
 | Method   | Route                                              | Access         | Purpose                                                       |
 | -------- | -------------------------------------------------- | -------------- | ------------------------------------------------------------- |
-| `POST`   | `/api/libraries/register`                          | Authenticated  | Submit a multipart library application.                       |
+| `POST`   | `/api/libraries/register`                          | `User`         | Issue/reissue a temporary dashboard registration link.        |
+| `POST`   | `/api/libraries/register/context`                  | Public + token | Resolve whether the dashboard needs details or email OTP.     |
+| `POST`   | `/api/libraries/register/submit`                   | Public + token | Submit details and attempt delivery of the first email OTP.   |
+| `POST`   | `/api/libraries/register/email/resend`             | Public + token | Redeliver the current OTP, subject to cooldown/limits.        |
+| `POST`   | `/api/libraries/register/email/verify`             | Public + token | Verify the ID-bound OTP and enter admin review.               |
 | `GET`    | `/api/libraries`                                   | Public         | Search and page approved libraries.                           |
 | `GET`    | `/api/libraries/{libraryId}/books`                 | Public         | Browse a library's listings with paging, search, and sorting. |
 | `GET`    | `/api/libraries/my-profile`                        | `LibraryOwner` | Get the approved library owned by the caller.                 |
@@ -293,6 +314,10 @@ The current checkout exposes 62 controller actions.
 | `PATCH`  | `/api/library-admin/listings/{listingId}/activate` | `LibraryOwner` | Reactivate a removed listing.                                 |
 | `GET`    | `/api/listings/me`                                 | `User`         | Get physical listings created by the current user.            |
 | `POST`   | `/api/listings/me/physical`                        | `User`         | Create a user-owned physical listing.                         |
+
+The mobile app calls `POST /api/libraries/register` with its normal bearer token and receives a short-lived dashboard URL. The URL contains a 32-byte opaque credential in the fragment (`#token=...`), while PostgreSQL stores only its SHA-256 hash and the issuing login-family id. The dashboard sends that credential in request bodies, never API query strings. A details submission creates an `AwaitingEmailVerification` library and a durable, HMAC-protected six-digit email challenge. Submission and resend responses include a `verificationId` and an `emailDeliveryStatus` of `Sent`, `NotSent`, or `Unknown`; verification must submit that ID with the six-digit code. Only successful email verification changes the library to `Pending`, makes it visible in the admin request queue, and permits approval or rejection. Approval promotes both the domain profile and ASP.NET Identity role within the same database transaction.
+
+Email OTPs are valid for 10 minutes, can be redelivered after 60 seconds, are limited to five accepted-or-ambiguous send attempts per fixed hour and five verification attempts, and cause a five-minute lockout after the fifth incorrect attempt. Redelivery keeps the same generation and derived code, so overlapping or delayed SMTP deliveries cannot make the newest email stale. A definite SMTP rejection does not consume the send quota; an ambiguous transport outcome remains usable. The submitted application stays resumable through a newly issued link, and committed image paths are not deleted.
 
 ### Cart, orders, payments, and fulfillment
 
@@ -361,6 +386,8 @@ The API generates and caches OTP data, then sends an FCM data message to the con
 
 Startup calls `Database.Migrate()`, then runs category, admin, user, library, ebook, and book seeders.
 
+`AddLibraryMagicLinkEmailVerification` migrates every legacy `Pending` library to `AwaitingEmailVerification`, so it must complete email verification before entering admin review. Existing `Approved` and `Rejected` records are explicitly grandfathered by setting `EmailVerifiedAtUtc` to the migration execution timestamp. A database check constraint then rejects any `Pending`, `Approved`, or `Rejected` row without a verification timestamp, including writes from an older API instance during a rolling deployment. On downgrade, status `AwaitingEmailVerification` is mapped back to legacy `Pending` before the verification columns are removed.
+
 Seed behavior includes:
 
 - A deterministic development user and the `User` / `LibraryOwner` roles.
@@ -422,11 +449,11 @@ Before deploying publicly:
 - Store PostgreSQL, JWT, Stripe, Firebase, Redis, admin, and Google API credentials in the platform's secret store; never commit `.env` or service-account JSON files.
 - Add and verify a `.dockerignore` before building with secrets in the working tree. The current repository has no `.dockerignore`, and `COPY . .` sends the full build context to Docker.
 - Resolve the library-uploaded ebook storage mismatch described above; paid source PDFs must live outside the static web root.
-- Configure Redis for durable, shared OTP and revocation state. Base `Quraaa.API/appsettings.json` sets `Otp:AllowInMemoryCacheInProduction=false`, so no `.env` entry is required and production startup fails when Redis is unavailable.
+- Configure Redis for durable, shared OTP and revocation state, and override `Otp__AllowInMemoryCacheInProduction=false`. The committed base appsettings currently set it to `true`, so production otherwise falls back to process-local memory when Redis is unavailable.
 - Set `Notifications__AllowTestEndpoint=false`. The committed appsettings currently enable it.
 - Decide whether Swagger UI and OpenAPI should remain public; they are currently mapped in every environment.
 - Review the startup `Database.Migrate()` and seeding policy for environments where the application should not hold schema-change permissions.
-- Add an explicit CORS policy before serving browser clients from another origin; the current startup does not register CORS.
+- Keep `LIBRARY_DASHBOARD_REGISTER_URL` aligned with the dashboard origin allowed by the registered `library-dashboard` CORS policy; add any other browser origins explicitly rather than broadening that policy.
 - Configure and monitor the Stripe webhook endpoint, and retain the exact raw body required for signature verification.
 - Use HTTPS at the edge and preserve forwarded headers through only trusted proxies.
 - Rotate any development or seeded credentials before deployment.

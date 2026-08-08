@@ -36,7 +36,9 @@ builder.Services.Configure<RouteOptions>(options =>
 });
 
 builder.Services.AddDatabaseConfiguration(builder.Configuration);
-builder.Services.AddApplicationServices(builder.Configuration);
+builder.Services.AddApplicationServices(
+    builder.Configuration,
+    builder.Environment.IsDevelopment());
 builder.Services.AddInfrastructureDependencies(builder.Configuration, builder.Environment.IsDevelopment());
 builder.Services.AddSwaggerConfiguration(builder.Configuration);
 
@@ -79,13 +81,14 @@ app.UseSwaggerDashboard();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+
 // UseCors must sit between UseRouting and UseAuthentication/UseAuthorization:
 // after routing so it can see endpoint-level CORS metadata, and before auth so
 // unauthenticated CORS preflight (OPTIONS) requests aren't rejected before the
 // CORS headers are ever added to the response.
-app.UseCors("Default");
-app.UseRateLimiter();
+app.UseCors(ServiceCollectionExtensions.LibraryDashboardCorsPolicy);
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 

@@ -38,6 +38,9 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
         Task<LibraryAggregate?> GetByIdAsync(Guid id,
             CancellationToken cancellationToken = default);
 
+        Task<LibraryAggregate?> GetByUserIdAsync(Guid userId,
+            CancellationToken cancellationToken = default);
+
         Task<(IReadOnlyCollection<LibraryRequestResponse> Items, int TotalCount)> GetRequestsAsync(
             LibraryApprovalStatus? status,
             int pageNumber,

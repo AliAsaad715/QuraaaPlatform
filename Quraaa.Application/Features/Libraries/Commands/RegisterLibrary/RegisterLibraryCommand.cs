@@ -6,11 +6,11 @@ using Quraaa.Application.Shared.Files;
 namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
 {
     public record RegisterLibraryCommand(
+        string Token,
         string LibraryName,
         string Location,
         IUploadedFile? LibraryImage,
         IUploadedFile? HeaderImage,
-        string Email,
-        Guid UserId
-    ) : IRequest<AppResult<LibraryResponse>>;
+        string Email
+    ) : IRequest<AppResult<LibraryRegistrationSubmissionResponse>>;
 }

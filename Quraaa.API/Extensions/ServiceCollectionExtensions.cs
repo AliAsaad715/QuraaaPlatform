@@ -7,6 +7,7 @@ using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
+using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Shared.Files;
 using Quraaa.Persistence.Extensions;
@@ -20,14 +21,36 @@ namespace Quraaa.API.Extensions
 {
     public static class ServiceCollectionExtensions
     {
-        public static void AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
+        public const string LibraryDashboardCorsPolicy = "library-dashboard";
+        public const string LibraryRegistrationLinkRateLimitPolicy = "library-registration-link";
+        public const string LibraryRegistrationPublicRateLimitPolicy = "library-registration-public";
+
+        public static void AddApplicationServices(
+            this IServiceCollection services,
+            IConfiguration configuration,
+            bool isDevelopment)
         {
+            var libraryRegistrationOptions = CreateLibraryRegistrationOptions(
+                configuration,
+                isDevelopment);
+
             services.AddJwtAuthentication(configuration);
             services.AddAuthenticationRateLimiting();
             services.Configure<FileStorageOptions>(configuration.GetSection("Storage"));
             services.Configure<FileRetentionOptions>(configuration.GetSection("Storage:FileRetention"));
             services.AddScoped<IFileStorageService, PrivateFileStorageService>();
             services.AddScoped<IFileAccessService, FileAccessService>();
+            services.AddSingleton(libraryRegistrationOptions);
+            services.AddCors(options =>
+            {
+                options.AddPolicy(LibraryDashboardCorsPolicy, policy =>
+                {
+                    policy
+                        .WithOrigins(libraryRegistrationOptions.DashboardRegisterUrl.GetLeftPart(UriPartial.Authority))
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                });
+            });
             services.AddScoped<ILibraryImageStorageService, LibraryImageStorageService>();
             services.AddScoped<ILibraryBookStorageService, LibraryBookStorageService>();
             services.AddScoped<IBulkBookStorageService, BulkBookStorageService>();
@@ -57,7 +80,65 @@ namespace Quraaa.API.Extensions
                             AutoReplenishment = true
                         });
                 });
+
+                options.AddPolicy(LibraryRegistrationLinkRateLimitPolicy, httpContext =>
+                {
+                    var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                    var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString()
+                        ?? "unknown-client";
+
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: userId ?? clientAddress,
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 5,
+                            Window = TimeSpan.FromMinutes(10),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        });
+                });
+
+                options.AddPolicy(LibraryRegistrationPublicRateLimitPolicy, httpContext =>
+                {
+                    var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString()
+                        ?? "unknown-client";
+
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: clientAddress,
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 30,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        });
+                });
+
             });
+        }
+
+        private static LibraryRegistrationOptions CreateLibraryRegistrationOptions(
+            IConfiguration configuration,
+            bool isDevelopment)
+        {
+            var configuredUrl = configuration["LIBRARY_DASHBOARD_REGISTER_URL"]?.Trim();
+            if (!Uri.TryCreate(configuredUrl, UriKind.Absolute, out var dashboardRegisterUrl)
+                || (dashboardRegisterUrl.Scheme != Uri.UriSchemeHttps
+                    && !(isDevelopment
+                        && dashboardRegisterUrl.Scheme == Uri.UriSchemeHttp
+                        && dashboardRegisterUrl.IsLoopback))
+                || !string.IsNullOrEmpty(dashboardRegisterUrl.Query)
+                || !string.IsNullOrEmpty(dashboardRegisterUrl.Fragment)
+                || !string.IsNullOrEmpty(dashboardRegisterUrl.UserInfo))
+            {
+                throw new InvalidOperationException(
+                    "LIBRARY_DASHBOARD_REGISTER_URL must be an absolute HTTPS URL without embedded credentials, a query string, or a fragment. Development may use HTTP only for a loopback URL.");
+            }
+
+            return new LibraryRegistrationOptions
+            {
+                DashboardRegisterUrl = dashboardRegisterUrl
+            };
         }
 
         private static void AddJwtAuthentication(this IServiceCollection services, IConfiguration configuration)

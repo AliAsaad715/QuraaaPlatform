@@ -9,6 +9,7 @@ namespace Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests
         string LibraryImage,
         string HeaderImage,
         string Email,
+        DateTime? EmailVerifiedAtUtc,
         LibraryApprovalStatus ApprovalStatus,
         DateTime RequestedAt,
         RequesterInfo Requester
