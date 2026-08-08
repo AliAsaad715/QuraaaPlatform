@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Polly;
+using Polly.Retry;
+using Quraaa.Application.Features.AiAssistant.Interfaces;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
@@ -8,9 +11,12 @@ using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Otp.Interfaces;
 using Quraaa.Application.Features.Payments.Interfaces;
+using Quraaa.Application.Shared.Files;
 using Quraaa.Infrastructure.Services;
 using StackExchange.Redis;
 using Stripe;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Globalization;
 using MimeKit;
 
@@ -77,13 +83,53 @@ namespace Quraaa.Infrastructure.Extensions
             services.AddScoped<IAccessTokenRevocationService, AccessTokenRevocationService>();
             services.AddScoped<IFirebaseSmsGateway, FirebaseSmsGateway>();
             services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
+            services.AddMemoryCache();
             services.AddHttpClient<IBookMetadataService, GoogleBooksService>(client =>
             {
                 client.BaseAddress = new Uri(configuration["GoogleBooks:BaseUrl"] ?? "https://www.googleapis.com/");
                 client.Timeout = TimeSpan.FromSeconds(10);
                 client.DefaultRequestHeaders.Add("User-Agent", "QuraaaPlatformApp/1.0");
             });
+            services.AddHttpClient<IOpenAiService, OpenAiService>((sp, client) =>
+            {
+                var config = sp.GetRequiredService<IConfiguration>();
+                var apiKey = config["OpenAi:ApiKey"];
 
+                client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/v1beta/openai/");
+
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                }
+            })
+            .AddResilienceHandler("openai-rate-limit-retry", builder =>
+            {
+                // Google AI Studio's free tier caps at 15 requests/minute, so a 429 is
+                // expected under normal traffic, not exceptional — retry with
+                // exponential backoff (2s, 4s, 8s) before giving up. Transient 5xx and
+                // connection failures get the same treatment.
+                builder.AddRetry(new RetryStrategyOptions<HttpResponseMessage>
+                {
+                    ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
+                        .Handle<HttpRequestException>()
+                        .HandleResult(response => response.StatusCode == HttpStatusCode.TooManyRequests)
+                        .HandleResult(response => (int)response.StatusCode >= 500),
+                    MaxRetryAttempts = 3,
+                    BackoffType = DelayBackoffType.Exponential,
+                    Delay = TimeSpan.FromSeconds(2),
+                    UseJitter = true,
+                    // Prefer the server's own Retry-After when it sends one; returning
+                    // null falls back to the exponential delay computed above.
+                    DelayGenerator = args =>
+                        ValueTask.FromResult(args.Outcome.Result?.Headers.RetryAfter?.Delta)
+                });
+            });
+            services.AddSingleton<IAiUsageLimiterService, AiUsageLimiterService>();
+
+            // Scoped, not Singleton: it depends on IFileStorageService, which is
+            // itself registered Scoped (see ServiceCollectionExtensions).
+            services.AddScoped<IDocumentTextExtractionService, PdfTextExtractionService>();
+            services.AddScoped<IDocxTextExtractionService, DocxTextExtractionService>();
             return services;
         }
 

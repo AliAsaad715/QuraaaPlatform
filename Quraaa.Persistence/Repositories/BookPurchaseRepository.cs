@@ -51,6 +51,20 @@ namespace Quraaa.Persistence.Repositories
                     (p, b) => new PurchaseDigitalAssetInfo(p.UserId, p.PurchasedDigitalAssetUrl, b.Title))
                 .FirstOrDefaultAsync(cancellationToken);
 
+        public Task<PurchaseBookContext?> GetPurchaseBookContextAsync(
+            Guid purchaseId,
+            CancellationToken cancellationToken = default) =>
+            _context.BookPurchases
+                .AsNoTracking()
+                .Where(p => p.Id == purchaseId)
+                .Join(
+                    _context.Books.AsNoTracking(),
+                    p => p.BookId,
+                    b => b.Id,
+                    (p, b) => new PurchaseBookContext(
+                        p.UserId, b.Id, b.Title, b.Author, b.Description, b.CanonicalPdfUrl, b.CanonicalWordDocUrl))
+                .FirstOrDefaultAsync(cancellationToken);
+
         public async Task<HashSet<string>> FilterReferencedDigitalAssetPathsAsync(
             IReadOnlyCollection<string> relativePaths,
             CancellationToken cancellationToken = default)

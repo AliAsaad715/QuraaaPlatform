@@ -31,15 +31,32 @@ namespace Quraaa.Application.Features.Libraries.Queries.GetMyProfile
                 if (library == null)
                     throw new NotFoundException("Library not found");
 
+                var baseUrl = _config["BaseAPIURL"]?.TrimEnd('/');
+
                 return new MyProfileLibraryResponse
                 (
                     library.LibraryName,
                     library.Location,
-                    library.LibraryImage.StartsWith("http") ? library.LibraryImage : $"{_config["BaseAPIURL"]}/{library.LibraryImage.Replace("\\", "/")}",
-                    library.HeaderImage.StartsWith("http") ? library.LibraryImage : $"{_config["BaseAPIURL"]}/{library.HeaderImage.Replace("\\", "/")}",
+                    FormatImageUrl(library.LibraryImage, baseUrl!),
+                    FormatImageUrl(library.HeaderImage, baseUrl!),
                     library.Email
                 );
             }, "Library profile retrieved successfully");
+        }
+
+        private string FormatImageUrl(string imagePath, string baseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(imagePath))
+                return string.Empty;
+
+            if (imagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                imagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return imagePath;
+            }
+
+            var cleanPath = imagePath.Replace("\\", "/").TrimStart('/');
+            return $"{baseUrl}/{cleanPath}";
         }
     }
 }

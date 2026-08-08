@@ -17,6 +17,14 @@ namespace Quraaa.Application.Features.Purchases.Interfaces
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Owner and book snapshot for a single purchase, used to authorize AI-assistant
+        /// requests against the book the caller actually bought (see PurchaseBookContext).
+        /// </summary>
+        Task<PurchaseBookContext?> GetPurchaseBookContextAsync(
+            Guid purchaseId,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Returns the subset of <paramref name="relativePaths"/> that are still referenced by
         /// some purchase's immutable <c>PurchasedDigitalAssetUrl</c> snapshot. These files must
         /// never be deleted, regardless of the owning listing's current state.
