@@ -18,7 +18,7 @@ namespace Quraaa.API.Extensions
                 // Add custom metadata to the generated OpenAPI document
                 options.AddDocumentTransformer((document, context, ct) =>
                 {
-                    var serverUrl = config["Swagger:ServerUrl"];
+                    var serverUrl = GetSwaggerServerUrl(config);
 
                     document.Info = new OpenApiInfo
                     {
@@ -27,13 +27,10 @@ namespace Quraaa.API.Extensions
                         Description = "Swagger documentation for Quraaa API"
                     };
 
-                    if (!string.IsNullOrWhiteSpace(serverUrl))
+                    document.Servers = new List<OpenApiServer>
                     {
-                        document.Servers = new List<OpenApiServer>
-                        {
-                            new() { Url = serverUrl.TrimEnd('/') }
-                        };
-                    }
+                        new() { Url = serverUrl }
+                    };
 
                     document.Components ??= new OpenApiComponents();
 
@@ -108,6 +105,30 @@ namespace Quraaa.API.Extensions
             });
 
             return services;
+        }
+
+        private static string GetSwaggerServerUrl(IConfiguration config)
+        {
+            // A relative server URL keeps Swagger on the scheme and host that served
+            // the UI: HTTP locally and HTTPS behind the production reverse proxy.
+            // Never advertise an insecure absolute URL, because a page served over
+            // HTTPS cannot call it from a browser.
+            var configuredUrl = config["Swagger:ServerUrl"]?.Trim();
+
+            if (string.IsNullOrWhiteSpace(configuredUrl))
+            {
+                return "/";
+            }
+
+            if (configuredUrl.StartsWith("/", StringComparison.Ordinal))
+            {
+                return configuredUrl == "/" ? "/" : configuredUrl.TrimEnd('/');
+            }
+
+            return Uri.TryCreate(configuredUrl, UriKind.Absolute, out var configuredUri) &&
+                   string.Equals(configuredUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                ? configuredUrl.TrimEnd('/')
+                : "/";
         }
 
         // MIDDLEWARE

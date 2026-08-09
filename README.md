@@ -236,7 +236,7 @@ ASP.NET Core configuration is loaded from appsettings files, `.env`, environment
 | `MAIL_USERNAME` / `MAIL_PASSWORD`                      | Yes                      | SMTP credentials. For Gmail, use an app password rather than the account password.                                                                       |
 | `MAIL_ENCRYPTION`                                      | Yes                      | `tls`/`starttls` uses STARTTLS; `ssl`/`smtps` uses implicit TLS.                                                                                         |
 | `MAIL_FROM_ADDRESS` / `MAIL_FROM_NAME`                 | Yes                      | Valid sender mailbox and single-line display name.                                                                                                       |
-| `Swagger__ServerUrl`                                   | No                       | Overrides the server URL advertised in OpenAPI.                                                                                                          |
+| `Swagger__ServerUrl`                                   | No                       | Optional HTTPS absolute or relative OpenAPI server URL. Omit it (recommended) to use the Swagger UI's current origin, which works for local HTTP and production HTTPS. |
 | `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`                | No                       | Creates or synchronizes the seeded administrator when both are set.                                                                                      |
 
 The process also respects normal ASP.NET Core settings such as `ASPNETCORE_ENVIRONMENT`, `ASPNETCORE_URLS`, and command-line `--urls`.
