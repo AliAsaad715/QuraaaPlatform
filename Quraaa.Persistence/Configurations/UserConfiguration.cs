@@ -2,8 +2,8 @@
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Quraaa.Domain.Category;
 using Quraaa.Domain.User;
+using Quraaa.Domain.User.Entities;
 using Quraaa.Persistence.Data;
-using System.Text.Json;
 
 namespace Quraaa.Persistence.Configurations
 {
@@ -37,6 +37,11 @@ namespace Quraaa.Persistence.Configurations
             builder.Property(u => u.DateOfBirth)
                    .IsRequired();
 
+            builder.Property(u => u.DefaultLocationId);
+
+            builder.Property(u => u.LocationConcurrencyStamp)
+                   .IsConcurrencyToken();
+
             builder.OwnsMany(u => u.Interests, ib =>
             {
                 ib.ToTable("UserInterests");
@@ -62,6 +67,24 @@ namespace Quraaa.Persistence.Configurations
                 .FindNavigation(nameof(UserAggregate.Interests))?
                 .SetPropertyAccessMode(PropertyAccessMode.Field);
 
+            builder.HasMany(u => u.Locations)
+                   .WithOne()
+                   .HasForeignKey(location => location.UserId)
+                   .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Metadata
+                .FindNavigation(nameof(UserAggregate.Locations))?
+                .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+            // The FK supplies referential cleanup (SET NULL). The location migration
+            // also installs an ownership trigger; a composite SET NULL FK would try
+            // to null the non-null UsersProfiles.Id column on location deletion.
+            builder.HasOne<UserLocation>()
+                   .WithMany()
+                   .HasForeignKey(u => u.DefaultLocationId)
+                   .OnDelete(DeleteBehavior.SetNull)
+                   .HasConstraintName("FK_UsersProfiles_UserLocations_DefaultLocationId");
+
             builder.OwnsOne(u => u.PaymentMethod, pb =>
             {
                 pb.Property(p => p.GatewayCustomerId).HasMaxLength(100).HasColumnName("PaymentCustomerId");
@@ -69,11 +92,6 @@ namespace Quraaa.Persistence.Configurations
                 pb.Property(p => p.LastFourDigits).HasMaxLength(4).HasColumnName("PaymentLastFourDigits");
             });
 
-            builder.OwnsOne(u => u.Location, loc =>
-            {
-                loc.Property(l => l.Latitude).HasColumnName("Latitude");
-                loc.Property(l => l.Longitude).HasColumnName("Longitude");
-            });
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Domain.User;
+using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -28,6 +29,30 @@ namespace Quraaa.Persistence.Repositories
                 .FirstOrDefaultAsync(u => u.Id == id && !u.IsDeleted);
         }
 
+        public async Task<UserAggregate?> GetUserWithLocationsByIdAsync(
+            Guid id,
+            CancellationToken cancellationToken = default)
+        {
+            return await _context.UsersProfiles
+                .Include(u => u.Locations)
+                .FirstOrDefaultAsync(
+                    u => u.Id == id && !u.IsDeleted,
+                    cancellationToken);
+        }
+
+        public async Task<UserAggregate?> GetUserWithProfileDetailsByIdAsync(
+            Guid id,
+            CancellationToken cancellationToken = default)
+        {
+            return await _context.UsersProfiles
+                .Include(u => u.Interests)
+                .Include(u => u.Locations)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(
+                    u => u.Id == id && !u.IsDeleted,
+                    cancellationToken);
+        }
+
         public async Task<UserAggregate?> GetUserByPhoneNumberAsync(string phoneNumber)
         {
             return await _context.UsersProfiles
@@ -36,7 +61,15 @@ namespace Quraaa.Persistence.Repositories
 
         public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
         {
-            await _context.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new ConflictException(
+                    "The profile changed in another request. Reload it and try again.");
+            }
         }
     }
 }

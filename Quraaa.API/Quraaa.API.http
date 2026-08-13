@@ -1,6 +1,8 @@
 @Quraaa.API_HostAddress = http://localhost:5153
 @accessToken = replace-with-access-token
 @refreshToken = replace-with-refresh-token
+@locationId = replace-with-location-id
+@orderId = replace-with-order-id
 
 GET {{Quraaa.API_HostAddress}}/weatherforecast/
 Accept: application/json
@@ -86,6 +88,92 @@ Content-Type: application/json
   "phoneNumber": "+9647XXXXXXXXX",
   "otpCode": "123456",
   "newPassword": "newPass123"
+}
+
+###
+
+# @name GetMyLocations
+GET {{Quraaa.API_HostAddress}}/api/profile/locations
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+
+# @name CreateLocation
+POST {{Quraaa.API_HostAddress}}/api/profile/locations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "My University",
+  "address": "Damascus - Hamak - ITEF",
+  "latitude": 33.5138,
+  "longitude": 36.2765,
+  "isDefault": true
+}
+
+###
+
+# @name UpdateLocation
+PUT {{Quraaa.API_HostAddress}}/api/profile/locations/{{locationId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "My Home",
+  "address": "Damascus",
+  "latitude": 33.5102,
+  "longitude": 36.2913
+}
+
+###
+
+# @name SetDefaultLocation
+PUT {{Quraaa.API_HostAddress}}/api/profile/locations/{{locationId}}/default
+Authorization: Bearer {{accessToken}}
+
+###
+
+# @name DeleteLocation
+DELETE {{Quraaa.API_HostAddress}}/api/profile/locations/{{locationId}}
+Authorization: Bearer {{accessToken}}
+
+###
+
+# @name GetOrderCheckoutContext
+# Physical/mixed carts return owned saved locations with the default selected.
+# Empty/digital-only carts return requiresShippingLocation=false and no locations.
+GET {{Quraaa.API_HostAddress}}/api/orders/checkout-context
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+###
+
+# @name CreateOrder
+# Use the selected saved ID for a physical/mixed cart. It is unnecessary for a
+# digital-only cart. During migration, the legacy nested shippingLocation
+# latitude/longitude object is still accepted; never send both forms together.
+POST {{Quraaa.API_HostAddress}}/api/orders
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "successUrl": "https://client.example/checkout/success",
+  "cancelUrl": "https://client.example/checkout/cancel",
+  "shippingLocationId": "{{locationId}}"
+}
+
+###
+
+# @name UpdateOrderShippingLocation
+# New clients select another owned saved location. Legacy flat latitude and
+# longitude fields remain temporarily supported; do not combine them with the ID.
+PUT {{Quraaa.API_HostAddress}}/api/orders/{{orderId}}/shipping-location
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "shippingLocationId": "{{locationId}}"
 }
 
 ###

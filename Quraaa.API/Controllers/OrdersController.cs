@@ -10,6 +10,7 @@ using Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocation;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Queries.GetDigitalOrderItemDownload;
 using Quraaa.Application.Features.Orders.Queries.GetMyOrders;
+using Quraaa.Application.Features.Orders.Queries.GetOrderCheckoutContext;
 using Quraaa.Application.Features.Orders.Queries.GetOrderById;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Domain.User.Enums;
@@ -27,8 +28,30 @@ namespace Quraaa.API.Controllers
             _webHostEnvironment = webHostEnvironment;
         }
 
+        [HttpGet("checkout-context")]
+        [ProducesResponseType(typeof(OrderCheckoutContextResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> GetCheckoutContext(
+            CancellationToken cancellationToken)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                new GetOrderCheckoutContextQuery(userId),
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
         [HttpPost]
         [ProducesResponseType(typeof(OrderCheckoutResponse), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CreateOrder(
             [FromBody] CreateOrderRequest request,
             CancellationToken cancellationToken)
@@ -43,7 +66,8 @@ namespace Quraaa.API.Controllers
                 request.SuccessUrl,
                 request.CancelUrl,
                 request.ShippingLocation?.Latitude,
-                request.ShippingLocation?.Longitude), cancellationToken);
+                request.ShippingLocation?.Longitude,
+                request.ShippingLocationId), cancellationToken);
 
             return HandleResult(
                 result,
@@ -93,6 +117,9 @@ namespace Quraaa.API.Controllers
 
         [HttpPut("{orderId:guid}/shipping-location")]
         [ProducesResponseType(typeof(OrderResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> UpdateShippingLocation(
             [FromRoute] Guid orderId,
             [FromBody] UpdateOrderShippingLocationRequest request,
@@ -107,7 +134,8 @@ namespace Quraaa.API.Controllers
                 userId,
                 orderId,
                 request.Latitude,
-                request.Longitude), cancellationToken);
+                request.Longitude,
+                request.ShippingLocationId), cancellationToken);
 
             return HandleResult(result);
         }

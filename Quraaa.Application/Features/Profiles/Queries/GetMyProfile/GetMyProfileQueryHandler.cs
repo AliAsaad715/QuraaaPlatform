@@ -28,7 +28,9 @@ namespace Quraaa.Application.Features.Profiles.Queries.GetMyProfile
         {
             return await ExecuteAsync(request, async () =>
             {
-                var user = await _userRepository.GetUserByIdAsync(request.UserId);
+                var user = await _userRepository.GetUserWithProfileDetailsByIdAsync(
+                    request.UserId,
+                    cancellationToken);
                 if (user == null)
                 {
                     throw new NotFoundException("User was not found.");
