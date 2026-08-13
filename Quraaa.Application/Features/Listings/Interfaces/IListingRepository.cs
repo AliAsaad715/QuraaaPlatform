@@ -1,6 +1,7 @@
 ﻿using Quraaa.Application.Features.Listings.Queries.GetListingById;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Domain.Marketplace;
+using Quraaa.Domain.Marketplace.Enums;
 
 namespace Quraaa.Application.Features.Listings.Interfaces
 {
@@ -11,6 +12,10 @@ namespace Quraaa.Application.Features.Listings.Interfaces
 
         Task<ListingAggregate?> GetByIdForInventoryAsync(
             Guid listingId,
+            CancellationToken cancellationToken = default);
+
+        Task<IReadOnlyDictionary<Guid, ListingFormat>> GetActiveFormatsByIdsAsync(
+            IReadOnlyCollection<Guid> listingIds,
             CancellationToken cancellationToken = default);
 
         /// <summary>Joined projection used by the Get-by-ID query.</summary>

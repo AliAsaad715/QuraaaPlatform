@@ -1,7 +1,9 @@
 ﻿using Quraaa.Domain.Shared.Entities;
 using Quraaa.Domain.Shared.Exceptions;
 
-public class GeoLocation : ValueObjectRoot
+namespace Quraaa.Domain.User.ValueObjects;
+
+public sealed class GeoLocation : ValueObjectRoot
 {
     public double Latitude { get; init; }
     public double Longitude { get; init; }
@@ -10,10 +12,10 @@ public class GeoLocation : ValueObjectRoot
 
     public GeoLocation(double latitude, double longitude)
     {
-        if (latitude is < -90 or > 90)
-            throw new DomainException("Latitude must be between -90 and 90.");
-        if (longitude is < -180 or > 180)
-            throw new DomainException("Longitude must be between -180 and 180.");
+        if (!double.IsFinite(latitude) || latitude is < -90 or > 90)
+            throw new DomainException("Latitude must be a finite number between -90 and 90.");
+        if (!double.IsFinite(longitude) || longitude is < -180 or > 180)
+            throw new DomainException("Longitude must be a finite number between -180 and 180.");
 
         Latitude = latitude;
         Longitude = longitude;

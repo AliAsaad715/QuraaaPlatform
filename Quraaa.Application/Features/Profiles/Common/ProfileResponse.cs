@@ -1,6 +1,7 @@
 using Quraaa.Application.Features.Categories.Common;
 using Quraaa.Domain.Category;
 using Quraaa.Domain.User;
+using Quraaa.Domain.User.Entities;
 using Quraaa.Domain.User.Enums;
 
 namespace Quraaa.Application.Features.Profiles.Common
@@ -16,6 +17,7 @@ namespace Quraaa.Application.Features.Profiles.Common
         string? ProfileImageUrl,
         IReadOnlyCollection<CategoryResponse> Interests,
         LocationResponse? Location,
+        IReadOnlyCollection<LocationResponse> Locations,
         DateTime? LastLoginDate,
         DateTime? PreviousLoginDate,
         DateTime CreationTime,
@@ -35,6 +37,19 @@ namespace Quraaa.Application.Features.Profiles.Common
                 }
             }
 
+            var locations = user.Locations
+                .OrderByDescending(location => location.Id == user.DefaultLocationId)
+                .ThenBy(location => location.CreationTime)
+                .ThenBy(location => location.Id)
+                .Select(location => LocationResponse.FromLocation(
+                    location,
+                    user.DefaultLocationId))
+                .ToArray();
+
+            var defaultLocation = user.DefaultLocation is { } savedDefault
+                ? LocationResponse.FromLocation(savedDefault, user.DefaultLocationId)
+                : null;
+
             return new ProfileResponse(
                 user.Id,
                 user.FirstName,
@@ -45,7 +60,8 @@ namespace Quraaa.Application.Features.Profiles.Common
                 user.DateOfBirth,
                 user.ProfileImageUrl,
                 interests,
-                user.Location != null ? new LocationResponse(user.Location.Latitude, user.Location.Longitude) : null,
+                defaultLocation,
+                locations,
                 user.LastLoginDate,
                 user.PreviousLoginDate,
                 user.CreationTime,
@@ -53,9 +69,28 @@ namespace Quraaa.Application.Features.Profiles.Common
             );
         }
     }
-}
 
-public record LocationResponse(
-    double Latitude,
-    double Longitude
-);
+    public record LocationResponse(
+        Guid Id,
+        string Name,
+        string? Address,
+        double Latitude,
+        double Longitude,
+        bool IsDefault,
+        DateTime CreationTime,
+        DateTime? LastModificationTime)
+    {
+        public static LocationResponse FromLocation(
+            UserLocation location,
+            Guid? defaultLocationId) =>
+            new(
+                location.Id,
+                location.Name,
+                location.Address,
+                location.Latitude,
+                location.Longitude,
+                location.Id == defaultLocationId,
+                location.CreationTime,
+                location.LastModificationTime);
+    }
+}

@@ -32,6 +32,30 @@ namespace Quraaa.Persistence.Repositories
                     l => l.Id == listingId,
                     cancellationToken);
 
+        public async Task<IReadOnlyDictionary<Guid, ListingFormat>> GetActiveFormatsByIdsAsync(
+            IReadOnlyCollection<Guid> listingIds,
+            CancellationToken cancellationToken = default)
+        {
+            if (listingIds.Count == 0)
+            {
+                return new Dictionary<Guid, ListingFormat>();
+            }
+
+            var formats = await _context.Listings
+                .AsNoTracking()
+                .Where(listing =>
+                    listingIds.Contains(listing.Id)
+                    && listing.Status == ListingStatus.Active)
+                .Select(listing => new
+                {
+                    listing.Id,
+                    listing.Format
+                })
+                .ToListAsync(cancellationToken);
+
+            return formats.ToDictionary(listing => listing.Id, listing => listing.Format);
+        }
+
         public async Task<ListingDetailsResponse?> GetByIdWithDetailsAsync(
         Guid listingId, CancellationToken cancellationToken = default) =>
             await _context.Listings

@@ -11,6 +11,7 @@ using Quraaa.Domain.Orders;
 using Quraaa.Domain.Purchases;
 using Quraaa.Domain.Ratings;
 using Quraaa.Domain.User;
+using Quraaa.Domain.User.Entities;
 using System.Reflection;
 
 namespace Quraaa.Persistence.Data
@@ -22,6 +23,7 @@ namespace Quraaa.Persistence.Data
         }
 
         public DbSet<UserAggregate> UsersProfiles { get; set; }
+        public DbSet<UserLocation> UserLocations { get; set; }
         public DbSet<LibraryAggregate> Libraries { get; set; }
         public DbSet<LibraryRegistrationSession> LibraryRegistrationSessions { get; set; }
         public DbSet<LibraryEmailVerificationChallenge> LibraryEmailVerificationChallenges { get; set; }

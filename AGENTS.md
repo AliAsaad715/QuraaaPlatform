@@ -2,7 +2,7 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
-Last audited against the repository: **2026-08-06**.
+Last audited against the repository: **2026-08-09**.
 
 ## Project Overview
 
@@ -22,7 +22,7 @@ Current implemented business capabilities:
 - Unauthenticated forgot-password OTP verification and password reset through `POST /api/auth/forgot-password/verify`.
 - Authenticated profile retrieval through `GET /api/profile/me`.
 - Authenticated profile update through `PUT /api/profile/me`.
-- Authenticated profile location upsert/delete through `POST /api/profile/location` and `DELETE /api/profile/location`.
+- Authenticated named saved-location list/create/edit/default/delete through `/api/profile/locations`.
 - Authenticated mobile library-registration link issuance through `POST /api/libraries/register`.
 - Token-authenticated dashboard registration context/detail submission and SMTP email-OTP verification through `/api/libraries/register/*`; only verified applications enter the admin queue.
 - Public, searchable library listing through `GET /api/libraries`.
@@ -34,6 +34,7 @@ Current implemented business capabilities:
 - User physical-book listing creation and current-user listing retrieval through `/api/listings`.
 - Library inventory listing create/update/detail operations through `/api/library-admin/listings`.
 - User cart retrieval/mutation through `/api/cart`, with one open cart per user, Stripe-compatible line/quantity limits, and cumulative physical-stock validation.
+- Authenticated checkout context through `GET /api/orders/checkout-context`; physical and mixed carts return default-first owned saved-location choices, while empty and digital-only carts require no shipping location.
 - Order-driven Stripe Checkout through `POST /api/orders`: the order, cart lock, physical-stock reservations, and payment attempt are persisted before Stripe is called.
 - Buyer order listing/detail, shipping update, checkout recovery, cancellation, archive, and paid-ebook download through `/api/orders`.
 - Seller paid-physical-item queues and processing/fulfillment transitions through `/api/seller/orders`.
@@ -220,9 +221,12 @@ Quraaa.Application/
       Exceptions/
       Interfaces/
     Profiles/
-      Commands/UpsertLocation/
+      Commands/CreateLocation/
+      Commands/UpdateLocation/
+      Commands/SetDefaultLocation/
       Commands/DeleteLocation/
       Commands/UpdateProfile/
+      Queries/GetMyLocations/
       Queries/GetMyProfile/
       Common/
     Purchases/
@@ -273,6 +277,7 @@ Quraaa.Domain/
   User/
     UserAggregate.cs
     Entities/Interest.cs
+    Entities/UserLocation.cs
     Enums/Gender.cs
     Enums/Role.cs
     ValueObjects/GeoLocation.cs
@@ -544,6 +549,7 @@ Secrets handling:
 DbSets:
 
 - `UsersProfiles` (`UserAggregate`)
+- `UserLocations` (`UserLocation`; named profile locations with one profile-selected default)
 - `Libraries` (`LibraryAggregate`)
 - `Books` (`BookAggregate`)
 - `Listings` (`ListingAggregate`)
@@ -585,8 +591,12 @@ Located in `Quraaa.Persistence/Migrations/`:
 15. `20260731131240_EnforceSingleOpenCartPerUser`
 16. `20260801123016_AddRefreshTokenFamiliesAndIndexes`
 17. `20260806151215_AddLibraryMagicLinkEmailVerification`
+18. `20260806191318_AddFileRetentionAndDigitalAssetIndexes`
+19. `20260807120954_AddBookCanonicalFilesAndRenameListingDigitalAsset`
+20. `20260809202025_AddMultipleUserLocations`
+21. `20260810134114_PreventUserLocationOwnerReassignment`
 
-The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, and library-email-challenge storage; add library/favorite uniqueness and engagement foreign keys; add nullable latitude/longitude columns to `UsersProfiles`; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add partial unique indexes for the current refresh-token hash/family plus unique consumed-token hash history; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, and saved-location storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
 `Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
 
@@ -778,8 +788,11 @@ POST   /api/auth/forgot-password/verify           anonymous
 
 GET    /api/profile/me                            authenticated
 PUT    /api/profile/me                            authenticated
-POST   /api/profile/location                      authenticated
-DELETE /api/profile/location                      authenticated
+GET    /api/profile/locations                     authenticated
+POST   /api/profile/locations                     authenticated
+PUT    /api/profile/locations/{locationId}        authenticated
+PUT    /api/profile/locations/{locationId}/default authenticated
+DELETE /api/profile/locations/{locationId}        authenticated
 
 POST   /api/libraries/register                    User; issues temporary dashboard URL
 POST   /api/libraries/register/context            anonymous + registration token in body
@@ -810,6 +823,7 @@ PUT    /api/cart/items/{listingId}                User
 DELETE /api/cart/items/{listingId}                User
 DELETE /api/cart/me                               User
 
+GET    /api/orders/checkout-context               User
 POST   /api/orders                                User
 GET    /api/orders/me                             User
 GET    /api/orders/{orderId}                      User
@@ -1015,9 +1029,27 @@ Forgot-password verify request body:
     }
   ],
   "location": {
+    "id": "location-guid",
+    "name": "My University",
+    "address": "Damascus - Hamak - ITEF",
     "latitude": 33.3152,
-    "longitude": 44.3661
+    "longitude": 44.3661,
+    "isDefault": true,
+    "creationTime": "utc-date-time",
+    "lastModificationTime": null
   },
+  "locations": [
+    {
+      "id": "location-guid",
+      "name": "My University",
+      "address": "Damascus - Hamak - ITEF",
+      "latitude": 33.3152,
+      "longitude": 44.3661,
+      "isDefault": true,
+      "creationTime": "utc-date-time",
+      "lastModificationTime": null
+    }
+  ],
   "lastLoginDate": null,
   "previousLoginDate": null,
   "creationTime": "utc-date-time",
@@ -1025,16 +1057,19 @@ Forgot-password verify request body:
 }
 ```
 
-`POST /api/profile/location` upserts the authenticated user's owned `GeoLocation`:
+`GET /api/profile/locations` returns the authenticated user's saved locations with the default first. `POST /api/profile/locations` creates one:
 
 ```json
 {
+  "name": "My University",
+  "address": "Damascus - Hamak - ITEF",
   "latitude": 33.3152,
-  "longitude": 44.3661
+  "longitude": 44.3661,
+  "isDefault": true
 }
 ```
 
-`DELETE /api/profile/location` clears it. The current action binds a `DeleteLocationCommand` from the body even though its only property is JWT-sourced and `[JsonIgnore]`, so clients should currently send an empty JSON object (`{}`). Latitude/longitude are stored as nullable columns on `UsersProfiles`.
+`PUT /api/profile/locations/{locationId}` edits the name/address/coordinates, `PUT /api/profile/locations/{locationId}/default` selects the starred checkout default, and `DELETE /api/profile/locations/{locationId}` deletes one owned row. The first location becomes default automatically; deleting it promotes the oldest remaining location. `location` remains in `ProfileResponse` as a compatibility alias for the default while `locations` is the complete collection.
 
 ### Library
 
@@ -1211,24 +1246,26 @@ Add/update bodies:
 
 `GET /api/cart/me` returns an empty `CartResponse` when no open cart exists. Cart responses contain `cartId`, string `status`, items with snapshotted unit prices and line totals, `totalAmount`, `itemCount`, and an optional Stripe session ID. Only active listings can be added. Add/update quantities are limited to Stripe's `1..999,999` range; adding an existing item validates the resulting cumulative quantity against available stock; and a cart can contain at most 100 distinct listings. Order creation re-checks those limits before per-listing work so legacy/invalid carts fail early. Cart mutations are rejected while the cart is locked for a pending order. A partial unique database index enforces at most one non-deleted `Active`/`PendingPayment` cart per user, including under concurrent first-add requests.
 
-`POST /api/orders` is the primary checkout entry point. It accepts:
+`GET /api/orders/checkout-context` is the order preflight for the authenticated user's current open cart. Its response has `requiresShippingLocation`, `selectedShippingLocationId`, and `locations`. Each checkout location contains `id`, `name`, optional `address`, `latitude`, `longitude`, and `isDefault`. For a physical-only or mixed cart, `requiresShippingLocation` is `true`, `locations` contains the user's owned saved locations ordered with the default first, and `selectedShippingLocationId` is that default ID when one exists. With no saved default the selected ID is `null`. A missing/empty cart or a digital-only cart returns `false`, `null`, and an empty collection respectively, so digital checkout does not collect or persist a shipping location. A `PendingPayment` cart returns `409 Conflict`; a cart containing a missing/inactive listing returns `404`.
+
+`POST /api/orders` is the primary checkout entry point. New clients send the selected saved location ID:
 
 ```json
 {
   "successUrl": "https://client.example/checkout/success",
   "cancelUrl": "https://client.example/checkout/cancel",
-  "shippingLocation": {
-    "latitude": 33.5138,
-    "longitude": 36.2765
-  }
+  "shippingLocationId": "saved-location-guid"
 }
 ```
 
-Order creation validates the cart, seller ownership, active listings, and current stock; snapshots book, seller, price, fulfillment, and digital-asset data into order items; creates an `OrderAggregate`; reserves physical stock by decrementing the available listing stock; locks the cart with `PendingOrderId`; and creates a payment attempt. The order, reservation, cart lock, and stable payment inputs are saved before the external Stripe Checkout request. The response is an `OrderCheckoutResponse` containing the order, payment-attempt ID, session ID/URL, and expiry.
+For a physical or mixed cart, an explicit ID must resolve inside the authenticated buyer's loaded locations; omission uses the buyer's current default. With neither an explicit selection nor a default, physical order creation fails validation/domain checks. Digital-only orders ignore shipping selection and store `null` shipping coordinates. The transitional request contract still accepts legacy nested `shippingLocation` coordinates, but clients must not send both forms and new clients must use `shippingLocationId`. The unpaid-order shipping-update route follows the same saved-ID contract while temporarily retaining its legacy flat `latitude`/`longitude` input.
+
+Order creation validates the cart, seller ownership, active listings, current stock, and owned shipping selection; snapshots book, seller, price, fulfillment, digital-asset, and shipping-coordinate data into the order; creates an `OrderAggregate`; reserves physical stock by decrementing the available listing stock; locks the cart with `PendingOrderId`; and creates a payment attempt. Saved-location edits or deletion therefore do not rewrite an existing order. The order, reservation, cart lock, and stable payment inputs are saved before the external Stripe Checkout request. The response is an `OrderCheckoutResponse` containing the order, payment-attempt ID, session ID/URL, and expiry.
 
 Buyer order routes:
 
 ```text
+GET    /api/orders/checkout-context
 GET    /api/orders/me
 GET    /api/orders/{orderId}
 PUT    /api/orders/{orderId}/shipping-location
@@ -1238,7 +1275,7 @@ DELETE /api/orders/{orderId}
 GET    /api/orders/{orderId}/items/{orderItemId}/download
 ```
 
-Shipping can change only while the order is unpaid. Checkout-session creation resumes or attaches the active idempotent attempt. Cancelling an unpaid pending order expires any attached Stripe session, releases its physical-stock reservations, and reopens the cart. Only terminal orders can be archived. A paid buyer can download their own digital order item as a private PDF; the public ebook listing never exposes its storage path.
+Shipping can change only while the order is unpaid. A new client changes it by sending an owned `shippingLocationId`; legacy raw coordinates remain accepted only during migration. Checkout-session creation resumes or attaches the active idempotent attempt. Cancelling an unpaid pending order expires any attached Stripe session, releases its physical-stock reservations, and reopens the cart. Only terminal orders can be archived. A paid buyer can download their own digital order item as a private PDF; the public ebook listing never exposes its storage path.
 
 `POST /api/payments/stripe/webhook` verifies `Stripe-Signature`, provider mode, order/payment-attempt correlation, session, amount, currency, and payment intent. A durable `ProcessedPaymentEvent` inbox makes provider events idempotent. Paid `checkout.session.completed` and `checkout.session.async_payment_succeeded` events use the shared order-payment finalizer to mark the order/cart paid and create order-linked `BookPurchaseAggregate` rows; physical stock is not decremented again because it was reserved before Stripe. `checkout.session.async_payment_failed` and `checkout.session.expired` release reserved stock and reopen the cart. A hosted reconciler runs every minute and, after a two-minute webhook grace period, reconciles expired pending attempts. For a local `Created` attempt, it replays the exact persisted Checkout request with `checkout:{attempt.Id:N}`, attaches any recovered Session, retrieves Stripe's authoritative state, and invokes the same paid finalizer when a paid webhook was missed. Inventory is released only after Stripe confirms an unpaid expired Session or, within a conservative 23-hour idempotency-retention window, the replay proves no Session was created; older unattached attempts require manual reconciliation. A complete-but-unpaid asynchronous payment remains pending, and the reconciler keyset-scans each fixed-cutoff candidate set so removed rows cannot shift later work and deferred attempts are retried on the next scan.
 
@@ -1802,31 +1839,42 @@ Files:
 
 ```text
 Quraaa.API/Controllers/ProfileController.cs
-Quraaa.Application/Features/Profiles/Commands/UpsertLocation/
+Quraaa.API/Requests/Profiles/ProfileLocationRequests.cs
+Quraaa.Application/Features/Profiles/Commands/CreateLocation/
+Quraaa.Application/Features/Profiles/Commands/UpdateLocation/
+Quraaa.Application/Features/Profiles/Commands/SetDefaultLocation/
 Quraaa.Application/Features/Profiles/Commands/DeleteLocation/
+Quraaa.Application/Features/Profiles/Queries/GetMyLocations/
+Quraaa.Domain/User/Entities/UserLocation.cs
 Quraaa.Domain/User/ValueObjects/GeoLocation.cs
 Quraaa.Persistence/Configurations/UserConfiguration.cs
-Quraaa.Persistence/Migrations/20260724134444_AddLocationToUsers.cs
+Quraaa.Persistence/Configurations/UserLocationConfiguration.cs
+Quraaa.Persistence/Migrations/20260809202025_AddMultipleUserLocations.cs
 ```
 
 Flow:
 
 ```text
-POST /api/profile/location
+POST /api/profile/locations
   -> [Authorize] and JWT UserId extraction
-  -> UpsertLocationCommand with token-derived UserId
-  -> validate latitude/longitude
-  -> UserAggregate.SetLocation(...)
-  -> persist owned GeoLocation to UsersProfiles.Latitude/Longitude
+  -> CreateLocationCommand with token-derived UserId
+  -> validate name/address and finite latitude/longitude
+  -> UserAggregate.AddLocation(...)
+  -> first or explicitly selected location becomes DefaultLocationId
+  -> renew LocationConcurrencyStamp so overlapping writes return 409
+  -> persist UserLocation child row
 
-DELETE /api/profile/location
+PUT /api/profile/locations/{locationId}
+PUT /api/profile/locations/{locationId}/default
+DELETE /api/profile/locations/{locationId}
   -> [Authorize] and JWT UserId extraction
-  -> DeleteLocationCommand with token-derived UserId
-  -> UserAggregate.ClearLocation()
-  -> persist null coordinates
+  -> load only the authenticated user's aggregate and locations
+  -> resolve locationId inside that collection; foreign/missing ids return 404
+  -> edit, select the default, or remove one child
+  -> deleting the default promotes the oldest remaining location
 ```
 
-`GetMyProfile` and `UpdateProfile` now return a nullable `LocationResponse`. Current implementation caveats: the location validator's `.NotEmpty()` rejects numeric zero even though zero is geographically valid, both handlers null-forgive a missing user instead of returning `404`, and the DELETE action currently expects an empty JSON request body.
+`GetMyProfile` and `UpdateProfile` return the complete `locations` collection plus nullable `location` as the default compatibility alias. Names may repeat. Address is nullable. Zero coordinates are valid, while non-finite and out-of-range values are rejected in validation/domain logic and constrained in PostgreSQL. `GetOrderCheckoutContext` exposes default-first choices only when the current cart contains a physical item. `CreateOrderCommandHandler` resolves an explicit owned saved-location ID, otherwise uses `DefaultLocation` for physical/mixed orders, and snapshots coordinates into the order; it does not attach shipping data to digital-only orders.
 
 ### Library Registration Flow
 
@@ -2399,7 +2447,6 @@ Based on the current codebase:
 - **Single-session authentication model**: each Identity user has one active refresh-token family. A fresh login invalidates the prior family's refresh and access tokens. Multiple per-device concurrent sessions, device-scoped logout, and independent session management are not modeled yet.
 - **OTP coverage**: registration, forgot-password, admin login, and standalone OTP use OTP state. Regular user login resends the registration OTP only for valid credentials on an unverified pending registration; library-owner login does not use OTP, and standalone OTP still does not mark a phone/user verified.
 - **Rating API**: `BookRatingAggregate`, its table, and popularity aggregation exist, but there are no rating create/update/read endpoints.
-- **Location edge cases**: location upsert/delete handlers null-forgive a missing user, the validator rejects zero latitude/longitude via `.NotEmpty()`, and DELETE requires an otherwise empty request body.
 - **Pagination inconsistency**: `PaginationRequestDTO` silently coerces invalid values and caps at 20, while other feature validators allow 100. `GET /api/listings/me` cannot bind page fields and is fixed to page 1/size 10.
 - **Category projection order**: listing/library-book/purchase repository projections pass `NameEn` and `NameAr` in the opposite order expected by `CategoryResponse`; profile/category handlers use the correct order.
 - **Aggregate mapping consistency**: domain aggregates retain scalar IDs, but several current EF configurations express cross-aggregate foreign keys with navigationless `HasOne<TAggregate>()`. Keep navigation properties out of the domain and decide on one persistence convention before adding more mappings.

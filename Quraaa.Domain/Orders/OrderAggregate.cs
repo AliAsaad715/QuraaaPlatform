@@ -354,6 +354,12 @@ namespace Quraaa.Domain.Orders
         {
             EnsureNotArchived();
 
+            if (!_items.Any(item => item.Format == ListingFormat.Physical))
+            {
+                throw new ConflictException(
+                    "Shipping location can only be changed for orders containing physical items.");
+            }
+
             if (PaymentStatus == PaymentStatus.Paid || Status != OrderStatus.Pending)
             {
                 throw new ConflictException("Shipping location can only be changed while an order is unpaid.");
@@ -519,6 +525,22 @@ namespace Quraaa.Domain.Orders
             if (requiresLocation && (!latitude.HasValue || !longitude.HasValue))
             {
                 throw new DomainException("Shipping location is required for physical order items.");
+            }
+
+            if (!requiresLocation && (latitude.HasValue || longitude.HasValue))
+            {
+                throw new DomainException(
+                    "Shipping location is only allowed for orders containing physical items.");
+            }
+
+            if (latitude.HasValue && !double.IsFinite(latitude.Value))
+            {
+                throw new DomainException("Shipping latitude must be a finite number.");
+            }
+
+            if (longitude.HasValue && !double.IsFinite(longitude.Value))
+            {
+                throw new DomainException("Shipping longitude must be a finite number.");
             }
 
             if (latitude is < -90 or > 90)

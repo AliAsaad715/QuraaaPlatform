@@ -7,7 +7,8 @@ namespace Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocatio
     public record UpdateOrderShippingLocationCommand(
         Guid BuyerUserId,
         Guid OrderId,
-        double Latitude,
-        double Longitude)
+        double? Latitude,
+        double? Longitude,
+        Guid? ShippingLocationId = null)
         : IRequest<AppResult<OrderResponse>>;
 }
