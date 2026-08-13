@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Cart;
 using Quraaa.Domain.Category;
+using Quraaa.Domain.Comments;
 using Quraaa.Domain.Favorites;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.Marketplace;
@@ -28,6 +29,7 @@ namespace Quraaa.Persistence.Data
         public DbSet<BookAggregate> Books { get; set; }
         public DbSet<ListingAggregate> Listings { get; set; }
         public DbSet<CategoryAggregate> Categories { get; set; }
+        public DbSet<CommentAggregate> Comments { get; set; }
         public DbSet<FavoriteBookAggregate> FavoriteBooks { get; set; }
         public DbSet<BookPurchaseAggregate> BookPurchases { get; set; }
         public DbSet<BookRatingAggregate> BookRatings { get; set; }
