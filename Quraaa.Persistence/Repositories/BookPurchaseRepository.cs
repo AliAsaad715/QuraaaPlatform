@@ -38,6 +38,14 @@ namespace Quraaa.Persistence.Repositories
                 .AsNoTracking()
                 .AnyAsync(p => p.UserId == userId && p.ListingId == listingId, cancellationToken);
 
+        public Task<bool> HasUserPurchasedBookAsync(
+            Guid userId,
+            Guid bookId,
+            CancellationToken cancellationToken = default) =>
+            _context.BookPurchases
+                .AsNoTracking()
+                .AnyAsync(p => p.UserId == userId && p.BookId == bookId, cancellationToken);
+
         public Task<PurchaseDigitalAssetInfo?> GetDigitalAssetInfoAsync(
             Guid purchaseId,
             CancellationToken cancellationToken = default) =>

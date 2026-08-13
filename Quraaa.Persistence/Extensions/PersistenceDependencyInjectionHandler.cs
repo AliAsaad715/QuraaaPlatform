@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
+using Quraaa.Application.Features.Comments.Interfaces;
 using Quraaa.Application.Features.Ebooks.Interfaces;
 using Quraaa.Application.Features.FavoriteBooks.Interfaces;
 using Quraaa.Application.Features.Files.Interfaces;
@@ -11,6 +12,7 @@ using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
+using Quraaa.Application.Features.Ratings.Interfaces;
 using Quraaa.Persistence.Repositories;
 using Quraaa.Persistence.Services;
 
@@ -28,6 +30,8 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IIdentityService, IdentityService>();
             services.AddScoped<IAuthenticationUnitOfWork, AuthenticationUnitOfWork>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
+            services.AddScoped<ICommentRepository, CommentRepository>();
+            services.AddScoped<IBookRatingRepository, BookRatingRepository>();
             services.AddScoped<IEbookRepository, EbookRepository>();
             services.AddScoped<IFavoriteBookRepository, FavoriteBookRepository>();
             services.AddScoped<IBookPopularityRepository, BookPopularityRepository>();

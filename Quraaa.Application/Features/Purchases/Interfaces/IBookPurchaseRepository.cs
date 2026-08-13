@@ -11,6 +11,12 @@ namespace Quraaa.Application.Features.Purchases.Interfaces
         Task SaveChangesAsync(CancellationToken cancellationToken = default);
         Task<bool> HasUserPurchasedListingAsync(Guid userId, Guid listingId, CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Verified-purchase check for rating/review-style gates: true if the user has a
+        /// purchase record for this book through any listing, regardless of which listing.
+        /// </summary>
+        Task<bool> HasUserPurchasedBookAsync(Guid userId, Guid bookId, CancellationToken cancellationToken = default);
+
         /// <summary>Owner and digital-asset snapshot for a single purchase, used to authorize downloads.</summary>
         Task<PurchaseDigitalAssetInfo?> GetDigitalAssetInfoAsync(
             Guid purchaseId,
