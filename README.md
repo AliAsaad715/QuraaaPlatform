@@ -256,7 +256,7 @@ Request and response schemas are available in Swagger UI and the generated OpenA
 
 ## Endpoint reference
 
-The current API exposes 66 controller actions.
+The current API exposes 74 controller actions.
 
 ### Authentication and profiles
 
@@ -273,10 +273,15 @@ The current API exposes 66 controller actions.
 | `POST`   | `/api/auth/reset-password`         | Authenticated                  | Change the current account password and revoke its sessions.                |
 | `POST`   | `/api/auth/forgot-password`        | Public                         | Send a password-recovery OTP.                                               |
 | `POST`   | `/api/auth/forgot-password/verify` | Public                         | Verify the recovery OTP and set a new password.                             |
-| `GET`    | `/api/profile/me`                  | Authenticated                  | Get the current user profile.                                               |
-| `PUT`    | `/api/profile/me`                  | Authenticated                  | Update profile fields and interests.                                        |
-| `POST`   | `/api/profile/location`            | Authenticated                  | Create or replace the current profile location.                             |
-| `DELETE` | `/api/profile/location`            | Authenticated                  | Delete the current profile location.                                        |
+| `GET`    | `/api/profile/me`                                  | Authenticated                  | Get the current profile, including all saved locations.                     |
+| `PUT`    | `/api/profile/me`                                  | Authenticated                  | Update profile fields and interests.                                        |
+| `GET`    | `/api/profile/locations`                           | Authenticated                  | List saved locations, with the default first.                               |
+| `POST`   | `/api/profile/locations`                           | Authenticated                  | Add a named saved location.                                                 |
+| `PUT`    | `/api/profile/locations/{locationId}`              | Authenticated                  | Edit one owned saved location.                                              |
+| `PUT`    | `/api/profile/locations/{locationId}/default`      | Authenticated                  | Make one owned saved location the checkout default.                         |
+| `DELETE` | `/api/profile/locations/{locationId}`              | Authenticated                  | Delete one owned saved location.                                            |
+
+The first saved location automatically becomes the default. Setting another default replaces that selection, and deleting the default promotes the oldest remaining location. Location names do not need to be unique. Existing orders keep their shipping-coordinate snapshots when a saved location is later edited or deleted. Overlapping location writes use optimistic concurrency and return `409 Conflict`; clients should reload the list before retrying.
 
 ### Catalog and discovery
 
@@ -328,10 +333,11 @@ Email OTPs are valid for 10 minutes, can be redelivered after 60 seconds, are li
 | `PUT`    | `/api/cart/items/{listingId}`                                 | `User`                   | Change a cart item's quantity.                                         |
 | `DELETE` | `/api/cart/items/{listingId}`                                 | `User`                   | Remove a cart item.                                                    |
 | `DELETE` | `/api/cart/me`                                                | `User`                   | Clear the open cart.                                                   |
+| `GET`    | `/api/orders/checkout-context`                                | `User`                   | Get physical-shipping requirements and owned saved-location choices.  |
 | `POST`   | `/api/orders`                                                 | `User`                   | Create an order from the cart and open Stripe Checkout.                |
 | `GET`    | `/api/orders/me`                                              | `User`                   | Page the buyer's orders.                                               |
 | `GET`    | `/api/orders/{orderId}`                                       | `User`                   | Get buyer-visible order details.                                       |
-| `PUT`    | `/api/orders/{orderId}/shipping-location`                     | `User`                   | Update an eligible order's shipping coordinates.                       |
+| `PUT`    | `/api/orders/{orderId}/shipping-location`                     | `User`                   | Select an owned saved location for an eligible unpaid order.           |
 | `POST`   | `/api/orders/{orderId}/checkout-session`                      | `User`                   | Recover or create a checkout session for an eligible order.            |
 | `POST`   | `/api/orders/{orderId}/cancel`                                | `User`                   | Cancel an eligible order, optionally with a reason.                    |
 | `DELETE` | `/api/orders/{orderId}`                                       | `User`                   | Archive an eligible order from buyer history.                          |
@@ -342,6 +348,10 @@ Email OTPs are valid for 10 minutes, can be redelivered after 60 seconds, are li
 | `POST`   | `/api/seller/orders/{orderId}/items/{orderItemId}/fulfilled`  | `User` or `LibraryOwner` | Mark an owned physical item fulfilled.                                 |
 | `GET`    | `/api/purchases/me/buy-history`                               | `User`                   | Page the current user's purchase history.                              |
 | `GET`    | `/api/purchases/me/sell-history`                              | `User`                   | Page the current user's sale history.                                  |
+
+`GET /api/orders/checkout-context` inspects the current open cart before order creation. Physical-only and mixed carts return `requiresShippingLocation: true`, the user's saved locations with the default first, and `selectedShippingLocationId` set to that default. Each option contains `id`, `name`, optional `address`, `latitude`, `longitude`, and `isDefault`. When no default exists the selected ID is `null`, so the client must ask the user to add or choose a saved location before checkout. A missing/empty cart or a digital-only cart returns `requiresShippingLocation: false`, `selectedShippingLocationId: null`, and an empty location list. A cart already locked by a pending order returns `409 Conflict` instead of starting another checkout flow.
+
+For a physical or mixed cart, send the chosen owned ID as `shippingLocationId` to `POST /api/orders`; omitting it uses the server's current default. Digital-only orders ignore shipping selection and store no shipping coordinates. `PUT /api/orders/{orderId}/shipping-location` accepts the same saved-location ID for an eligible unpaid order. During the client migration window, order creation still accepts the legacy nested `shippingLocation` coordinates and shipping update still accepts legacy `latitude`/`longitude`; do not send an ID and raw coordinates together. New clients should use saved IDs exclusively. Orders snapshot the selected coordinates, so later profile-location edits or deletion do not rewrite existing orders.
 
 ### OTP and notifications
 
@@ -363,12 +373,13 @@ Clients must replace both stored tokens after every successful refresh. Do not r
 ### Order and Stripe flow
 
 1. The user builds an open cart.
-2. `POST /api/orders` snapshots the cart into an order, locks the cart, reserves physical stock, and persists a payment attempt.
-3. The API creates a Stripe Checkout Session using an idempotency key.
-4. Stripe sends a signed event to `/api/payments/stripe/webhook`.
-5. Successful payment finalizes the order, cart, purchases, digital entitlement, and physical reservations.
-6. Confirmed failure or expiry releases reservations and reopens the cart where allowed.
-7. A hosted reconciliation service checks expired pending attempts every minute, with a short webhook-delivery grace period.
+2. The client calls `GET /api/orders/checkout-context`. For a physical or mixed cart it preselects the returned default saved location and lets the user choose another returned location.
+3. `POST /api/orders` receives the chosen `shippingLocationId`, snapshots the cart and shipping coordinates into an order, locks the cart, reserves physical stock, and persists a payment attempt. Shipping selection is omitted for digital-only carts.
+4. The API creates a Stripe Checkout Session using an idempotency key.
+5. Stripe sends a signed event to `/api/payments/stripe/webhook`.
+6. Successful payment finalizes the order, cart, purchases, digital entitlement, and physical reservations.
+7. Confirmed failure or expiry releases reservations and reopens the cart where allowed.
+8. A hosted reconciliation service checks expired pending attempts every minute, with a short webhook-delivery grace period.
 
 Treat the verified Stripe webhook and authoritative Stripe reconciliation result as payment truth; a browser success redirect is not proof of payment.
 
@@ -387,6 +398,8 @@ The API generates and caches OTP data, then sends an FCM data message to the con
 Startup calls `Database.Migrate()`, then runs category, admin, user, library, ebook, and book seeders.
 
 `AddLibraryMagicLinkEmailVerification` migrates every legacy `Pending` library to `AwaitingEmailVerification`, so it must complete email verification before entering admin review. Existing `Approved` and `Rejected` records are explicitly grandfathered by setting `EmailVerifiedAtUtc` to the migration execution timestamp. A database check constraint then rejects any `Pending`, `Approved`, or `Rejected` row without a verification timestamp, including writes from an older API instance during a rolling deployment. On downgrade, status `AwaitingEmailVerification` is mapped back to legacy `Pending` before the verification columns are removed.
+
+`AddMultipleUserLocations` validates each legacy coordinate pair, copies it into a named `UserLocations` row, selects it as the default, and only then removes the old profile columns. `PreventUserLocationOwnerReassignment` installs a database trigger that makes `UserLocations.UserId` immutable after insertion. Deploy `AddMultipleUserLocations` with old API instances stopped because they still expect `UsersProfiles.Latitude`/`Longitude`. Its downgrade can retain only the selected default (or oldest fallback) and discards every additional saved location, so back up the database before rolling it back.
 
 Seed behavior includes:
 

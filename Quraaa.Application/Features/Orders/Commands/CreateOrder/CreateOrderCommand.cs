@@ -9,6 +9,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
         string SuccessUrl,
         string CancelUrl,
         double? ShippingLatitude,
-        double? ShippingLongitude)
+        double? ShippingLongitude,
+        Guid? ShippingLocationId = null)
         : IRequest<AppResult<OrderCheckoutResponse>>;
 }

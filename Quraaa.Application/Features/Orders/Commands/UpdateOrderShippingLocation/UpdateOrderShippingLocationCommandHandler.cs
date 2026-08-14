@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Shared.Results;
@@ -13,16 +14,19 @@ namespace Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocatio
           IRequestHandler<UpdateOrderShippingLocationCommand, AppResult<OrderResponse>>
     {
         private readonly IOrderRepository _orderRepository;
+        private readonly IUserRepository _userRepository;
         private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public UpdateOrderShippingLocationCommandHandler(
             IOrderRepository orderRepository,
+            IUserRepository userRepository,
             IImageUrlFormatter imageUrlFormatter,
             ILogger<UpdateOrderShippingLocationCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
         {
             _orderRepository = orderRepository;
+            _userRepository = userRepository;
             _imageUrlFormatter = imageUrlFormatter;
         }
 
@@ -38,10 +42,30 @@ namespace Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocatio
                     cancellationToken)
                     ?? throw new NotFoundException("Order not found.");
 
-                order.UpdateShippingLocation(
-                    request.Latitude,
-                    request.Longitude,
-                    request.BuyerUserId);
+                double latitude;
+                double longitude;
+
+                if (request.ShippingLocationId.HasValue)
+                {
+                    var buyer = await _userRepository.GetUserWithLocationsByIdAsync(
+                        request.BuyerUserId,
+                        cancellationToken)
+                        ?? throw new NotFoundException("Buyer profile not found.");
+
+                    var selectedLocation = buyer.Locations.FirstOrDefault(
+                        location => location.Id == request.ShippingLocationId.Value)
+                        ?? throw new NotFoundException("Shipping location not found.");
+
+                    latitude = selectedLocation.Latitude;
+                    longitude = selectedLocation.Longitude;
+                }
+                else
+                {
+                    latitude = request.Latitude!.Value;
+                    longitude = request.Longitude!.Value;
+                }
+
+                order.UpdateShippingLocation(latitude, longitude, request.BuyerUserId);
 
                 await _orderRepository.SaveChangesAsync(cancellationToken);
                 return order.ToResponse(_imageUrlFormatter);

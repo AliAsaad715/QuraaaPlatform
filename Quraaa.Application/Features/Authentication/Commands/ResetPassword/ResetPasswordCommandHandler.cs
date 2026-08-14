@@ -12,45 +12,54 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetPassword
     {
         private readonly IIdentityService _identityService;
         private readonly IUserRepository _userRepository;
+        private readonly IAuthenticationUnitOfWork _authenticationUnitOfWork;
 
         public ResetPasswordCommandHandler(
             IIdentityService identityService,
             IUserRepository userRepository,
+            IAuthenticationUnitOfWork authenticationUnitOfWork,
             ILogger<ResetPasswordCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _identityService = identityService;
             _userRepository = userRepository;
+            _authenticationUnitOfWork = authenticationUnitOfWork;
         }
 
         public async Task<AppResult> Handle(ResetPasswordCommand request, CancellationToken cancellationToken)
         {
             return await ExecuteAsync(request, async () =>
             {
-                var user = await _userRepository.GetUserByIdAsync(request.UserId);
-                if (user == null)
-                {
-                    throw new NotFoundException("User was not found.");
-                }
+                await _authenticationUnitOfWork.ExecuteInTransactionAsync(
+                    async transactionCancellationToken =>
+                    {
+                        var user = await _userRepository.GetUserByIdAsync(request.UserId);
+                        if (user == null)
+                        {
+                            throw new NotFoundException("User was not found.");
+                        }
 
-                var identityResult = await _identityService.ChangePasswordAsync(
-                    request.UserId,
-                    request.OldPassword,
-                    request.NewPassword);
+                        var identityResult = await _identityService.ChangePasswordAsync(
+                            request.UserId,
+                            request.OldPassword,
+                            request.NewPassword);
 
-                if (!identityResult.Succeeded)
-                {
-                    var allErrors = string.Join(" | ", identityResult.Errors);
-                    throw new ApplicationBusinessException(allErrors);
-                }
+                        if (!identityResult.Succeeded)
+                        {
+                            var allErrors = string.Join(" | ", identityResult.Errors);
+                            throw new ApplicationBusinessException(allErrors);
+                        }
 
-                if (string.IsNullOrWhiteSpace(identityResult.PasswordHash))
-                {
-                    throw new ApplicationBusinessException("Password was changed, but the updated password hash was not returned.");
-                }
+                        if (string.IsNullOrWhiteSpace(identityResult.PasswordHash))
+                        {
+                            throw new ApplicationBusinessException(
+                                "Password was changed, but the updated password hash was not returned.");
+                        }
 
-                user.UpdatePasswordHash(identityResult.PasswordHash!, request.UserId);
-                await _userRepository.SaveChangesAsync();
+                        user.UpdatePasswordHash(identityResult.PasswordHash!, request.UserId);
+                        await _userRepository.SaveChangesAsync(transactionCancellationToken);
+                    },
+                    cancellationToken);
             }, "Password reset successfully");
         }
     }

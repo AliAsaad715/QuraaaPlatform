@@ -130,17 +130,14 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
                         "One or more cart item quantities exceed Stripe Checkout limits.");
                 }
 
-                var buyer = await _userRepository.GetUserByIdAsync(request.BuyerUserId)
+                var buyer = await _userRepository.GetUserWithLocationsByIdAsync(
+                    request.BuyerUserId,
+                    cancellationToken)
                     ?? throw new NotFoundException("Buyer profile not found.");
 
                 var buyerLibrary = await _libraryRepository.GetApprovedByUserIdAsync(
                     request.BuyerUserId,
                     cancellationToken);
-
-                var shippingLatitude =
-                    request.ShippingLatitude ?? buyer.Location?.Latitude;
-                var shippingLongitude =
-                    request.ShippingLongitude ?? buyer.Location?.Longitude;
 
                 var snapshots = new List<OrderItemSnapshot>(cart.Items.Count);
                 var reservableListings = new List<(ListingAggregate Listing, int Quantity)>();
@@ -201,6 +198,33 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
                     if (listing.Format == ListingFormat.Physical)
                     {
                         reservableListings.Add((listing, cartItem.Quantity));
+                    }
+                }
+
+                double? shippingLatitude = null;
+                double? shippingLongitude = null;
+
+                if (snapshots.Any(snapshot => snapshot.Format == ListingFormat.Physical))
+                {
+                    if (request.ShippingLocationId.HasValue)
+                    {
+                        var selectedLocation = buyer.Locations.FirstOrDefault(
+                            location => location.Id == request.ShippingLocationId.Value)
+                            ?? throw new NotFoundException("Shipping location not found.");
+
+                        shippingLatitude = selectedLocation.Latitude;
+                        shippingLongitude = selectedLocation.Longitude;
+                    }
+                    else if (request.ShippingLatitude.HasValue
+                        && request.ShippingLongitude.HasValue)
+                    {
+                        shippingLatitude = request.ShippingLatitude.Value;
+                        shippingLongitude = request.ShippingLongitude.Value;
+                    }
+                    else if (buyer.DefaultLocation is { } defaultLocation)
+                    {
+                        shippingLatitude = defaultLocation.Latitude;
+                        shippingLongitude = defaultLocation.Longitude;
                     }
                 }
 
