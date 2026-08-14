@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Purchases.Common;
 using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Features.Purchases.Queries.GetBuyHistory;
 using Quraaa.Application.Features.Purchases.Queries.GetSellHistory;
+using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Domain.Purchases;
 using Quraaa.Persistence.Data;
@@ -14,10 +15,12 @@ namespace Quraaa.Persistence.Repositories
     public class BookPurchaseRepository : IBookPurchaseRepository
     {
         private readonly ApplicationDbContext _context;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
-        public BookPurchaseRepository(ApplicationDbContext context)
+        public BookPurchaseRepository(ApplicationDbContext context, IImageUrlFormatter imageUrlFormatter)
         {
             _context = context;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task AddRangeAsync(IEnumerable<BookPurchaseAggregate> purchases, CancellationToken cancellationToken = default)
@@ -123,10 +126,15 @@ namespace Quraaa.Persistence.Repositories
 
             var totalCount = await query.CountAsync(cancellationToken);
 
-            var items = await query
+            // Materialize first, then project to the response DTO in memory —
+            // IImageUrlFormatter.Format can't be translated into SQL.
+            var rows = await query
                 .OrderByDescending(x => x.Purchase.CreationTime)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var items = rows
                 .Select(x => new BuyHistoryItemResponse(
                     x.Purchase.Id,
                     new BookDetails(
@@ -134,7 +142,7 @@ namespace Quraaa.Persistence.Repositories
                         x.Book.Title,
                         x.Book.Author,
                         x.Book.Description,
-                        x.Book.CoverImageUrl,
+                        _imageUrlFormatter.Format(x.Book.CoverImageUrl),
                         x.Book.Language,
                         x.Book.Isbn,
                         x.Category == null ? null : new CategoryResponse(x.Category.Id, x.Category.NameEn, x.Category.NameAr)),
@@ -143,7 +151,7 @@ namespace Quraaa.Persistence.Repositories
                     x.Purchase.Quantity * x.Purchase.UnitPrice,
                     x.Purchase.CreationTime,
                     x.Purchase.PurchasedDigitalAssetUrl))
-                .ToListAsync(cancellationToken);
+                .ToList();
 
             return (items, totalCount);
         }
@@ -187,10 +195,15 @@ namespace Quraaa.Persistence.Repositories
 
             var totalCount = await query.CountAsync(cancellationToken);
 
-            var items = await query
+            // Materialize first, then project to the response DTO in memory —
+            // IImageUrlFormatter.Format can't be translated into SQL.
+            var rows = await query
                 .OrderByDescending(x => x.Purchase.CreationTime)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var items = rows
                 .Select(x => new SellHistoryItemResponse(
                     x.Purchase.Id,
                     new BookDetails(
@@ -198,7 +211,7 @@ namespace Quraaa.Persistence.Repositories
                         x.Book.Title,
                         x.Book.Author,
                         x.Book.Description,
-                        x.Book.CoverImageUrl,
+                        _imageUrlFormatter.Format(x.Book.CoverImageUrl),
                         x.Book.Language,
                         x.Book.Isbn,
                         x.Category == null ? null : new CategoryResponse(x.Category.Id, x.Category.NameEn, x.Category.NameAr)),
@@ -207,7 +220,7 @@ namespace Quraaa.Persistence.Repositories
                     x.Purchase.Quantity * x.Purchase.UnitPrice,
                     x.Purchase.UserId, // BuyerUserId
                     x.Purchase.CreationTime))
-                .ToListAsync(cancellationToken);
+                .ToList();
 
             return (items, totalCount);
         }

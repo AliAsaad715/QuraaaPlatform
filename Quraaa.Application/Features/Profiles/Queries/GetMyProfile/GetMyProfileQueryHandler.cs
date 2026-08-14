@@ -13,15 +13,18 @@ namespace Quraaa.Application.Features.Profiles.Queries.GetMyProfile
     {
         private readonly IUserRepository _userRepository;
         private readonly ICategoryRepository _categoryRepository;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public GetMyProfileQueryHandler(
             IUserRepository userRepository,
             ICategoryRepository categoryRepository,
+            IImageUrlFormatter imageUrlFormatter,
             ILogger<GetMyProfileQueryHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _userRepository = userRepository;
             _categoryRepository = categoryRepository;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<AppResult<ProfileResponse>> Handle(GetMyProfileQuery request, CancellationToken cancellationToken)
@@ -38,7 +41,7 @@ namespace Quraaa.Application.Features.Profiles.Queries.GetMyProfile
 
                 var interestCategories = await _categoryRepository.GetByIdsAsync(user.InterestedCategoryIds.ToList(), cancellationToken);
 
-                return ProfileResponse.FromUser(user, interestCategories);
+                return ProfileResponse.FromUser(user, interestCategories, _imageUrlFormatter);
             }, "Profile retrieved successfully");
         }
     }
