@@ -56,9 +56,9 @@ namespace Quraaa.Domain.Marketplace
             BookCondition condition,
             int stock)
         {
-            if (price <= 0)
+            if (price < 0)
             {
-                throw new DomainException("Price must be greater than zero.");
+                throw new DomainException("Price must be greater or equal than zero.");
             }
 
             if (stock <= 0)
