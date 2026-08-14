@@ -1,4 +1,5 @@
 using Quraaa.Application.Features.Categories.Common;
+using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Category;
 using Quraaa.Domain.User;
 using Quraaa.Domain.User.Enums;
@@ -22,7 +23,10 @@ namespace Quraaa.Application.Features.Profiles.Common
         DateTime? LastModificationTime
     )
     {
-        public static ProfileResponse FromUser(UserAggregate user, IReadOnlyCollection<CategoryAggregate> interestCategories)
+        public static ProfileResponse FromUser(
+            UserAggregate user,
+            IReadOnlyCollection<CategoryAggregate> interestCategories,
+            IImageUrlFormatter imageUrlFormatter)
         {
             var categoriesById = interestCategories.ToDictionary(category => category.Id);
             var interests = new List<CategoryResponse>();
@@ -43,7 +47,7 @@ namespace Quraaa.Application.Features.Profiles.Common
                 user.Gender,
                 user.Role,
                 user.DateOfBirth,
-                user.ProfileImageUrl,
+                imageUrlFormatter.Format(user.ProfileImageUrl),
                 interests,
                 user.Location != null ? new LocationResponse(user.Location.Latitude, user.Location.Longitude) : null,
                 user.LastLoginDate,

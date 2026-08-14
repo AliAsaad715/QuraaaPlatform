@@ -3,6 +3,7 @@ using Npgsql;
 using Quraaa.Application.Features.FavoriteBooks.Common;
 using Quraaa.Application.Features.FavoriteBooks.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Favorites;
 using Quraaa.Persistence.Data;
 
@@ -11,10 +12,12 @@ namespace Quraaa.Persistence.Repositories
     public class FavoriteBookRepository : IFavoriteBookRepository
     {
         private readonly ApplicationDbContext _context;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
-        public FavoriteBookRepository(ApplicationDbContext context)
+        public FavoriteBookRepository(ApplicationDbContext context, IImageUrlFormatter imageUrlFormatter)
         {
             _context = context;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<bool> BookExistsAsync(Guid bookId, CancellationToken cancellationToken = default)
@@ -29,7 +32,9 @@ namespace Quraaa.Persistence.Repositories
             Guid bookId,
             CancellationToken cancellationToken = default)
         {
-            return await (
+            // Materialize first, then project to the response DTO in memory —
+            // IImageUrlFormatter.Format can't be translated into SQL.
+            var row = await (
                 from favorite in _context.FavoriteBooks.AsNoTracking()
                 join book in _context.Books.AsNoTracking()
                     on favorite.BookId equals book.Id
@@ -37,18 +42,30 @@ namespace Quraaa.Persistence.Repositories
                     && favorite.BookId == bookId
                     && !favorite.IsDeleted
                     && !book.IsDeleted
-                select new FavoriteBookResponse(
+                select new
+                {
                     favorite.Id,
-                    book.Id,
-                    book.Title,
-                    book.Author,
-                    book.Description,
-                    book.CoverImageUrl,
-                    book.CategoryId,
-                    book.Language,
-                    book.Isbn,
-                    favorite.CreationTime))
+                    favorite.CreationTime,
+                    Book = book
+                })
                 .FirstOrDefaultAsync(cancellationToken);
+
+            if (row is null)
+            {
+                return null;
+            }
+
+            return new FavoriteBookResponse(
+                row.Id,
+                row.Book.Id,
+                row.Book.Title,
+                row.Book.Author,
+                row.Book.Description,
+                _imageUrlFormatter.Format(row.Book.CoverImageUrl),
+                row.Book.CategoryId,
+                row.Book.Language,
+                row.Book.Isbn,
+                row.CreationTime);
         }
 
         public async Task<(IReadOnlyCollection<FavoriteBookResponse> Items, int TotalCount)> GetPagedAsync(
@@ -89,23 +106,28 @@ namespace Quraaa.Persistence.Repositories
 
             var totalCount = await query.CountAsync(cancellationToken);
 
-            var items = await query
+            // Materialize first, then project to the response DTO in memory —
+            // IImageUrlFormatter.Format can't be translated into SQL.
+            var rows = await query
                 .OrderByDescending(favorite => favorite.FavoriteCreationTime)
                 .ThenBy(favorite => favorite.Title)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var items = rows
                 .Select(favorite => new FavoriteBookResponse(
                     favorite.Id,
                     favorite.BookId,
                     favorite.Title,
                     favorite.Author,
                     favorite.Description,
-                    favorite.CoverImageUrl,
+                    _imageUrlFormatter.Format(favorite.CoverImageUrl),
                     favorite.CategoryId,
                     favorite.Language,
                     favorite.Isbn,
                     favorite.FavoriteCreationTime))
-                .ToListAsync(cancellationToken);
+                .ToList();
 
             return (items, totalCount);
         }

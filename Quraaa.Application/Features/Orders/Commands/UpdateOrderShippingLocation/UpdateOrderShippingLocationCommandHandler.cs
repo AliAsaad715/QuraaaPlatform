@@ -13,14 +13,17 @@ namespace Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocatio
           IRequestHandler<UpdateOrderShippingLocationCommand, AppResult<OrderResponse>>
     {
         private readonly IOrderRepository _orderRepository;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public UpdateOrderShippingLocationCommandHandler(
             IOrderRepository orderRepository,
+            IImageUrlFormatter imageUrlFormatter,
             ILogger<UpdateOrderShippingLocationCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
         {
             _orderRepository = orderRepository;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<AppResult<OrderResponse>> Handle(
@@ -41,7 +44,7 @@ namespace Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocatio
                     request.BuyerUserId);
 
                 await _orderRepository.SaveChangesAsync(cancellationToken);
-                return order.ToResponse();
+                return order.ToResponse(_imageUrlFormatter);
             }, "Order shipping location updated successfully");
         }
     }

@@ -22,12 +22,14 @@ namespace Quraaa.Application.Features.Orders.Commands.CancelOrder
         private readonly ICartRepository _cartRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IPaymentGateway _paymentGateway;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public CancelOrderCommandHandler(
             IOrderRepository orderRepository,
             ICartRepository cartRepository,
             IListingRepository listingRepository,
             IPaymentGateway paymentGateway,
+            IImageUrlFormatter imageUrlFormatter,
             ILogger<CancelOrderCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -36,6 +38,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CancelOrder
             _cartRepository = cartRepository;
             _listingRepository = listingRepository;
             _paymentGateway = paymentGateway;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<AppResult<OrderResponse>> Handle(
@@ -115,7 +118,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CancelOrder
 
                 await _orderRepository.SaveChangesAsync(cancellationToken);
 
-                return order.ToResponse();
+                return order.ToResponse(_imageUrlFormatter);
             }, "Order cancelled successfully");
         }
 

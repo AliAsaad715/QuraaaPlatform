@@ -21,12 +21,14 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
         private readonly IListingRepository _listingRepository;
         private readonly ILibraryRepository _libraryRepository;
         private readonly IBulkBookStorageService _storageService;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public BulkUploadBooksCommandHandler(
             IBookRepository bookRepository,
             IListingRepository listingRepository,
             ILibraryRepository libraryRepository,
             IBulkBookStorageService storageService,
+            IImageUrlFormatter imageUrlFormatter,
             ILogger<BulkUploadBooksCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -35,6 +37,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             _listingRepository = listingRepository;
             _libraryRepository = libraryRepository;
             _storageService = storageService;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public Task<AppResult<BulkUploadBooksResponse>> Handle(
@@ -172,9 +175,9 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
                     .Select(e => new BookUploadResult(
                         e.Book.Id,
                         e.Book.Title,
-                        e.Book.CoverImageUrl,
-                        e.Saved.PdfUrl,
-                        e.Saved.WordDocUrl,
+                        _imageUrlFormatter.Format(e.Book.CoverImageUrl),
+                        _imageUrlFormatter.Format(e.Saved.PdfUrl),
+                        _imageUrlFormatter.Format(e.Saved.WordDocUrl),
                         e.Listing.Id,
                         e.Listing.Price,
                         e.Listing.Stock,

@@ -7,6 +7,7 @@ using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Category;
 using Quraaa.Domain.Library;
@@ -21,10 +22,12 @@ namespace Quraaa.Persistence.Repositories
     public class LibraryRepository : ILibraryRepository
     {
         private readonly ApplicationDbContext _context;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
-        public LibraryRepository(ApplicationDbContext context)
+        public LibraryRepository(ApplicationDbContext context, IImageUrlFormatter imageUrlFormatter)
         {
             _context = context;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<bool> ExistsByUserIdAsync(Guid userId) =>
@@ -144,9 +147,14 @@ namespace Quraaa.Persistence.Repositories
 
                 var totalCount = await query.CountAsync(cancellationToken);
 
-                var items = await query
+                // Materialize first, then project to the response DTO in memory —
+                // IImageUrlFormatter.Format can't be translated into SQL.
+                var rows = await query
                     .Skip((pageNumber - 1) * pageSize)
                     .Take(pageSize)
+                    .ToListAsync(cancellationToken);
+
+                var items = rows
                     .Select(x => new ListingSummaryResponse(
                         x.Listing.Id,
                         x.Listing.Price,
@@ -158,13 +166,13 @@ namespace Quraaa.Persistence.Repositories
                             x.Book.Title,
                             x.Book.Author,
                             x.Book.Description,
-                            x.Book.CoverImageUrl,
+                            _imageUrlFormatter.Format(x.Book.CoverImageUrl),
                             x.Book.Language,
                             x.Book.Isbn,
                             x.Category == null
                                 ? null
                                 : new CategoryResponse(x.Category.Id, x.Category.NameEn, x.Category.NameAr))))
-                    .ToListAsync(cancellationToken);
+                    .ToList();
 
                 return (items, totalCount);
             }

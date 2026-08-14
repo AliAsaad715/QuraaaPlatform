@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Quraaa.Application.Features.Books.Common;
 using Quraaa.Application.Features.Books.Interfaces;
+using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Persistence.Data;
 
@@ -9,10 +10,12 @@ namespace Quraaa.Persistence.Repositories
     public class BookPopularityRepository : IBookPopularityRepository
     {
         private readonly ApplicationDbContext _context;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
-        public BookPopularityRepository(ApplicationDbContext context)
+        public BookPopularityRepository(ApplicationDbContext context, IImageUrlFormatter imageUrlFormatter)
         {
             _context = context;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<(IReadOnlyCollection<PopularBookResponse> Items, int TotalCount)> GetMostPopularAsync(
@@ -196,21 +199,26 @@ namespace Quraaa.Persistence.Repositories
             };
         }
 
-        private static Task<List<PopularBookResponse>> ToPagedResponseListAsync(
+        private async Task<List<PopularBookResponse>> ToPagedResponseListAsync(
             IQueryable<PopularBookFlatProjection> query,
             int pageNumber,
             int pageSize,
             CancellationToken cancellationToken)
         {
-            return query
+            // Materialize first, then project to the response DTO in memory —
+            // IImageUrlFormatter.Format can't be translated into SQL.
+            var projections = await query
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            return projections
                 .Select(book => new PopularBookResponse(
                     book.BookId,
                     book.Title,
                     book.Author,
                     book.Description,
-                    book.CoverImageUrl,
+                    _imageUrlFormatter.Format(book.CoverImageUrl),
                     book.CategoryId,
                     book.Language,
                     book.Isbn,
@@ -218,7 +226,7 @@ namespace Quraaa.Persistence.Repositories
                     book.RatingCount,
                     book.AverageRating,
                     book.ActiveListingCount))
-                .ToListAsync(cancellationToken);
+                .ToList();
         }
 
         private sealed class PopularBookFlatProjection
