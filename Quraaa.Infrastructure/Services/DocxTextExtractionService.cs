@@ -24,29 +24,43 @@ namespace Quraaa.Infrastructure.Services
             _logger = logger;
         }
 
-        public Task<string?> ExtractDocxTextAsync(
+        public async Task<string?> ExtractDocxTextAsync(
             string relativePath,
             int maxCharacters,
             CancellationToken cancellationToken = default)
         {
-            if (!_fileStorageService.TryGetPhysicalPath(relativePath, out var physicalPath))
-                return Task.FromResult<string?>(null);
+            try
+            {
+                await using var stream = await _fileStorageService.OpenReadAsync(
+                    relativePath,
+                    cancellationToken);
+                if (stream is null)
+                    return null;
 
-            // OpenXml's API is synchronous and can be CPU-bound for large files, so this
-            // is offloaded to avoid tying up a request-handling thread while it runs.
-            return Task.Run(
-                () => ExtractText(physicalPath, maxCharacters, cancellationToken),
-                cancellationToken);
+                // OpenXml's API is synchronous and can be CPU-bound for large files, so
+                // parsing is offloaded after the provider has supplied a seekable stream.
+                return await Task.Run(
+                    () => ExtractText(stream, maxCharacters, cancellationToken),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Failed to open DOCX storage reference {StoredReference} for text extraction.",
+                    relativePath);
+                return null;
+            }
         }
 
-        private string? ExtractText(string physicalPath, int maxCharacters, CancellationToken cancellationToken)
+        private string? ExtractText(Stream stream, int maxCharacters, CancellationToken cancellationToken)
         {
             try
             {
-                // Canonical book files are shared across every purchaser, so concurrent
-                // summarize requests can open the same file at once — FileShare.Read keeps
-                // those reads from colliding and prevents locking the file against writers.
-                using var stream = new FileStream(physicalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var wordDocument = WordprocessingDocument.Open(stream, false);
 
                 var body = wordDocument.MainDocumentPart?.Document?.Body;
@@ -88,7 +102,7 @@ namespace Quraaa.Infrastructure.Services
                 // Malformed .docx, unsupported package structure, empty body, etc. — the
                 // caller falls back to metadata-only context rather than failing the
                 // whole request over an unreadable file.
-                _logger.LogWarning(ex, "Failed to extract text from DOCX at {PhysicalPath}", physicalPath);
+                _logger.LogWarning(ex, "Failed to extract text from DOCX.");
                 return null;
             }
         }

@@ -78,6 +78,8 @@ namespace Quraaa.API.Controllers
         /// </remarks>
         [HttpPost("digital")]
         [Consumes("multipart/form-data")]
+        [RequestSizeLimit(110 * 1024 * 1024)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 110 * 1024 * 1024)]
         [ProducesResponseType(typeof(AddDigitalBookResponse), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]

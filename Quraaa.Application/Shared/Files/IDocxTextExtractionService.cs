@@ -4,7 +4,7 @@ namespace Quraaa.Application.Shared.Files
     /// Extracts plain text from a stored Word (.docx) document so its content can be
     /// used as AI prompt context. Used for whole-document context (e.g. summarizing a
     /// book's opening) rather than a single page — see <see cref="IDocumentTextExtractionService"/>
-    /// for page-scoped PDF extraction. Takes the same root-relative paths used elsewhere
+    /// for page-scoped PDF extraction. Takes the same opaque references used elsewhere
     /// for file storage/access (see <see cref="IFileStorageService"/>) — never a physical path.
     /// </summary>
     public interface IDocxTextExtractionService

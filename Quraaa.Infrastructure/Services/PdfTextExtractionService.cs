@@ -22,31 +22,43 @@ namespace Quraaa.Infrastructure.Services
             _logger = logger;
         }
 
-        public Task<string?> ExtractPageTextAsync(
+        public async Task<string?> ExtractPageTextAsync(
             string relativePath,
             int pageNumber,
             CancellationToken cancellationToken = default)
         {
-            if (!_fileStorageService.TryGetPhysicalPath(relativePath, out var physicalPath))
-                return Task.FromResult<string?>(null);
+            try
+            {
+                await using var stream = await _fileStorageService.OpenReadAsync(
+                    relativePath,
+                    cancellationToken);
+                if (stream is null)
+                    return null;
 
-            // PdfPig's API is synchronous and can be CPU-bound for large files (these
-            // can be up to 100 MB — see BulkUploadBooksCommandValidator), so this is
-            // offloaded to avoid tying up a request-handling thread while it runs.
-            return Task.Run(
-                () => ExtractPageText(physicalPath, pageNumber, cancellationToken),
-                cancellationToken);
+                // PdfPig's API is synchronous and can be CPU-bound for large files, so
+                // parsing is offloaded after the provider has supplied a seekable stream.
+                return await Task.Run(
+                    () => ExtractPageText(stream, pageNumber, cancellationToken),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Failed to open PDF storage reference {StoredReference} for text extraction.",
+                    relativePath);
+                return null;
+            }
         }
 
-        private string? ExtractPageText(string physicalPath, int pageNumber, CancellationToken cancellationToken)
+        private string? ExtractPageText(Stream stream, int pageNumber, CancellationToken cancellationToken)
         {
             try
             {
-                // Canonical book files are shared across every purchaser, so concurrent
-                // translation requests can open the same file at once — FileShare.Read
-                // (rather than PdfPig's default exclusive-ish path-based open) keeps
-                // those reads from colliding.
-                using var stream = new FileStream(physicalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var document = PdfDocument.Open(stream);
 
                 cancellationToken.ThrowIfCancellationRequested();
@@ -66,7 +78,7 @@ namespace Quraaa.Infrastructure.Services
                 // Malformed PDF, unsupported encryption, scanned-image-only content,
                 // etc. — the caller surfaces a business error rather than crashing
                 // over an unreadable file.
-                _logger.LogWarning(ex, "Failed to extract text from page {PageNumber} of PDF at {PhysicalPath}", pageNumber, physicalPath);
+                _logger.LogWarning(ex, "Failed to extract text from PDF page {PageNumber}.", pageNumber);
                 return null;
             }
         }

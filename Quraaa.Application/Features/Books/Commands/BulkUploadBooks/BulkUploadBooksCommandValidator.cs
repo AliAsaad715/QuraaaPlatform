@@ -1,4 +1,5 @@
 using FluentValidation;
+using Quraaa.Application.Shared.Files;
 
 namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
 {
@@ -33,6 +34,18 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
 
         private static readonly IReadOnlySet<string> AllowedWordExtensions =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".doc", ".docx" };
+
+        private static readonly IReadOnlySet<string> AllowedPdfContentTypes =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                { "application/pdf", "application/octet-stream" };
+
+        private static readonly IReadOnlySet<string> AllowedWordContentTypes =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/octet-stream"
+            };
 
         public BookUploadFileGroupValidator()
         {
@@ -69,7 +82,9 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
                 .Must(f => AllowedImageExtensions.Contains(Path.GetExtension(f!.FileName)))
                     .WithMessage("Cover image must be .jpg, .jpeg, .png, or .webp.")
                 .Must(f => AllowedImageContentTypes.Contains(f!.ContentType))
-                    .WithMessage("Cover image content type is not supported.");
+                    .WithMessage("Cover image content type is not supported.")
+                .Must(ImageFileSignature.MatchesDeclaredExtension)
+                    .WithMessage("Cover image content does not match its file extension.");
 
             RuleFor(x => x.PdfFile)
                 .Cascade(CascadeMode.Stop)
@@ -77,7 +92,11 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
                 .Must(f => f!.Length > 0 && f.Length <= MaxPdfBytes)
                     .WithMessage("PDF must be between 1 byte and 100 MB.")
                 .Must(f => Path.GetExtension(f!.FileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
-                    .WithMessage("Book content file must be a .pdf.");
+                    .WithMessage("Book content file must be a .pdf.")
+                .Must(f => AllowedPdfContentTypes.Contains(f!.ContentType))
+                    .WithMessage("PDF content type is not supported.")
+                .Must(DocumentFileSignature.MatchesDeclaredExtension)
+                    .WithMessage("PDF content does not match its file extension.");
 
             RuleFor(x => x.WordFile)
                 .Cascade(CascadeMode.Stop)
@@ -85,7 +104,11 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
                 .Must(f => f!.Length > 0 && f.Length <= MaxWordBytes)
                     .WithMessage("Word document must be between 1 byte and 50 MB.")
                 .Must(f => AllowedWordExtensions.Contains(Path.GetExtension(f!.FileName)))
-                    .WithMessage("Word document must be .doc or .docx.");
+                    .WithMessage("Word document must be .doc or .docx.")
+                .Must(f => AllowedWordContentTypes.Contains(f!.ContentType))
+                    .WithMessage("Word document content type is not supported.")
+                .Must(DocumentFileSignature.MatchesDeclaredExtension)
+                    .WithMessage("Word document content does not match its file extension.");
         }
     }
 }

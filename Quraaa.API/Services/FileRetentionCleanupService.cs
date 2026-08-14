@@ -6,8 +6,8 @@ using Quraaa.Application.Shared.Files;
 namespace Quraaa.API.Services
 {
     /// <summary>
-    /// Periodically discovers physical files under the private storage root that no
-    /// listing or purchase references, and hard-deletes them once they've sat
+    /// Periodically discovers owned private files that no listing, book, or purchase
+    /// references, and hard-deletes them once they've sat
     /// unreferenced past the configured grace period. See
     /// <see cref="RunFileRetentionCleanupCommandHandler"/> for the actual logic —
     /// this class is just the timer driving it, mirroring

@@ -84,7 +84,7 @@ Quraaa.Domain ──> no project references
 | `Quraaa.Domain`         | Aggregates, entities, value objects, enums, and business invariants.                                                 |
 | `Quraaa.Application`    | Commands, queries, handlers, validators, DTOs, result types, and service interfaces.                                 |
 | `Quraaa.Persistence`    | EF Core context and mappings, PostgreSQL migrations, repositories, Identity persistence, and seeders.                |
-| `Quraaa.Infrastructure` | Stripe, Firebase, Redis/cache, Google Books, and other external-service implementations.                             |
+| `Quraaa.Infrastructure` | Cloudinary, Stripe, Firebase, Redis/cache, Google Books, and other external-service implementations.                 |
 | `Quraaa.API`            | Controllers, HTTP contracts, authentication setup, OpenAPI, file adapters, hosted services, and application startup. |
 
 Application operations are dispatched through MediatR. FluentValidation validators are registered automatically, and application results are mapped centrally to HTTP `200`, `400`, `401`, `403`, `404`, and `409` responses.
@@ -100,7 +100,7 @@ QuraaaPlatform/
 │   ├── Requests/
 │   ├── Services/
 │   ├── storage/books/             # Private seeded ebook files
-│   └── wwwroot/                   # Public static images and current upload area
+│   └── wwwroot/                   # Immutable public assets shipped with the application
 ├── Quraaa.Application/
 │   ├── Features/                  # CQRS feature slices
 │   └── Shared/
@@ -150,7 +150,7 @@ Generated `bin/` and `obj/` directories are not source and should not be edited.
 
    On Bash-compatible shells, use `cp Quraaa.API/.env.example Quraaa.API/.env`.
 
-3. Update `Quraaa.API/.env` with at least PostgreSQL, JWT, Stripe, library-dashboard, and SMTP values:
+3. Update `Quraaa.API/.env` with at least PostgreSQL, JWT, Cloudinary, Stripe, library-dashboard, and SMTP values:
 
    ```dotenv
    ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=quraaa;Username=postgres;Password=change-me
@@ -159,6 +159,11 @@ Generated `bin/` and `obj/` directories are not source and should not be edited.
    JWT_ISSUER=Quraaa.API
    JWT_AUDIENCE=Quraaa.Clients
    JWT_DURATION_IN_MINUTES=60
+
+    CLOUDINARY_CLOUD_NAME=replace-with-your-cloud-name
+    CLOUDINARY_API_KEY=replace-with-your-api-key
+    CLOUDINARY_API_SECRET=replace-with-your-api-secret
+    CLOUDINARY_PRIVATE_DOWNLOAD_TTL_SECONDS=300
 
    Stripe__SecretKey=sk_test_replace_me
    Stripe__WebhookSecret=whsec_replace_me
@@ -213,6 +218,10 @@ ASP.NET Core configuration is loaded from appsettings files, `.env`, environment
 | `JWT_ISSUER`                                           | No                       | Enables issuer validation when set.                                                                                                                      |
 | `JWT_AUDIENCE`                                         | No                       | Enables audience validation when set.                                                                                                                    |
 | `JWT_DURATION_IN_MINUTES`                              | No                       | Access-token lifetime; defaults to `60`.                                                                                                                 |
+| `CLOUDINARY_CLOUD_NAME`                                | Yes                      | Cloudinary product-environment name used for all newly uploaded images and book documents.                                                               |
+| `CLOUDINARY_API_KEY`                                   | Yes                      | Server-side Cloudinary API key. Never expose it to a frontend.                                                                                           |
+| `CLOUDINARY_API_SECRET`                                | Yes                      | Server-side Cloudinary API secret. Startup fails when it is missing; never commit it.                                                                     |
+| `CLOUDINARY_PRIVATE_DOWNLOAD_TTL_SECONDS`              | No                       | Lifetime of an internal signed private-book URL; defaults to `300` and must be between `60` and `900`.                                                    |
 | `Stripe__SecretKey`                                    | Yes                      | Must start with `sk_test_` or `sk_live_` according to `Stripe__IsTestMode`.                                                                              |
 | `Stripe__WebhookSecret`                                | Yes                      | Stripe endpoint signing secret; must start with `whsec_`.                                                                                                |
 | `Stripe__Currency`                                     | No                       | Must resolve to `usd`; the configured default is `usd`.                                                                                                  |
@@ -228,7 +237,7 @@ ASP.NET Core configuration is loaded from appsettings files, `.env`, environment
 | `Notifications__AllowTestEndpoint`                     | No                       | Enables the anonymous notification test endpoint outside Development. Keep `false` in production.                                                        |
 | `GoogleBooks__ApiKey`                                  | No                       | API key used during external ISBN lookup.                                                                                                                |
 | `GoogleBooks__BaseUrl`                                 | No                       | Defaults to `https://www.googleapis.com/`.                                                                                                               |
-| `BaseAPIURL`                                           | Recommended              | Prefix used when returning locally stored library image URLs.                                                                                            |
+| `BaseAPIURL`                                           | Legacy compatibility     | Prefix used only when old library rows still contain relative local image paths; new images use absolute Cloudinary URLs.                                |
 | `LIBRARY_DASHBOARD_REGISTER_URL`                       | Yes                      | Absolute HTTPS dashboard registration page URL. Development may use HTTP only on loopback; the API appends the temporary credential in the URL fragment. |
 | `LIBRARY_EMAIL_OTP_PEPPER`                             | Yes                      | Independent secret of at least 32 characters used to HMAC library email OTPs; it must differ from the JWT secret.                                        |
 | `MAIL_MAILER`                                          | Yes                      | Must be `smtp`.                                                                                                                                          |
@@ -324,6 +333,10 @@ The mobile app calls `POST /api/libraries/register` with its normal bearer token
 
 Email OTPs are valid for 10 minutes, can be redelivered after 60 seconds, are limited to five accepted-or-ambiguous send attempts per fixed hour and five verification attempts, and cause a five-minute lockout after the fifth incorrect attempt. Redelivery keeps the same generation and derived code, so overlapping or delayed SMTP deliveries cannot make the newest email stale. A definite SMTP rejection does not consume the send quota; an ambiguous transport outcome remains usable. The submitted application stays resumable through a newly issued link, and committed image paths are not deleted.
 
+All new user-uploaded media is stored by the backend in Cloudinary. Library logos, library headers, and book covers are public display assets stored as absolute HTTPS delivery URLs. PDFs and Word documents are `raw` assets with Cloudinary delivery type `authenticated`; PostgreSQL stores an opaque `cloudinary://raw/authenticated/...` reference that is not directly downloadable. Existing endpoint names and response field names are unchanged. Image validation retains the 5 MB limit, and document validation retains the 100 MB PDF / 50 MB Word limits; both verify the declared type against the file signature. The Cloudinary product environment's own plan and per-asset upload limits still apply.
+
+Cloudinary folders are `quraa/libraries/logos`, `quraa/libraries/headers`, `quraa/books/covers`, `quraa/books/files/pdf`, and `quraa/books/files/docs`. Enable **Allow delivery of PDF and ZIP files** in the Cloudinary product environment's Security settings, especially on Free accounts where PDF delivery is blocked by default. Do not change document uploads to the default public `upload` delivery type.
+
 ### Cart, orders, payments, and fulfillment
 
 | Method   | Route                                                         | Access                   | Purpose                                                                |
@@ -385,9 +398,9 @@ Treat the verified Stripe webhook and authoritative Stripe reconciliation result
 
 ### Ebook storage and download
 
-The seeded ebook uses the logical path `books/book1.pdf` and the physical file `Quraaa.API/storage/books/book1.pdf`. Paid downloads verify buyer ownership, paid status, digital format, path containment, and PDF extension before streaming the file with private, no-store headers.
+The seeded ebook uses the legacy logical path `books/book1.pdf` and packaged file `Quraaa.API/storage/books/book1.pdf`; it is not a runtime upload. Existing pre-migration local paths remain readable as a compatibility fallback.
 
-There is a current storage-path issue for library-uploaded ebooks: `LibraryBookStorageService` writes them under `wwwroot/storage/books`, while the paid downloader resolves files from `Quraaa.API/storage/books`. Because `UseStaticFiles` serves the web root, uploaded PDFs should be treated as **not production-ready** until uploads are moved outside `wwwroot` and both write/download paths use the same private root.
+Newly uploaded PDFs and Word documents are durable authenticated Cloudinary raw assets and therefore survive Heroku dyno replacement. Paid-download and purchase-stream routes first verify the user/order/purchase, generate a five-minute signed provider URL internally, and proxy the bytes with range and conditional-request support. Clients never receive a permanent public book URL. Existing local files are not uploaded automatically, and a file already lost from an old Heroku dyno cannot be recovered by this change.
 
 ### OTP delivery
 
@@ -455,13 +468,19 @@ The simple run command also needs Firebase credentials available inside the cont
 dotnet publish Quraaa.API/Quraaa.API.csproj -c Release -o Quraaa.API/bin/publish /p:UseAppHost=false
 ```
 
+Set Cloudinary as Heroku config vars before deploying (replace the placeholders and app name):
+
+```powershell
+heroku config:set CLOUDINARY_CLOUD_NAME="your-cloud-name" CLOUDINARY_API_KEY="your-api-key" CLOUDINARY_API_SECRET="your-api-secret" CLOUDINARY_PRIVATE_DOWNLOAD_TTL_SECONDS="300" --app your-app-name
+```
+
 ## Security and production notes
 
 Before deploying publicly:
 
-- Store PostgreSQL, JWT, Stripe, Firebase, Redis, admin, and Google API credentials in the platform's secret store; never commit `.env` or service-account JSON files.
+- Store PostgreSQL, JWT, Cloudinary, Stripe, Firebase, Redis, admin, and Google API credentials in the platform's secret store; never commit `.env` or service-account JSON files.
 - Add and verify a `.dockerignore` before building with secrets in the working tree. The current repository has no `.dockerignore`, and `COPY . .` sends the full build context to Docker.
-- Resolve the library-uploaded ebook storage mismatch described above; paid source PDFs must live outside the static web root.
+- Keep Cloudinary document uploads as authenticated raw assets and enable PDF delivery in the Cloudinary Security settings. The API proxies short-lived signed downloads only after purchase authorization.
 - Configure Redis for durable, shared OTP and revocation state, and override `Otp__AllowInMemoryCacheInProduction=false`. The committed base appsettings currently set it to `true`, so production otherwise falls back to process-local memory when Redis is unavailable.
 - Set `Notifications__AllowTestEndpoint=false`. The committed appsettings currently enable it.
 - Decide whether Swagger UI and OpenAPI should remain public; they are currently mapped in every environment.

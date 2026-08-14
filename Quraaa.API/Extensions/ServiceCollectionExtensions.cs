@@ -38,8 +38,16 @@ namespace Quraaa.API.Extensions
             services.AddAuthenticationRateLimiting();
             services.Configure<FileStorageOptions>(configuration.GetSection("Storage"));
             services.Configure<FileRetentionOptions>(configuration.GetSection("Storage:FileRetention"));
-            services.AddScoped<IFileStorageService, PrivateFileStorageService>();
             services.AddScoped<IFileAccessService, FileAccessService>();
+            services.AddHttpClient("PrivateAssetDelivery", client =>
+            {
+                // Large ebooks are streamed until the caller disconnects. RequestAborted
+                // remains the timeout/cancellation authority for this proxy client.
+                client.Timeout = Timeout.InfiniteTimeSpan;
+            });
+            services.AddLogging(logging => logging.AddFilter(
+                "System.Net.Http.HttpClient.PrivateAssetDelivery",
+                LogLevel.None));
             services.AddSingleton(libraryRegistrationOptions);
             services.AddCors(options =>
             {

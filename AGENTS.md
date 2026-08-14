@@ -2,7 +2,7 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
-Last audited against the repository: **2026-08-09**.
+Last audited against the repository: **2026-08-14**.
 
 ## Project Overview
 
@@ -72,6 +72,7 @@ Core technologies:
 - `IDistributedCache`, with Redis support for production OTP cache and in-memory cache for local/development fallback
 - Stripe.net for Checkout session creation and signed webhook parsing
 - MailKit for SMTP/STARTTLS library email verification
+- CloudinaryDotNet for durable public images and authenticated private PDF/Word assets
 - Typed `HttpClient` integration with Google Books for ISBN metadata lookup
 - DotNetEnv plus environment variables for runtime secrets/configuration
 - OpenAPI 3.0 / Swagger UI in development
@@ -134,9 +135,8 @@ Quraaa.API/
     ExpiredOrderPaymentReconciliationService.cs
     LibraryImageStorageService.cs
   storage/firebase/       # Firebase service-account JSON files (ignored by git)
-  storage/books/          # Private ebook PDFs copied into build/publish output
-  wwwroot/uploads/libraries/  # Uploaded library images
-  wwwroot/uploads/books/      # Public book media; PDF requests are blocked
+  storage/books/          # Legacy/seeded private PDFs copied into build/publish output
+  wwwroot/                # Immutable public assets shipped with the application
 
 Quraaa.Application/
   Quraaa.Application.csproj
@@ -349,6 +349,7 @@ Consolidated NuGet packages by project:
 | `Microsoft.Extensions.DependencyInjection`          | 10.0.8  | `Quraaa.Application`, `Quraaa.Persistence` |
 | `Microsoft.Extensions.Logging`                      | 10.0.8  | `Quraaa.Application`                       |
 | `OneOf`                                             | 3.0.271 | `Quraaa.Application`                       |
+| `CloudinaryDotNet`                                  | 1.29.2  | `Quraaa.Infrastructure`                    |
 | `FirebaseAdmin`                                     | 3.5.0   | `Quraaa.Infrastructure`                    |
 | `Microsoft.Extensions.Caching.Abstractions`         | 10.0.9  | `Quraaa.Infrastructure`                    |
 | `Microsoft.Extensions.Caching.Memory`               | 10.0.8  | `Quraaa.Infrastructure`                    |
@@ -498,6 +499,7 @@ Startup calls `DotNetEnv.Env.Load()` before creating the builder, then also load
 | OTP cache     | `REDIS_URL`, `REDIS_TLS_URL`, `Redis:ConnectionString`, `ConnectionStrings:Redis`, `Redis:InstanceName`, `Otp:AllowInMemoryCacheInProduction` |
 | OTP gateway   | `OTP_DEVICE_TOKEN`                                                                                                                            |
 | Notifications | `Notifications:AllowTestEndpoint` / `Notifications__AllowTestEndpoint`                                                                        |
+| Cloudinary    | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, optional `CLOUDINARY_PRIVATE_DOWNLOAD_TTL_SECONDS`                         |
 | Stripe        | `Stripe:SecretKey`, `Stripe:WebhookSecret`, `Stripe:Currency`, `Stripe:IsTestMode`                                                            |
 | Google Books  | `GoogleBooks:ApiKey`, `GoogleBooks:BaseUrl` (defaults to `https://www.googleapis.com/`)                                                       |
 | Swagger       | `Swagger:ServerUrl`                                                                                                                           |
@@ -526,6 +528,8 @@ OTP cache configuration:
 
 `OTP_DEVICE_TOKEN` is the FCM registration token for the secondary Android SMS gateway app that has SMS permission. It is server-side configuration and is not accepted in the `POST /api/otp/send` request body.
 
+Cloudinary configuration is validated at startup. Library logos, library headers, and bulk-uploaded book covers are public image assets under `quraa/libraries/logos`, `quraa/libraries/headers`, and `quraa/books/covers`; the existing database columns store their absolute HTTPS delivery URLs. Newly uploaded PDFs and Word documents are authenticated `raw` assets under `quraa/books/files/pdf` and `quraa/books/files/docs`. Document columns store opaque `cloudinary://raw/authenticated/...` references, never public/signed URLs. Authorized download routes generate short-lived signed URLs internally and proxy the bytes, including range requests. `CLOUDINARY_PRIVATE_DOWNLOAD_TTL_SECONDS` defaults to `300` and must be 60–900. Existing `books/...` and legacy `uploads/books/...` records remain readable from the packaged private root, but new document writes never use the dyno filesystem.
+
 Stripe/Google Books notes:
 
 - Infrastructure creates an injected `StripeClient` from `Stripe:SecretKey`; it does not set Stripe's global API key. `StripePaymentService` verifies webhook signatures with `Stripe:WebhookSecret`.
@@ -538,7 +542,7 @@ Secrets handling:
 
 - `.env` is listed in `.gitignore` and must not be committed.
 - Firebase service-account JSON files under `Quraaa.API/storage/firebase/*.json` are `.gitignore`d and must not be committed.
-- Stripe, Google Books, PostgreSQL, Redis, JWT, admin, Firebase, SMTP, and library-email OTP pepper credentials must remain outside committed configuration.
+- Cloudinary, Stripe, Google Books, PostgreSQL, Redis, JWT, admin, Firebase, SMTP, and library-email OTP pepper credentials must remain outside committed configuration.
 
 ## Database & Migrations
 
@@ -677,7 +681,7 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 
 ### File upload abstraction
 
-`IUploadedFile` in `Quraaa.Application/Shared/Files/IUploadedFile.cs` keeps ASP.NET `IFormFile` out of the Application layer. The API adapter is `FormFileUploadedFile` in `Quraaa.API/Requests/Files/FormFileUploadedFile.cs`.
+`IUploadedFile` in `Quraaa.Application/Shared/Files/IUploadedFile.cs` keeps ASP.NET `IFormFile` out of the Application layer. The API adapter is `FormFileUploadedFile` in `Quraaa.API/Requests/Files/FormFileUploadedFile.cs`. `IImageStorageService` is implemented by `CloudinaryImageStorageService`; it returns absolute HTTPS URLs and performs best-effort deletion only for owned `quraa/` image public IDs. `IFileStorageService` is implemented by `CloudinaryFileStorageService`; it writes authenticated raw assets, opens seekable temporary streams for PDF/DOCX extraction, generates short-lived delivery sources, enumerates/deletes owned Cloudinary assets, and reads legacy local book paths without writing new local files. Image validators enforce allow-listed extensions/content types, the 5 MB limit, and JPEG/PNG/WebP signatures. Document validators enforce PDF/Word MIME and extensions, 100 MB/50 MB limits, `%PDF-`, OLE `.doc`, or DOCX package structure before provider I/O.
 
 ## Security Considerations
 
@@ -697,8 +701,9 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 - Admin login requires valid admin credentials followed by a six-digit OTP. Credential attempts, OTP sends, and OTP verification are rate-limited by phone and client IP.
 - Library-owner login only resolves approved libraries by normalized library email and locks credential attempts by email/client IP after repeated failures.
 - The Stripe webhook is anonymous by design but authenticates the payload with the `Stripe-Signature` header and configured webhook secret. Do not expose a webhook secret or process unsigned payloads.
-- Ebook PDF paths are omitted from public ebook responses. `/uploads/books/*.pdf` is blocked, and paid buyers receive PDFs only through the authenticated order-item download route.
+- Ebook storage references are omitted from public ebook responses. `/uploads/books/*.pdf` is blocked, and paid buyers receive files only through authenticated download/stream routes that proxy short-lived Cloudinary access or serve a validated legacy local file.
 - Firebase service-account credentials and `.env` secrets must never be committed.
+- Cloudinary API credentials and signed private-download URLs remain server-side. New images use `IImageStorageService`; new PDFs/Word files use `IFileStorageService`; neither may write durable uploads to `wwwroot` or the dyno filesystem.
 - `Notifications:AllowTestEndpoint` is enabled in `appsettings.json` and `appsettings.Development.json`. Disable it in production unless you intend to allow unauthenticated test notification dispatch.
 - `Otp:AllowInMemoryCacheInProduction` is currently `true` in the base settings. Production should configure Redis and override it to `false`, which makes startup fail when Redis is missing.
 - HTTPS redirection and forwarded headers are enabled in the middleware pipeline. Forwarded headers trust loopback proxies by default; configure explicit arrays under `ForwardedHeaders:KnownProxies` and/or `ForwardedHeaders:KnownNetworks` when deploying behind another reverse proxy.
@@ -1889,7 +1894,7 @@ POST /api/libraries/register/email/resend
 POST /api/libraries/register/email/verify
 ```
 
-Details submission requires `token`, `libraryName`, `location`, `libraryImage`, `headerImage`, and `email`. Images remain JPG/PNG with the existing 5 MB limits. Submission marks the session used, extends it for 24 hours, stores the images and `AwaitingEmailVerification` library, and persists the first HMAC-hashed OTP challenge in one EF save before SMTP handoff. The committed response reports `Sent`, definite `NotSent`, or ambiguous `Unknown`; a database failure cleans up uploaded files, while an SMTP failure does not delete files referenced by the committed application and can be recovered by reissuing a mobile link and redelivering the same code.
+Details submission requires `token`, `libraryName`, `location`, `libraryImage`, `headerImage`, and `email`. Images remain JPG/PNG with the existing 5 MB limits and matching binary-signature validation. The backend uploads them to Cloudinary before creating the `AwaitingEmailVerification` library, and the existing database fields store absolute HTTPS URLs. Submission marks the session used, extends it for 24 hours, and persists the first HMAC-hashed OTP challenge in one EF save before SMTP handoff. The committed response reports `Sent`, definite `NotSent`, or ambiguous `Unknown`; a database failure attempts best-effort Cloudinary deletion, while an SMTP failure does not delete images referenced by the committed application and can be recovered by reissuing a mobile link and redelivering the same code.
 
 The OTP is never stored in plaintext. `LIBRARY_EMAIL_OTP_PEPPER` is an independent secret used both to derive the six-digit code and to HMAC it with separate purposes and the library id, user id, normalized email, and generation. Resends retain that generation/code and failed-attempt state; the client must echo the exposed `verificationId`, and mismatched generations fail without consuming an attempt from the current challenge. EF concurrency prevents a stale resend/verification mutation from winning. Successful verification atomically sets `EmailVerifiedAtUtc`, changes `AwaitingEmailVerification` to `Pending`, consumes the challenge, and completes the temporary session.
 
@@ -2006,7 +2011,7 @@ Seeded ebook details:
 - The seeded listing uses the private logical path `DigitalAssetUrl = "books/book1.pdf"`.
 - Store the PDF at `Quraaa.API/storage/books/book1.pdf`; the project copies `storage/books/**` into build and publish output.
 - Public `/uploads/books/*.pdf` requests are blocked, and `EbookResponse` omits `DigitalAssetUrl`.
-- A paid buyer receives the PDF only through `GET /api/orders/{orderId}/items/{orderItemId}/download`, which verifies buyer/order/item access and confines resolution to the private `storage/books` directory.
+- A paid buyer receives the PDF only through `GET /api/orders/{orderId}/items/{orderItemId}/download`, which verifies buyer/order/item access and then proxies a short-lived signed Cloudinary source or resolves a contained legacy file under `storage/books`.
 
 Flow:
 
@@ -2185,9 +2190,9 @@ seller fulfillment
 
 paid ebook delivery
   -> buyer/order/item authorization
-  -> require paid digital item with a private snapshot path
-  -> resolve only under storage/books
-  -> return private no-store PDF response
+  -> require paid digital item with a private storage-reference snapshot
+  -> resolve an owned authenticated Cloudinary raw asset or contained legacy storage/books file
+  -> proxy/stream a private no-store PDF response with range support
 
 buy/sell history
   -> JWT UserId

@@ -7,9 +7,9 @@ namespace Quraaa.Persistence.Data
     }
 
     /// <summary>
-    /// Tracks a physical file under the private storage root that, as of
-    /// <see cref="DetectedAtUtc"/>, was found on disk with no row referencing it
-    /// (checked against Listings.DigitalAssetUrl and BookPurchases.PurchasedDigitalAssetUrl).
+    /// Tracks an owned durable or legacy private file that, as of
+    /// <see cref="DetectedAtUtc"/>, had no row referencing it
+    /// (checked against listing, canonical-book, and immutable purchase references).
     /// Kept pending until the retention grace period elapses, then re-verified and
     /// hard-deleted — giving an in-flight upload or a rolled-back transaction time
     /// to attach a reference before the file is removed.

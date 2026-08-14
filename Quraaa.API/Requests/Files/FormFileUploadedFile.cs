@@ -15,6 +15,8 @@ namespace Quraaa.API.Requests.Files
         public string ContentType => _file.ContentType;
         public long Length => _file.Length;
 
+        public Stream OpenReadStream() => _file.OpenReadStream();
+
         public Task CopyToAsync(Stream target, CancellationToken cancellationToken = default)
         {
             return _file.CopyToAsync(target, cancellationToken);

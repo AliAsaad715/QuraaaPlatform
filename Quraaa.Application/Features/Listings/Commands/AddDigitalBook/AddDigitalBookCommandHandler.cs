@@ -63,21 +63,45 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
                     throw new ConflictException("This book is already listed in your library.");
                 }
 
-                var digitalAssetUrl = await _libraryBookStorageService.SaveAsync(
-                    request.DigitalAsset,
-                    cancellationToken);
+                string? digitalAssetReference = null;
+                try
+                {
+                    digitalAssetReference = await _libraryBookStorageService.SaveAsync(
+                        request.DigitalAsset,
+                        cancellationToken);
 
-                var listing = ListingAggregate.CreateDigitalForLibrary(
-                    id: Guid.NewGuid(),
-                    bookId: book.Id,
-                    libraryId: library.Id,
-                    price: request.Price,
-                    customDigitalAssetUrl: digitalAssetUrl);
+                    var listing = ListingAggregate.CreateDigitalForLibrary(
+                        id: Guid.NewGuid(),
+                        bookId: book.Id,
+                        libraryId: library.Id,
+                        price: request.Price,
+                        customDigitalAssetUrl: digitalAssetReference);
 
-                await _listingRepository.AddAsync(listing, cancellationToken);
-                await _listingRepository.SaveChangesAsync(cancellationToken);
+                    await _listingRepository.AddAsync(listing, cancellationToken);
+                    await _listingRepository.SaveChangesAsync(cancellationToken);
 
-                return new AddDigitalBookResponse(listing.Id);
+                    return new AddDigitalBookResponse(listing.Id);
+                }
+                catch
+                {
+                    if (digitalAssetReference is not null)
+                    {
+                        try
+                        {
+                            await _libraryBookStorageService.DeleteAsync(
+                                digitalAssetReference,
+                                CancellationToken.None);
+                        }
+                        catch (Exception cleanupException)
+                        {
+                            Logger.LogWarning(
+                                cleanupException,
+                                "Failed to delete an uploaded digital asset after listing creation failed.");
+                        }
+                    }
+
+                    throw;
+                }
 
             }, "Digital book added to library successfully.");
         }

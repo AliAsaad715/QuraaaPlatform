@@ -82,6 +82,39 @@ namespace Quraaa.Persistence.Repositories
             }
         }
 
+        public async Task<HashSet<string>> FilterReferencedCanonicalAssetPathsAsync(
+            IReadOnlyCollection<string> storedReferences,
+            CancellationToken cancellationToken = default)
+        {
+            if (storedReferences.Count == 0)
+                return new HashSet<string>(StringComparer.Ordinal);
+
+            var references = storedReferences.ToList();
+            var matches = await _context.Books
+                .AsNoTracking()
+                .Where(book =>
+                    (book.CanonicalPdfUrl != null
+                        && references.Contains(book.CanonicalPdfUrl))
+                    || (book.CanonicalWordDocUrl != null
+                        && references.Contains(book.CanonicalWordDocUrl)))
+                .Select(book => new
+                {
+                    book.CanonicalPdfUrl,
+                    book.CanonicalWordDocUrl
+                })
+                .ToListAsync(cancellationToken);
+
+            return matches
+                .SelectMany(match => new[]
+                {
+                    match.CanonicalPdfUrl,
+                    match.CanonicalWordDocUrl
+                })
+                .Where(reference => reference is not null)
+                .Select(reference => reference!)
+                .ToHashSet(StringComparer.Ordinal);
+        }
+
         public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
             _context.SaveChangesAsync(cancellationToken);
 

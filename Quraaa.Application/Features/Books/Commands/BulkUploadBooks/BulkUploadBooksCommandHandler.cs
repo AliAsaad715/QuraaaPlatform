@@ -131,7 +131,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
                     .Where(t => t.IsCompletedSuccessfully)
                     .SelectMany(t => t.Result.AllPaths)
                     .ToList();
-                await CleanupFilesAsync(partialPaths, cancellationToken);
+                await CleanupFilesAsync(partialPaths, CancellationToken.None);
                 throw;
             }
 
@@ -187,7 +187,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             {
                 // DB failed — delete every file we saved during Phase 4.
                 var allPaths = savedResults.SelectMany(r => r.AllPaths).ToList();
-                await CleanupFilesAsync(allPaths, cancellationToken);
+                await CleanupFilesAsync(allPaths, CancellationToken.None);
                 throw;
             }
         }
@@ -259,7 +259,26 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             var pdfTask   = _storageService.SavePdfAsync(group.PdfFile,          cancellationToken);
             var wordTask  = _storageService.SaveWordDocAsync(group.WordFile,      cancellationToken);
 
-            await Task.WhenAll(coverTask, pdfTask, wordTask);
+            try
+            {
+                await Task.WhenAll(coverTask, pdfTask, wordTask);
+            }
+            catch
+            {
+                // A provider/file failure can occur after one of the sibling writes
+                // succeeded. Clean those partial results here; the outer batch cleanup
+                // handles only book groups that completed all three writes.
+                var partialPaths = new List<string>(3);
+                if (coverTask.IsCompletedSuccessfully)
+                    partialPaths.Add(coverTask.Result);
+                if (pdfTask.IsCompletedSuccessfully)
+                    partialPaths.Add(pdfTask.Result);
+                if (wordTask.IsCompletedSuccessfully)
+                    partialPaths.Add(wordTask.Result);
+
+                await CleanupFilesAsync(partialPaths, CancellationToken.None);
+                throw;
+            }
 
             return new SavedFileSet(group, await coverTask, await pdfTask, await wordTask);
         }

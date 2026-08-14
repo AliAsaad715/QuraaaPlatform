@@ -41,7 +41,9 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                 .Must(file => file!.Length > 0).WithMessage("LibraryImage is required.")
                 .Must(file => file!.Length <= MaxImageSizeInBytes).WithMessage("LibraryImage must not exceed 5 MB.")
                 .Must(HasAllowedImageExtension).WithMessage("LibraryImage must be a JPG, PNG image.")
-                .Must(HasAllowedImageContentType).WithMessage("LibraryImage content type is not supported.");
+                .Must(HasAllowedImageContentType).WithMessage("LibraryImage content type is not supported.")
+                .Must(ImageFileSignature.MatchesDeclaredExtension)
+                    .WithMessage("LibraryImage content does not match its file extension.");
 
             RuleFor(x => x.HeaderImage)
                 .Cascade(CascadeMode.Stop)
@@ -49,7 +51,9 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                 .Must(file => file!.Length > 0).WithMessage("HeaderImage is required.")
                 .Must(file => file!.Length <= MaxImageSizeInBytes).WithMessage("HeaderImage must not exceed 5 MB.")
                 .Must(HasAllowedImageExtension).WithMessage("HeaderImage must be a JPG, PNG image.")
-                .Must(HasAllowedImageContentType).WithMessage("HeaderImage content type is not supported.");
+                .Must(HasAllowedImageContentType).WithMessage("HeaderImage content type is not supported.")
+                .Must(ImageFileSignature.MatchesDeclaredExtension)
+                    .WithMessage("HeaderImage content does not match its file extension.");
 
             RuleFor(x => x.Email)
                 .NotEmpty().WithMessage("Email is required.")

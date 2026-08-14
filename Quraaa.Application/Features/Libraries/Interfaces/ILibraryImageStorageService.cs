@@ -4,7 +4,14 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
 {
     public interface ILibraryImageStorageService
     {
-        Task<string> SaveAsync(IUploadedFile file, CancellationToken cancellationToken = default);
+        Task<string> SaveLibraryImageAsync(
+            IUploadedFile file,
+            CancellationToken cancellationToken = default);
+
+        Task<string> SaveHeaderImageAsync(
+            IUploadedFile file,
+            CancellationToken cancellationToken = default);
+
         Task DeleteAsync(string? storedPath, CancellationToken cancellationToken = default);
     }
 }

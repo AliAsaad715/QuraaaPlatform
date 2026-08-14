@@ -11,41 +11,43 @@ namespace Quraaa.API.Services
             _fileStorageService = fileStorageService;
         }
 
-        public bool TryPrepareDownload(
-            string relativePath,
+        public async Task<DigitalAssetFileDescriptor?> PrepareDownloadAsync(
+            string storedReference,
             string downloadFileNameStem,
-            out DigitalAssetFileDescriptor descriptor)
+            CancellationToken cancellationToken = default)
         {
-            descriptor = null!;
+            var declaredExtension = Path.GetExtension(storedReference).ToLowerInvariant();
+            if (!IsSupportedDocumentExtension(declaredExtension))
+                return null;
 
-            if (!_fileStorageService.TryGetPhysicalPath(relativePath, out var physicalPath))
-                return false;
+            var fileName = SanitizeFileName(downloadFileNameStem) + declaredExtension;
+            var source = await _fileStorageService.GetDownloadSourceAsync(
+                storedReference,
+                fileName,
+                cancellationToken);
 
-            // Re-stat rather than trust TryGetPhysicalPath's existence check: that check
-            // already happened once, and the file could be deleted concurrently between
-            // the two calls.
-            var fileInfo = new FileInfo(physicalPath);
-            if (!fileInfo.Exists)
-                return false;
+            if (source is null
+                || !string.Equals(
+                    source.FileExtension,
+                    declaredExtension,
+                    StringComparison.OrdinalIgnoreCase)
+                || (source.PhysicalPath is null) == (source.RemoteDownloadUri is null))
+            {
+                return null;
+            }
 
-            var extension = Path.GetExtension(physicalPath);
-            var fileName = SanitizeFileName(downloadFileNameStem) + extension;
-
-            descriptor = new DigitalAssetFileDescriptor(
-                PhysicalPath: physicalPath,
+            return new DigitalAssetFileDescriptor(
+                PhysicalPath: source.PhysicalPath,
+                RemoteDownloadUri: source.RemoteDownloadUri,
                 DownloadFileName: fileName,
-                ContentType: ResolveContentType(extension),
-                ContentLength: fileInfo.Length,
-                ETag: ComputeETag(fileInfo),
-                LastModifiedUtc: new DateTimeOffset(fileInfo.LastWriteTimeUtc, TimeSpan.Zero));
-            return true;
+                ContentType: ResolveContentType(declaredExtension),
+                ContentLength: source.ContentLength,
+                ETag: source.ETag,
+                LastModifiedUtc: source.LastModifiedUtc);
         }
 
-        // LastWriteTime + Length is enough to detect any content change and is
-        // effectively free, unlike hashing the full file on every request — these
-        // digital assets can be up to 100 MB (see BulkUploadBooksCommandValidator).
-        private static string ComputeETag(FileInfo fileInfo) =>
-            $"\"{fileInfo.LastWriteTimeUtc.Ticks:x}-{fileInfo.Length:x}\"";
+        private static bool IsSupportedDocumentExtension(string extension) =>
+            extension is ".pdf" or ".doc" or ".docx";
 
         private static string ResolveContentType(string extension) => extension.ToLowerInvariant() switch
         {
@@ -57,8 +59,18 @@ namespace Quraaa.API.Services
 
         private static string SanitizeFileName(string stem)
         {
+            const string portableInvalidChars = "<>:\"/\\|?*";
             var invalidChars = Path.GetInvalidFileNameChars();
-            var cleaned = new string(stem.Select(c => invalidChars.Contains(c) ? '_' : c).ToArray()).Trim();
+            var cleaned = new string(stem
+                .Select(character =>
+                    char.IsControl(character)
+                    || portableInvalidChars.Contains(character)
+                    || invalidChars.Contains(character)
+                        ? '_'
+                        : character)
+                .ToArray())
+                .Trim()
+                .TrimEnd('.');
 
             return string.IsNullOrWhiteSpace(cleaned) ? "download" : cleaned;
         }

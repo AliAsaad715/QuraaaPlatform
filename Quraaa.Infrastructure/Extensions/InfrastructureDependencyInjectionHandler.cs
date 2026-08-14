@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Retry;
@@ -32,6 +33,7 @@ namespace Quraaa.Infrastructure.Extensions
             FirebaseExtensions.AddFirebaseConfiguration(services, configuration);
             AddOtpCache(services, configuration, isDevelopment);
             AddLibraryEmailServices(services, configuration);
+            AddCloudinaryStorage(services, configuration);
 
             services.AddOptions<StripeOptions>()
                 .Bind(configuration.GetSection("Stripe"))
@@ -127,10 +129,60 @@ namespace Quraaa.Infrastructure.Extensions
             services.AddSingleton<IAiUsageLimiterService, AiUsageLimiterService>();
 
             // Scoped, not Singleton: it depends on IFileStorageService, which is
-            // itself registered Scoped (see ServiceCollectionExtensions).
+            // registered as scoped by AddCloudinaryStorage below.
             services.AddScoped<IDocumentTextExtractionService, PdfTextExtractionService>();
             services.AddScoped<IDocxTextExtractionService, DocxTextExtractionService>();
             return services;
+        }
+
+        private static void AddCloudinaryStorage(
+            IServiceCollection services,
+            IConfiguration configuration)
+        {
+            services.AddOptions<CloudinaryOptions>()
+                .Configure(options =>
+                {
+                    options.CloudName = configuration["CLOUDINARY_CLOUD_NAME"]?.Trim()
+                        ?? string.Empty;
+                    options.ApiKey = configuration["CLOUDINARY_API_KEY"]?.Trim()
+                        ?? string.Empty;
+                    options.ApiSecret = configuration["CLOUDINARY_API_SECRET"]
+                        ?? string.Empty;
+                    options.PrivateDownloadUrlLifetimeSeconds = int.TryParse(
+                        configuration["CLOUDINARY_PRIVATE_DOWNLOAD_TTL_SECONDS"],
+                        NumberStyles.None,
+                        CultureInfo.InvariantCulture,
+                        out var privateDownloadTtlSeconds)
+                            ? privateDownloadTtlSeconds
+                            : 300;
+                })
+                .Validate(
+                    options => !string.IsNullOrWhiteSpace(options.CloudName)
+                        && !options.CloudName.Any(char.IsWhiteSpace),
+                    "CLOUDINARY_CLOUD_NAME is required and must not contain whitespace.")
+                .Validate(
+                    options => !string.IsNullOrWhiteSpace(options.ApiKey),
+                    "CLOUDINARY_API_KEY is required.")
+                .Validate(
+                    options => !string.IsNullOrWhiteSpace(options.ApiSecret),
+                    "CLOUDINARY_API_SECRET is required.")
+                .Validate(
+                    options => options.PrivateDownloadUrlLifetimeSeconds is >= 60 and <= 900,
+                    "CLOUDINARY_PRIVATE_DOWNLOAD_TTL_SECONDS must be between 60 and 900 seconds.")
+                .ValidateOnStart();
+
+            services.AddSingleton<IImageStorageService, CloudinaryImageStorageService>();
+            services.AddHttpClient<CloudinaryFileStorageService>(client =>
+            {
+                client.Timeout = TimeSpan.FromMinutes(10);
+            });
+            // Signed private-download URLs contain a short-lived signature. Suppress
+            // HttpClientFactory request-URL logs for this client; service logs omit URLs.
+            services.AddLogging(logging => logging.AddFilter(
+                "System.Net.Http.HttpClient.CloudinaryFileStorageService",
+                LogLevel.None));
+            services.AddScoped<IFileStorageService>(serviceProvider =>
+                serviceProvider.GetRequiredService<CloudinaryFileStorageService>());
         }
 
         private static void AddLibraryEmailServices(

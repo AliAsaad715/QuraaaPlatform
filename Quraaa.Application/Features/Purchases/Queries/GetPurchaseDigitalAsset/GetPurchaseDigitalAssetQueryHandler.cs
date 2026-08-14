@@ -50,12 +50,12 @@ namespace Quraaa.Application.Features.Purchases.Queries.GetPurchaseDigitalAsset
                 throw new DomainException("This purchase does not include a digital download.");
             }
 
-            // The descriptor's ContentLength/ETag/LastModifiedUtc come from a filesystem
-            // stat performed inside TryPrepareDownload — the controller streams the file
-            // and answers conditional/range requests from that metadata without doing
-            // any I/O of its own.
-            if (!_fileAccessService.TryPrepareDownload(
-                    info.PurchasedDigitalAssetUrl, info.BookTitle, out var descriptor))
+            var descriptor = await _fileAccessService.PrepareDownloadAsync(
+                info.PurchasedDigitalAssetUrl,
+                info.BookTitle,
+                cancellationToken);
+
+            if (descriptor is null)
             {
                 throw new NotFoundException("The purchased file is no longer available. Please contact support.");
             }
