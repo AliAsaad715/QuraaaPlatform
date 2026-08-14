@@ -9,6 +9,7 @@ using Quraaa.Domain.Favorites;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Orders;
+using Quraaa.Domain.Payouts;
 using Quraaa.Domain.Purchases;
 using Quraaa.Domain.Ratings;
 using Quraaa.Domain.User;
@@ -37,6 +38,7 @@ namespace Quraaa.Persistence.Data
         public DbSet<BookRatingAggregate> BookRatings { get; set; }
         public DbSet<CartAggregate> Carts { get; set; }
         public DbSet<OrderAggregate> Orders { get; set; }
+        public DbSet<SellerPayoutAggregate> SellerPayouts { get; set; }
         public DbSet<ProcessedPaymentEvent> ProcessedPaymentEvents { get; set; }
         public DbSet<ConsumedRefreshToken> ConsumedRefreshTokens { get; set; }
         public DbSet<OrphanFileCandidate> OrphanFileCandidates { get; set; }

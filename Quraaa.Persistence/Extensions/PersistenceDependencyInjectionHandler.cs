@@ -11,6 +11,7 @@ using Quraaa.Application.Features.Files.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Orders.Interfaces;
+using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Features.Ratings.Interfaces;
 using Quraaa.Persistence.Repositories;
@@ -40,6 +41,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<ICartRepository, CartRepository>();
             services.AddScoped<IBookPurchaseRepository, BookPurchaseRepository>();
             services.AddScoped<IOrderRepository, OrderRepository>();
+            services.AddScoped<ISellerPayoutRepository, SellerPayoutRepository>();
             services.AddScoped<IPaymentEventInbox, PaymentEventInboxRepository>();
             services.AddScoped<IOrphanFileCandidateRepository, OrphanFileCandidateRepository>();
             services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();

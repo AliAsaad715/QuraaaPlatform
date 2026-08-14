@@ -398,6 +398,19 @@ namespace Quraaa.Persistence.Repositories
                 throw new ConflictException(
                     "This order payment was finalized concurrently. Retry the operation.");
             }
+            catch (DbUpdateException exception)
+                when (exception.InnerException is PostgresException
+                {
+                    SqlState: PostgresErrorCodes.UniqueViolation,
+                    ConstraintName: "IX_SellerPayouts_OrderId_LibraryId"
+                })
+            {
+                // Same double-finalization race as BookPurchases: seller
+                // payout outbox rows are staged once per (order, library);
+                // the losing transaction rolls back entirely.
+                throw new ConflictException(
+                    "This order payment was finalized concurrently. Retry the operation.");
+            }
         }
 
         private IQueryable<OrderAggregate> AggregateQuery()

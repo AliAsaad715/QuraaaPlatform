@@ -14,6 +14,7 @@ namespace Quraaa.Domain.Library
         public Guid UserId { get; private set; }
         public LibraryApprovalStatus ApprovalStatus { get; private set; }
         public DateTime? EmailVerifiedAtUtc { get; private set; }
+        public string? StripeConnectAccountId { get; private set; }
         public Guid ConcurrencyStamp { get; private set; }
 
         private LibraryAggregate() { }
@@ -78,6 +79,52 @@ namespace Quraaa.Domain.Library
             }
 
             ApprovalStatus = LibraryApprovalStatus.Rejected;
+            ConcurrencyStamp = Guid.NewGuid();
+            UpdateAudit(modifiedBy);
+        }
+
+        public void SetStripeWallet(string stripeConnectAccountId, Guid modifiedBy)
+        {
+            if (ApprovalStatus != LibraryApprovalStatus.Approved)
+            {
+                throw new DomainException(
+                    "Only approved libraries can configure a Stripe wallet.");
+            }
+
+            if (string.IsNullOrWhiteSpace(stripeConnectAccountId))
+            {
+                throw new DomainException("A Stripe account id is required.");
+            }
+
+            var normalizedAccountId = stripeConnectAccountId.Trim();
+
+            if (!normalizedAccountId.StartsWith("acct_", StringComparison.Ordinal))
+            {
+                throw new DomainException(
+                    "The Stripe wallet must be a connected account id starting with acct_.");
+            }
+
+            if (string.Equals(
+                    StripeConnectAccountId,
+                    normalizedAccountId,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            StripeConnectAccountId = normalizedAccountId;
+            ConcurrencyStamp = Guid.NewGuid();
+            UpdateAudit(modifiedBy);
+        }
+
+        public void RemoveStripeWallet(Guid modifiedBy)
+        {
+            if (StripeConnectAccountId is null)
+            {
+                return;
+            }
+
+            StripeConnectAccountId = null;
             ConcurrencyStamp = Guid.NewGuid();
             UpdateAudit(modifiedBy);
         }

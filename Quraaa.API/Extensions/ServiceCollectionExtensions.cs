@@ -9,6 +9,7 @@ using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Features.Payouts.Common;
 using Quraaa.Application.Shared.Files;
 using Quraaa.Persistence.Extensions;
 using System.IdentityModel.Tokens.Jwt;
@@ -24,6 +25,7 @@ namespace Quraaa.API.Extensions
         public const string LibraryDashboardCorsPolicy = "library-dashboard";
         public const string LibraryRegistrationLinkRateLimitPolicy = "library-registration-link";
         public const string LibraryRegistrationPublicRateLimitPolicy = "library-registration-public";
+        public const string LibraryWalletRateLimitPolicy = "library-wallet";
 
         public static void AddApplicationServices(
             this IServiceCollection services,
@@ -64,6 +66,21 @@ namespace Quraaa.API.Extensions
             services.AddScoped<IBulkBookStorageService, BulkBookStorageService>();
             services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
             services.AddHostedService<FileRetentionCleanupService>();
+            services.AddHostedService<SellerPayoutProcessingService>();
+            services.AddOptions<PayoutOptions>()
+                .Bind(configuration.GetSection("Payouts"))
+                .Validate(
+                    options => options.PlatformCommissionPercent is >= 0m and <= 100m,
+                    "Payouts:PlatformCommissionPercent must be between 0 and 100.")
+                .Validate(
+                    options => decimal.Round(options.PlatformCommissionPercent, 2)
+                        == options.PlatformCommissionPercent,
+                    "Payouts:PlatformCommissionPercent must have at most 2 decimal places, " +
+                    "matching the decimal(5,2) precision persisted on payout records.")
+                .Validate(
+                    options => options.MaxTransferAttempts is >= 1 and <= 100,
+                    "Payouts:MaxTransferAttempts must be between 1 and 100.")
+                .ValidateOnStart();
             PersistenceDependencyInjectionHandler.AddPersistenceDependencies(services, configuration);
             ApplicationPackagesRegisterExtensions.AddApplicationDependencies(services);
         }
@@ -90,6 +107,26 @@ namespace Quraaa.API.Extensions
                 });
 
                 options.AddPolicy(LibraryRegistrationLinkRateLimitPolicy, httpContext =>
+                {
+                    var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                    var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString()
+                        ?? "unknown-client";
+
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: userId ?? clientAddress,
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 5,
+                            Window = TimeSpan.FromMinutes(10),
+                            QueueLimit = 0,
+                            AutoReplenishment = true
+                        });
+                });
+
+                // Every wallet PUT performs a live Stripe Account retrieve, so
+                // keep it from becoming an account-probing / quota-burning
+                // oracle.
+                options.AddPolicy(LibraryWalletRateLimitPolicy, httpContext =>
                 {
                     var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
                     var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString()

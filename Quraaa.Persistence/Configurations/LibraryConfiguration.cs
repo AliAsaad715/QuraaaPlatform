@@ -48,6 +48,9 @@ namespace Quraaa.Persistence.Configurations
 
                      builder.Property(l => l.EmailVerifiedAtUtc);
 
+                     builder.Property(l => l.StripeConnectAccountId)
+                            .HasMaxLength(255);
+
                      builder.Property(l => l.ConcurrencyStamp)
                             .IsRequired()
                             .IsConcurrencyToken();
