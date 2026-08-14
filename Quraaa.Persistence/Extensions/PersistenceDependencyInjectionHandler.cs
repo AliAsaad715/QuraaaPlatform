@@ -34,6 +34,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IBookRatingRepository, BookRatingRepository>();
             services.AddScoped<IFavoriteBookRepository, FavoriteBookRepository>();
             services.AddScoped<IBookPopularityRepository, BookPopularityRepository>();
+            services.AddScoped<IHomeCatalogRepository, HomeCatalogRepository>();
             services.AddScoped<IListingRepository, ListingRepository>();
             services.AddScoped<IBookRepository, BookRepository>();
             services.AddScoped<ICartRepository, CartRepository>();
