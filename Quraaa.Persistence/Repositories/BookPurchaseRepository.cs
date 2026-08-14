@@ -224,5 +224,38 @@ namespace Quraaa.Persistence.Repositories
 
             return (items, totalCount);
         }
+
+        public async Task<HashSet<Guid>> GetDistinctBuyerUserIdsByListingAsync(
+            Guid listingId,
+            CancellationToken cancellationToken = default)
+        {
+            var userIds = await _context.BookPurchases
+                .AsNoTracking()
+                .Where(p => p.ListingId == listingId)
+                .Select(p => p.UserId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            return userIds.ToHashSet();
+        }
+
+        public async Task<HashSet<Guid>> GetDistinctBuyerUserIdsByLibraryAsync(
+            Guid libraryId,
+            CancellationToken cancellationToken = default)
+        {
+            var userIds = await _context.BookPurchases
+                .AsNoTracking()
+                .Join(
+                    _context.Listings.AsNoTracking(),
+                    p => p.ListingId,
+                    l => l.Id,
+                    (p, l) => new { Purchase = p, Listing = l })
+                .Where(x => x.Listing.SellerType == SellerType.Library && x.Listing.LibraryId == libraryId)
+                .Select(x => x.Purchase.UserId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            return userIds.ToHashSet();
+        }
     }
 }

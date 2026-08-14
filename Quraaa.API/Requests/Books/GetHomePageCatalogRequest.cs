@@ -8,6 +8,7 @@ namespace Quraaa.API.Requests.Books
         public Guid? CategoryId { get; set; }
         public Guid? LibraryId { get; set; }
         public ListingFormat? Format { get; set; }
+        public SellerType? SellerType {  get; set; }
         public bool? IsFree { get; set; }
         public BookCondition? Condition { get; set; }
         public decimal? MinPrice { get; set; }

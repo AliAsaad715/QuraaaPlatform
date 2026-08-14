@@ -40,6 +40,7 @@ namespace Quraaa.Persistence.Data
         public DbSet<ProcessedPaymentEvent> ProcessedPaymentEvents { get; set; }
         public DbSet<ConsumedRefreshToken> ConsumedRefreshTokens { get; set; }
         public DbSet<OrphanFileCandidate> OrphanFileCandidates { get; set; }
+        public DbSet<UserDeviceToken> UserDeviceTokens { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

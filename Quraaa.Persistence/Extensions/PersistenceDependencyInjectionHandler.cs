@@ -10,9 +10,11 @@ using Quraaa.Application.Features.FavoriteBooks.Interfaces;
 using Quraaa.Application.Features.Files.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Features.Ratings.Interfaces;
+using Quraaa.Persistence.Interceptors;
 using Quraaa.Persistence.Repositories;
 using Quraaa.Persistence.Services;
 
@@ -43,6 +45,8 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IPaymentEventInbox, PaymentEventInboxRepository>();
             services.AddScoped<IOrphanFileCandidateRepository, OrphanFileCandidateRepository>();
             services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();
+            services.AddScoped<IUserDeviceTokenRepository, UserDeviceTokenRepository>();
+            services.AddScoped<DomainEventDispatchInterceptor>();
             return services;
         }
     }

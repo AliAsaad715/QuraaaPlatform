@@ -23,6 +23,7 @@ namespace Quraaa.Persistence.Repositories
             string? searchTerm,
             Guid? categoryId,
             Guid? libraryId,
+            SellerType? sellerType,
             ListingFormat? format,
             bool? isFree,
             BookCondition? condition,
@@ -33,7 +34,7 @@ namespace Quraaa.Persistence.Repositories
             int pageSize,
             CancellationToken cancellationToken = default)
         {
-            var query = BuildCatalogQuery(libraryId, format, condition, minPrice, maxPrice);
+            var query = BuildCatalogQuery(libraryId, sellerType, format, condition, minPrice, maxPrice);
 
             if (categoryId.HasValue)
             {
@@ -64,6 +65,7 @@ namespace Quraaa.Persistence.Repositories
         // Price > 0, so IsFree filtering is honored but will not match any data today.
         private IQueryable<HomeBookFlatProjection> BuildCatalogQuery(
             Guid? libraryId,
+            SellerType? sellerType,
             ListingFormat? format,
             BookCondition? condition,
             decimal? minPrice,
@@ -77,6 +79,11 @@ namespace Quraaa.Persistence.Repositories
             if (libraryId.HasValue)
             {
                 filteredListings = filteredListings.Where(listing => listing.LibraryId == libraryId.Value);
+            }
+
+            if (sellerType.HasValue)
+            {
+                filteredListings = filteredListings.Where(listing => listing.SellerType == sellerType.Value);
             }
 
             if (format.HasValue)

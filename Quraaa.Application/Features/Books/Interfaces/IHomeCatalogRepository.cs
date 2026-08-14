@@ -9,6 +9,7 @@ namespace Quraaa.Application.Features.Books.Interfaces
             string? searchTerm,
             Guid? categoryId,
             Guid? libraryId,
+            SellerType? sellerType,
             ListingFormat? format,
             bool? isFree,
             BookCondition? condition,

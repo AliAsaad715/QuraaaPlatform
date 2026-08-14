@@ -31,6 +31,7 @@ namespace Quraaa.Application.Features.Books.Queries.GetHomePageCatalog
                     request.SearchTerm,
                     request.CategoryId,
                     request.LibraryId,
+                    request.SellerType,
                     request.Format,
                     request.IsFree,
                     request.Condition,

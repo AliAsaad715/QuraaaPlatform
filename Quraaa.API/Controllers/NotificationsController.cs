@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.API.Requests.Notifications;
+using Quraaa.Application.Features.Notifications.Commands.RegisterDeviceToken;
 using Quraaa.Application.Features.Notifications.Commands.SendNotification;
 using Quraaa.Application.Features.Notifications.Commands.SendTestNotification;
 using Quraaa.Application.Features.Notifications.Common;
@@ -66,6 +67,29 @@ namespace Quraaa.API.Controllers
                 request.Data);
 
             var result = await Mediator.Send(command);
+            return HandleResult(result);
+        }
+
+        [HttpPost("device-token")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> RegisterDeviceToken(
+            [FromBody] RegisterDeviceTokenRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var command = new RegisterDeviceTokenCommand
+            {
+                RequestingUserId = userId,
+                DeviceToken = request.DeviceToken
+            };
+
+            var result = await Mediator.Send(command, cancellationToken);
             return HandleResult(result);
         }
 

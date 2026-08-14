@@ -7,6 +7,9 @@ namespace Quraaa.Application.Features.Listings.Interfaces
         Task<BookAggregate?> FindByIsbnAsync(string isbn,
             CancellationToken cancellationToken = default);
 
+        Task<BookAggregate?> GetByIdAsync(Guid id,
+            CancellationToken cancellationToken = default);
+
         Task<BookAggregate?> FindByTitleAuthorLanguageAsync(
             string title, string author, string language,
             CancellationToken cancellationToken = default);
