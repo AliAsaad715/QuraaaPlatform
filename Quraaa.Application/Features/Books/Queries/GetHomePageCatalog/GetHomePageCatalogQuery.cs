@@ -9,6 +9,7 @@ namespace Quraaa.Application.Features.Books.Queries.GetHomePageCatalog
         string? SearchTerm = null,
         Guid? CategoryId = null,
         Guid? LibraryId = null,
+        SellerType? SellerType = null,
         ListingFormat? Format = null,
         bool? IsFree = null,
         BookCondition? Condition = null,

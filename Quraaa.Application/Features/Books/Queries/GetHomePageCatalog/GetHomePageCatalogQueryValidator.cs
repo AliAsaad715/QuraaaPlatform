@@ -32,6 +32,10 @@ namespace Quraaa.Application.Features.Books.Queries.GetHomePageCatalog
                 .Must(sortBy => AllowedSortFields.Contains(sortBy))
                 .WithMessage($"SortBy must be one of: {string.Join(", ", AllowedSortFields)}.");
 
+            RuleFor(x => x.SellerType)
+                .IsInEnum().When(x => x.SellerType.HasValue)
+                .WithMessage("The provided seller type value is invalid.");
+
             RuleFor(x => x.Format)
                 .IsInEnum().When(x => x.Format.HasValue)
                 .WithMessage("The provided format value is invalid.");

@@ -10,6 +10,7 @@ using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
 using Quraaa.Application.Features.Listings.Commands.ReactivateListing;
 using Quraaa.Application.Features.Listings.Commands.RemoveListing;
 using Quraaa.Application.Features.Listings.Commands.UpdateListing;
+using Quraaa.Application.Features.Listings.Commands.UpdateListingDigitalAsset;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Features.Listings.Queries.GetListingById;
 using Quraaa.Application.Features.Listings.Queries.GetMyLibraryListings;
@@ -132,6 +133,43 @@ namespace Quraaa.API.Controllers
                 },
                 cancellationToken);
 
+            return HandleResult(result);
+        }
+
+        // ── PUT /api/library-admin/listings/{listingId}/digital-asset ─────────
+        /// <summary>
+        /// Replaces the digital file for an existing digital listing owned by the
+        /// authenticated library. Buyers who previously purchased this listing are
+        /// notified that new content is available; buyers who already purchased
+        /// keep the file version they originally paid for.
+        /// </summary>
+        /// <remarks>
+        /// The uploaded digital asset must be a PDF file.
+        /// </remarks>
+        [HttpPut("{listingId:guid}/digital-asset")]
+        [Consumes("multipart/form-data")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateListingDigitalAsset(
+            [FromRoute] Guid listingId,
+            [FromForm] UpdateListingDigitalAssetRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var command = new UpdateListingDigitalAssetCommand
+            {
+                RequestingUserId = userId,
+                ListingId = listingId,
+                DigitalAsset = new FormFileUploadedFile(request.DigitalAsset)
+            };
+
+            var result = await Mediator.Send(command, cancellationToken);
             return HandleResult(result);
         }
 
