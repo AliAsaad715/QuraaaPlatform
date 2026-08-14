@@ -130,6 +130,14 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
                         AddInterests(userProfile, request.Interests);
                         await _userRepository.AddUserAsync(userProfile, transactionCancellationToken);
                         await _userRepository.SaveChangesAsync(transactionCancellationToken);
+
+                        // Dispatch must happen before commit: if the SMS gateway throws, the
+                        // rollback below must undo the identity/role/profile rows too, so a
+                        // failed registration never leaves a half-created user behind.
+                        await SendRegistrationOtpAsync(
+                            formattedPhone,
+                            requestLease,
+                            transactionCancellationToken);
                     }, cancellationToken);
                 }
                 catch
@@ -140,11 +148,6 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
                         CancellationToken.None);
                     throw;
                 }
-
-                await SendRegistrationOtpAsync(
-                    formattedPhone,
-                    requestLease,
-                    cancellationToken);
             }, "Registration OTP sent successfully");
         }
 
