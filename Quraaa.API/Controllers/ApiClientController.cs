@@ -133,6 +133,88 @@ namespace Quraaa.API.Controllers
             return HandleResult(result, data => Ok(data));
         }
 
+        /// <summary>
+        /// Overload for callers that need a non-200 success status (e.g. 201 Created)
+        /// without altering the default success mapping every other caller relies on.
+        /// </summary>
+        protected IActionResult HandleResult(
+            AppResult result,
+            Func<Success, IActionResult> onSuccess)
+        {
+            return result.Match(
+                onSuccess,
+
+                // 400 Bad Request (Validation)
+                validationFailed => BadRequest(new
+                {
+                    type = "ValidationFailure",
+                    title = "Validation Error",
+                    errors = validationFailed.Errors.Select(e => new { Field = e.PropertyName, Message = e.ErrorMessage })
+                }),
+
+                // 404 Not Found
+                NotFound => StatusCode(StatusCodes.Status404NotFound, new
+                {
+                    type = "NotFound",
+                    title = "Resource Not Found",
+                    detail = "Requested resource was not found."
+                }),
+
+                // 401 Unauthorized
+                unauthorized => StatusCode(StatusCodes.Status401Unauthorized, new
+                {
+                    type = "Unauthorized",
+                    title = "Authentication Failed",
+                    detail = "Authentication credentials are invalid, expired, or revoked."
+                }),
+
+                // 403 Forbidden
+                forbidden => StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    type = "Forbidden",
+                    title = "Access Denied",
+                    detail = "You do not have permission to access or modify this resource."
+                }),
+
+                // 400 Bad Request (Domain Logic)
+                domainError => string.Equals(domainError.Message, LibraryErrorCodes.DuplicateLibraryForUser, StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = LibraryErrorCodes.DuplicateLibraryForUserMessage
+                    })
+                    : string.Equals(domainError.Message, LibraryErrorCodes.DuplicateLibraryEmail, StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = LibraryErrorCodes.DuplicateLibraryEmailMessage
+                    })
+                    : string.Equals(domainError.Message, "DUPLICATE_APPLICATION", StringComparison.Ordinal)
+                    ? Conflict(new
+                    {
+                        type = "Conflict",
+                        title = "Conflict",
+                        detail = "You have already applied for this job offer."
+                    })
+                    : BadRequest(new
+                    {
+                        type = "DomainError",
+                        title = "Business Rule Violation",
+                        detail = domainError.Message
+                    }),
+
+                // 409 Conflict
+                conflict => StatusCode(StatusCodes.Status409Conflict, new
+                {
+                    type = "Conflict",
+                    title = "Conflict",
+                    detail = conflict.Message
+                })
+            );
+        }
+
         protected IActionResult HandleResult<T>(
             AppResult<T> result,
             Func<T, IActionResult> onSuccess)
