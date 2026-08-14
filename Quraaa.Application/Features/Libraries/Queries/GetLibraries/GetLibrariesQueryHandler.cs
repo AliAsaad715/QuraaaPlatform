@@ -1,5 +1,4 @@
-﻿using MediatR;
-using Microsoft.Extensions.Configuration;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
@@ -11,16 +10,16 @@ namespace Quraaa.Application.Features.Libraries.Queries.GetLibraries
     public class GetLibrariesQueryHandler : BaseApplicationService<GetLibrariesQueryHandler>, IRequestHandler<GetLibrariesQuery, AppResult<PagedResult<PublicLibraryResponse>>>
     {
         private readonly ILibraryRepository _libraryRepository;
-        private readonly IConfiguration _config;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public GetLibrariesQueryHandler(
             ILibraryRepository libraryRepository,
-            IConfiguration config,
+            IImageUrlFormatter imageUrlFormatter,
             ILogger<GetLibrariesQueryHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _libraryRepository = libraryRepository;
-            _config = config;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<AppResult<PagedResult<PublicLibraryResponse>>> Handle(GetLibrariesQuery request, CancellationToken cancellationToken)
@@ -33,35 +32,18 @@ namespace Quraaa.Application.Features.Libraries.Queries.GetLibraries
                     request.SearchTerm,
                     cancellationToken);
 
-                var baseUrl = _config["BaseAPIURL"]?.TrimEnd('/');
-
                 var items = libraries
                     .Select(l => new PublicLibraryResponse(
                         l.Id,
                         l.LibraryName,
                         l.Location,
-                        FormatImageUrl(l.LibraryImage, baseUrl!),
-                        FormatImageUrl(l.HeaderImage, baseUrl!),
+                        _imageUrlFormatter.Format(l.LibraryImage),
+                        _imageUrlFormatter.Format(l.HeaderImage),
                         l.Email))
                     .ToList();
 
                 return new PagedResult<PublicLibraryResponse>(items, request.PageNumber, request.PageSize, totalCount);
             }, "Libraries retrieved successfully");
-        }
-
-        private string FormatImageUrl(string imagePath, string baseUrl)
-        {
-            if (string.IsNullOrWhiteSpace(imagePath))
-                return string.Empty;
-
-            if (imagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                imagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            {
-                return imagePath;
-            }
-
-            var cleanPath = imagePath.Replace("\\", "/").TrimStart('/');
-            return $"{baseUrl}/{cleanPath}";
         }
     }
 }

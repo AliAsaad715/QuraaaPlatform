@@ -13,14 +13,17 @@ namespace Quraaa.Application.Features.Orders.Queries.GetOrderById
           IRequestHandler<GetOrderByIdQuery, AppResult<OrderResponse>>
     {
         private readonly IOrderRepository _orderRepository;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public GetOrderByIdQueryHandler(
             IOrderRepository orderRepository,
+            IImageUrlFormatter imageUrlFormatter,
             ILogger<GetOrderByIdQueryHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
         {
             _orderRepository = orderRepository;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<AppResult<OrderResponse>> Handle(
@@ -35,7 +38,7 @@ namespace Quraaa.Application.Features.Orders.Queries.GetOrderById
                     cancellationToken)
                     ?? throw new NotFoundException("Order not found.");
 
-                return order.ToResponse();
+                return order.ToResponse(_imageUrlFormatter);
             }, "Order retrieved successfully");
         }
     }

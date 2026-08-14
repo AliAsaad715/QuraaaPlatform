@@ -24,7 +24,7 @@ namespace Quraaa.API.Controllers
     {
         [AllowAnonymous]
         [HttpPost("register")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
@@ -39,7 +39,9 @@ namespace Quraaa.API.Controllers
                 GetClientIpAddress() ?? string.Empty);
 
             var result = await Mediator.Send(command);
-            return HandleResult(result);
+            return HandleResult(
+                result,
+                success => StatusCode(StatusCodes.Status201Created, new { message = success.Message }));
         }
 
         /// <summary>

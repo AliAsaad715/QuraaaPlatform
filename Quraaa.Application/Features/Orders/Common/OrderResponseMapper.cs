@@ -1,3 +1,4 @@
+using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Domain.Orders;
 using Quraaa.Domain.Orders.Entities;
@@ -9,7 +10,7 @@ namespace Quraaa.Application.Features.Orders.Common
     {
         private const decimal MinorUnitsPerUsd = 100m;
 
-        public static OrderResponse ToResponse(this OrderAggregate order)
+        public static OrderResponse ToResponse(this OrderAggregate order, IImageUrlFormatter imageUrlFormatter)
         {
             var items = order.Items
                 .OrderBy(item => item.Id)
@@ -24,7 +25,7 @@ namespace Quraaa.Application.Features.Orders.Common
                     item.ConditionSnapshot,
                     item.BookTitleSnapshot,
                     item.BookAuthorSnapshot,
-                    item.BookCoverImageUrlSnapshot,
+                    imageUrlFormatter.Format(item.BookCoverImageUrlSnapshot),
                     item.Quantity,
                     ToMajorUnits(item.UnitPriceMinor),
                     ToMajorUnits(item.TotalPriceMinor),
@@ -76,7 +77,8 @@ namespace Quraaa.Application.Features.Orders.Common
 
         public static OrderCheckoutResponse ToCheckoutResponse(
             this OrderAggregate order,
-            PaymentAttempt attempt)
+            PaymentAttempt attempt,
+            IImageUrlFormatter imageUrlFormatter)
         {
             if (string.IsNullOrWhiteSpace(attempt.CheckoutSessionId)
                 || string.IsNullOrWhiteSpace(attempt.CheckoutUrl)
@@ -87,7 +89,7 @@ namespace Quraaa.Application.Features.Orders.Common
             }
 
             return new OrderCheckoutResponse(
-                order.ToResponse(),
+                order.ToResponse(imageUrlFormatter),
                 attempt.Id,
                 attempt.CheckoutSessionId,
                 attempt.CheckoutUrl,

@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Categories.Common;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Features.Listings.Queries.GetListingById;
+using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Category;
 using Quraaa.Domain.Marketplace;
@@ -16,8 +17,13 @@ namespace Quraaa.Persistence.Repositories
     public class ListingRepository : IListingRepository
     {
         private readonly ApplicationDbContext _context;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
-        public ListingRepository(ApplicationDbContext context) => _context = context;
+        public ListingRepository(ApplicationDbContext context, IImageUrlFormatter imageUrlFormatter)
+        {
+            _context = context;
+            _imageUrlFormatter = imageUrlFormatter;
+        }
 
         public async Task<ListingAggregate?> GetByIdAsync(
             Guid listingId, CancellationToken cancellationToken = default) =>
@@ -57,8 +63,11 @@ namespace Quraaa.Persistence.Repositories
         }
 
         public async Task<ListingDetailsResponse?> GetByIdWithDetailsAsync(
-        Guid listingId, CancellationToken cancellationToken = default) =>
-            await _context.Listings
+        Guid listingId, CancellationToken cancellationToken = default)
+        {
+            // Materialize first, then project to the response DTO in memory —
+            // IImageUrlFormatter.Format can't be translated into SQL.
+            var row = await _context.Listings
                 .AsNoTracking()
                 .Where(l => l.Id == listingId)
                 .Join(
@@ -73,22 +82,30 @@ namespace Quraaa.Persistence.Repositories
                     (x, categories) => new { x.Listing, x.Book, Categories = categories })
                 .SelectMany(
                     x => x.Categories.DefaultIfEmpty(),
-                    (x, c) => new ListingDetailsResponse(
-                        x.Listing.Id,
-                        x.Listing.Price,
-                        x.Listing.Stock,
-                        x.Listing.Condition,
-                        x.Listing.Status,
-                        new BookDetails(
-                            x.Book.Id,
-                            x.Book.Title,
-                            x.Book.Author,
-                            x.Book.Description,
-                            x.Book.CoverImageUrl,
-                            x.Book.Language,
-                            x.Book.Isbn,
-                            c == null ? null : new CategoryResponse(c.Id, c.NameEn, c.NameAr))))
+                    (x, c) => new { x.Listing, x.Book, Category = c })
                 .FirstOrDefaultAsync(cancellationToken);
+
+            if (row is null)
+            {
+                return null;
+            }
+
+            return new ListingDetailsResponse(
+                row.Listing.Id,
+                row.Listing.Price,
+                row.Listing.Stock,
+                row.Listing.Condition,
+                row.Listing.Status,
+                new BookDetails(
+                    row.Book.Id,
+                    row.Book.Title,
+                    row.Book.Author,
+                    row.Book.Description,
+                    _imageUrlFormatter.Format(row.Book.CoverImageUrl),
+                    row.Book.Language,
+                    row.Book.Isbn,
+                    row.Category == null ? null : new CategoryResponse(row.Category.Id, row.Category.NameEn, row.Category.NameAr)));
+        }
 
         public async Task<bool> ExistsByLibraryAndBookAsync(
             Guid libraryId, Guid bookId, CancellationToken cancellationToken = default) =>
@@ -148,9 +165,14 @@ namespace Quraaa.Persistence.Repositories
 
             var totalCount = await query.CountAsync(cancellationToken);
 
-            var items = await query
+            // Materialize first, then project to the response DTO in memory —
+            // IImageUrlFormatter.Format can't be translated into SQL.
+            var rows = await query
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            var items = rows
                 .Select(x => new ListingSummaryResponse(
                     x.Listing.Id,
                     x.Listing.Price,
@@ -162,13 +184,13 @@ namespace Quraaa.Persistence.Repositories
                         x.Book.Title,
                         x.Book.Author,
                         x.Book.Description,
-                        x.Book.CoverImageUrl,
+                        _imageUrlFormatter.Format(x.Book.CoverImageUrl),
                         x.Book.Language,
                         x.Book.Isbn,
                         x.Category == null
                             ? null
                             : new CategoryResponse(x.Category.Id, x.Category.NameEn, x.Category.NameAr))))
-                .ToListAsync(cancellationToken);
+                .ToList();
 
             return (items, totalCount);
         }

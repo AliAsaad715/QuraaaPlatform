@@ -1,11 +1,11 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Quraaa.Application.Features.Admin.Interfaces;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
 using Quraaa.Application.Features.Comments.Interfaces;
-using Quraaa.Application.Features.Ebooks.Interfaces;
 using Quraaa.Application.Features.FavoriteBooks.Interfaces;
 using Quraaa.Application.Features.Files.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
@@ -32,9 +32,9 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<ICommentRepository, CommentRepository>();
             services.AddScoped<IBookRatingRepository, BookRatingRepository>();
-            services.AddScoped<IEbookRepository, EbookRepository>();
             services.AddScoped<IFavoriteBookRepository, FavoriteBookRepository>();
             services.AddScoped<IBookPopularityRepository, BookPopularityRepository>();
+            services.AddScoped<IHomeCatalogRepository, HomeCatalogRepository>();
             services.AddScoped<IListingRepository, ListingRepository>();
             services.AddScoped<IBookRepository, BookRepository>();
             services.AddScoped<ICartRepository, CartRepository>();
@@ -42,6 +42,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IOrderRepository, OrderRepository>();
             services.AddScoped<IPaymentEventInbox, PaymentEventInboxRepository>();
             services.AddScoped<IOrphanFileCandidateRepository, OrphanFileCandidateRepository>();
+            services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();
             return services;
         }
     }

@@ -1,5 +1,4 @@
-﻿using MediatR;
-using Microsoft.Extensions.Configuration;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Shared.Results;
@@ -12,17 +11,17 @@ namespace Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests
           IRequestHandler<GetLibraryRequestsQuery, AppResult<PagedResult<LibraryRequestResponse>>>
     {
         private readonly ILibraryRepository _libraryRepository;
-        private readonly IConfiguration _config;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public GetLibraryRequestsQueryHandler(
             ILibraryRepository libraryRepository,
-            IConfiguration config,
+            IImageUrlFormatter imageUrlFormatter,
             ILogger<GetLibraryRequestsQueryHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
         {
             _libraryRepository = libraryRepository;
-            _config = config;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<AppResult<PagedResult<LibraryRequestResponse>>> Handle(
@@ -34,33 +33,16 @@ namespace Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests
                 var (items, totalCount) = await _libraryRepository.GetRequestsAsync(
                     request.Status, request.PageNumber, request.PageSize, request.SearchTerm, cancellationToken);
 
-                var baseUrl = _config["BaseAPIURL"]?.TrimEnd('/');
-
                 var processedItems = items.Select(item => item with
                 {
-                    LibraryImage = FormatImageUrl(item.LibraryImage, baseUrl!),
-                    HeaderImage = FormatImageUrl(item.HeaderImage, baseUrl!)
+                    LibraryImage = _imageUrlFormatter.Format(item.LibraryImage),
+                    HeaderImage = _imageUrlFormatter.Format(item.HeaderImage)
                 }).ToList();
 
                 return new PagedResult<LibraryRequestResponse>(
                     processedItems, request.PageNumber, request.PageSize, totalCount);
 
             }, "Library requests retrieved successfully.");
-        }
-
-        private string FormatImageUrl(string imagePath, string baseUrl)
-        {
-            if (string.IsNullOrWhiteSpace(imagePath))
-                return string.Empty;
-
-            if (imagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                imagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            {
-                return imagePath;
-            }
-
-            var cleanPath = imagePath.Replace("\\", "/").TrimStart('/');
-            return $"{baseUrl}/{cleanPath}";
         }
     }
 }

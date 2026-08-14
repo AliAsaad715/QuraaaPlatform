@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Payments.Common;
 using Quraaa.Application.Features.Payments.Exceptions;
 using Quraaa.Application.Features.Payments.Interfaces;
+using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Cart;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Domain.Orders;
@@ -19,17 +20,20 @@ namespace Quraaa.Application.Features.Orders.Services
         private readonly IOrderRepository _orderRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IOrderPaymentReconciliationService _paymentReconciliationService;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public OrderCheckoutService(
             IPaymentGateway paymentGateway,
             IOrderRepository orderRepository,
             IListingRepository listingRepository,
-            IOrderPaymentReconciliationService paymentReconciliationService)
+            IOrderPaymentReconciliationService paymentReconciliationService,
+            IImageUrlFormatter imageUrlFormatter)
         {
             _paymentGateway = paymentGateway;
             _orderRepository = orderRepository;
             _listingRepository = listingRepository;
             _paymentReconciliationService = paymentReconciliationService;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<OrderCheckoutResponse> EnsureCheckoutSessionAsync(
@@ -84,7 +88,7 @@ namespace Quraaa.Application.Features.Orders.Services
 
             if (attempt?.Status == PaymentAttemptStatus.CheckoutCreated)
             {
-                return order.ToCheckoutResponse(attempt);
+                return order.ToCheckoutResponse(attempt, _imageUrlFormatter);
             }
 
             if (attempt is null)
@@ -196,7 +200,7 @@ namespace Quraaa.Application.Features.Orders.Services
                     // A concurrent retry won the optimistic-concurrency race
                     // after Stripe returned the same idempotent Session. Reuse
                     // that Session; it is not an orphan.
-                    return order.ToCheckoutResponse(attempt);
+                    return order.ToCheckoutResponse(attempt, _imageUrlFormatter);
                 }
 
                 if (await _orderRepository
@@ -221,7 +225,7 @@ namespace Quraaa.Application.Features.Orders.Services
                 throw;
             }
 
-            return order.ToCheckoutResponse(attempt);
+            return order.ToCheckoutResponse(attempt, _imageUrlFormatter);
         }
 
         private async Task ExpireLocalCheckoutAsync(

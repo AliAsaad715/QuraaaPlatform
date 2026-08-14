@@ -3,6 +3,7 @@ using Npgsql;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Payments.Exceptions;
+using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Domain.Orders;
 using Quraaa.Domain.Orders.Enums;
@@ -14,10 +15,12 @@ namespace Quraaa.Persistence.Repositories
     public sealed class OrderRepository : IOrderRepository
     {
         private readonly ApplicationDbContext _context;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
-        public OrderRepository(ApplicationDbContext context)
+        public OrderRepository(ApplicationDbContext context, IImageUrlFormatter imageUrlFormatter)
         {
             _context = context;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task AddAsync(
@@ -301,7 +304,7 @@ namespace Quraaa.Persistence.Repositories
                     row.BookId,
                     row.Title,
                     row.Author,
-                    row.CoverImageUrl,
+                    _imageUrlFormatter.Format(row.CoverImageUrl),
                     row.Condition,
                     row.Quantity,
                     row.UnitPriceMinor / 100m,

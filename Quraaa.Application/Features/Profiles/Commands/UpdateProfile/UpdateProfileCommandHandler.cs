@@ -13,15 +13,18 @@ namespace Quraaa.Application.Features.Profiles.Commands.UpdateProfile
     {
         private readonly IUserRepository _userRepository;
         private readonly ICategoryRepository _categoryRepository;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public UpdateProfileCommandHandler(
             IUserRepository userRepository,
             ICategoryRepository categoryRepository,
+            IImageUrlFormatter imageUrlFormatter,
             ILogger<UpdateProfileCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _userRepository = userRepository;
             _categoryRepository = categoryRepository;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<AppResult<ProfileResponse>> Handle(UpdateProfileCommand request, CancellationToken cancellationToken)
@@ -49,7 +52,7 @@ namespace Quraaa.Application.Features.Profiles.Commands.UpdateProfile
 
                 var interestCategories = await _categoryRepository.GetByIdsAsync(user.InterestedCategoryIds.ToList(), cancellationToken);
 
-                return ProfileResponse.FromUser(user, interestCategories);
+                return ProfileResponse.FromUser(user, interestCategories, _imageUrlFormatter);
             }, "Profile updated successfully");
         }
     }
