@@ -2,6 +2,9 @@
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
+// Aliased: GetListingDetails also declares a "ListingDetailsResponse", distinct from the
+// GetListingById one already imported above.
+using MobileListingDetailsResponse = Quraaa.Application.Features.Listings.Queries.GetListingDetails.ListingDetailsResponse;
 
 namespace Quraaa.Application.Features.Listings.Interfaces
 {
@@ -20,6 +23,14 @@ namespace Quraaa.Application.Features.Listings.Interfaces
 
         /// <summary>Joined projection used by the Get-by-ID query.</summary>
         Task<ListingDetailsResponse?> GetByIdWithDetailsAsync(Guid listingId,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Joined projection used by the public listing-details query (mobile app book details
+        /// screen): book, author, seller (library name or user full name), rating summary, and
+        /// a short recent-reviews preview.
+        /// </summary>
+        Task<MobileListingDetailsResponse?> GetListingDetailsAsync(Guid listingId,
             CancellationToken cancellationToken = default);
 
         Task<bool> ExistsByLibraryAndBookAsync(Guid libraryId, Guid bookId,
