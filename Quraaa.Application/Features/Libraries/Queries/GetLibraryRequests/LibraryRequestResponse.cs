@@ -11,6 +11,7 @@ namespace Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests
         string Email,
         DateTime? EmailVerifiedAtUtc,
         LibraryApprovalStatus ApprovalStatus,
+        decimal ProfitSharePercent,
         DateTime RequestedAt,
         RequesterInfo Requester
     );

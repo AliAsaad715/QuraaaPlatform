@@ -7,6 +7,7 @@ using Quraaa.Application.Features.Orders.Services;
 using Quraaa.Application.Features.Payments.Common;
 using Quraaa.Application.Features.Payments.Exceptions;
 using Quraaa.Application.Features.Payments.Interfaces;
+using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
@@ -33,6 +34,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
         private readonly IListingRepository _listingRepository;
         private readonly IBookPurchaseRepository _bookPurchaseRepository;
         private readonly IOrderPaymentFinalizationService _paymentFinalizationService;
+        private readonly ISellerPayoutDispatchSignal _payoutDispatchSignal;
 
         public ProcessPaymentWebhookCommandHandler(
             IPaymentGateway paymentGateway,
@@ -42,6 +44,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
             IListingRepository listingRepository,
             IBookPurchaseRepository bookPurchaseRepository,
             IOrderPaymentFinalizationService paymentFinalizationService,
+            ISellerPayoutDispatchSignal payoutDispatchSignal,
             ILogger<ProcessPaymentWebhookCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -53,6 +56,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
             _listingRepository = listingRepository;
             _bookPurchaseRepository = bookPurchaseRepository;
             _paymentFinalizationService = paymentFinalizationService;
+            _payoutDispatchSignal = payoutDispatchSignal;
         }
 
         public async Task<AppResult> Handle(
@@ -141,6 +145,8 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
                     attempt.Id,
                     cancellationToken);
 
+                var orderBecamePaid = false;
+
                 switch (paymentEvent.EventType)
                 {
                     case "checkout.session.completed"
@@ -154,6 +160,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
                             attempt,
                             paymentEvent,
                             cancellationToken);
+                        orderBecamePaid = true;
                         break;
 
                     case "checkout.session.async_payment_failed":
@@ -185,6 +192,15 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
                 await SaveWebhookChangesAsync(
                     paymentEvent.ProviderEventId,
                     cancellationToken);
+
+                if (orderBecamePaid)
+                {
+                    // The seller payouts staged during finalization are
+                    // committed (or were already committed by a concurrent
+                    // delivery): transfer them to the wallets now instead of
+                    // on the next periodic sweep.
+                    _payoutDispatchSignal.RequestImmediateProcessing();
+                }
             }, "Stripe payment webhook processed successfully");
         }
 

@@ -47,9 +47,9 @@ builder.Services.AddSwaggerConfiguration(builder.Configuration);
 // With no allow-list configured, fall back to allowing any origin — Bearer-token
 // auth travels in the Authorization header, not cookies, so AllowAnyOrigin() here
 // never needs (and must never be combined with) AllowCredentials().
-var allowedOrigins = builder.Configuration
-    .GetSection("Cors:AllowedOrigins")
-    .Get<string[]>() ?? [];
+// Parsed once and reused by the provider redirect allow-list, so the same
+// setting cannot mean two different things (see ServiceCollectionExtensions).
+var allowedOrigins = ServiceCollectionExtensions.ReadAllowedOrigins(builder.Configuration);
 
 builder.Services.AddCors(options =>
 {

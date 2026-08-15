@@ -14,6 +14,10 @@ namespace Quraaa.Persistence.Configurations
                             table.HasCheckConstraint(
                                    "CK_Libraries_ApprovalStatus_EmailVerification",
                                    "\"ApprovalStatus\" = 4 OR (\"ApprovalStatus\" IN (1, 2, 3) AND \"EmailVerifiedAtUtc\" IS NOT NULL)");
+
+                            table.HasCheckConstraint(
+                                   "CK_Libraries_ProfitSharePercent_Range",
+                                   "\"ProfitSharePercent\" >= 0 AND \"ProfitSharePercent\" <= 100");
                      });
 
                      builder.HasKey(l => l.Id);
@@ -47,6 +51,15 @@ namespace Quraaa.Persistence.Configurations
                             .IsRequired();
 
                      builder.Property(l => l.EmailVerifiedAtUtc);
+
+                     builder.Property(l => l.StripeConnectAccountId)
+                            .HasMaxLength(255);
+
+                     builder.Property(l => l.StripeWalletActivatedAtUtc);
+
+                     builder.Property(l => l.ProfitSharePercent)
+                            .HasColumnType("decimal(7,4)")
+                            .IsRequired();
 
                      builder.Property(l => l.ConcurrencyStamp)
                             .IsRequired()

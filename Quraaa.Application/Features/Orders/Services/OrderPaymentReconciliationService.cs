@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Payments.Common;
 using Quraaa.Application.Features.Payments.Exceptions;
 using Quraaa.Application.Features.Payments.Interfaces;
+using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Domain.Cart.Enums;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
@@ -28,6 +29,7 @@ namespace Quraaa.Application.Features.Orders.Services
         private readonly ICartRepository _cartRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IOrderPaymentFinalizationService _paymentFinalizationService;
+        private readonly ISellerPayoutDispatchSignal _payoutDispatchSignal;
         private readonly ILogger<OrderPaymentReconciliationService> _logger;
 
         public OrderPaymentReconciliationService(
@@ -36,6 +38,7 @@ namespace Quraaa.Application.Features.Orders.Services
             ICartRepository cartRepository,
             IListingRepository listingRepository,
             IOrderPaymentFinalizationService paymentFinalizationService,
+            ISellerPayoutDispatchSignal payoutDispatchSignal,
             ILogger<OrderPaymentReconciliationService> logger)
         {
             _paymentGateway = paymentGateway;
@@ -43,6 +46,7 @@ namespace Quraaa.Application.Features.Orders.Services
             _cartRepository = cartRepository;
             _listingRepository = listingRepository;
             _paymentFinalizationService = paymentFinalizationService;
+            _payoutDispatchSignal = payoutDispatchSignal;
             _logger = logger;
         }
 
@@ -144,6 +148,10 @@ namespace Quraaa.Application.Features.Orders.Services
                     cancellationToken);
 
                 await _orderRepository.SaveChangesAsync(cancellationToken);
+
+                // Payouts staged above are now committed: pay the sellers now
+                // rather than on the next periodic sweep.
+                _payoutDispatchSignal.RequestImmediateProcessing();
                 return OrderPaymentReconciliationOutcome.Paid;
             }
 
@@ -182,6 +190,7 @@ namespace Quraaa.Application.Features.Orders.Services
                         cancellationToken);
 
                     await _orderRepository.SaveChangesAsync(cancellationToken);
+                    _payoutDispatchSignal.RequestImmediateProcessing();
                     return OrderPaymentReconciliationOutcome.Paid;
                 }
 

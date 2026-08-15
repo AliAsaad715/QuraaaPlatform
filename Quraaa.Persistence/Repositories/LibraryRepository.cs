@@ -238,6 +238,7 @@ namespace Quraaa.Persistence.Repositories
                         x.Library.Email,
                         x.Library.EmailVerifiedAtUtc,
                         x.Library.ApprovalStatus,
+                        x.Library.ProfitSharePercent,
                         x.Library.CreationTime,
                         new RequesterInfo(
                             x.User.Id,

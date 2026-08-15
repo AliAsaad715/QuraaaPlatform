@@ -12,6 +12,7 @@ using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Otp.Interfaces;
 using Quraaa.Application.Features.Payments.Interfaces;
+using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Shared.Files;
 using Quraaa.Infrastructure.Services;
 using StackExchange.Redis;
@@ -80,6 +81,7 @@ namespace Quraaa.Infrastructure.Extensions
                 serviceProvider => serviceProvider.GetRequiredService<StripePaymentService>());
             services.AddScoped<IStripePaymentService>(
                 serviceProvider => serviceProvider.GetRequiredService<StripePaymentService>());
+            services.AddScoped<IPayoutGateway, StripePayoutGateway>();
 
             services.AddScoped<IOtpCacheService, OtpCacheService>();
             services.AddScoped<IAccessTokenRevocationService, AccessTokenRevocationService>();

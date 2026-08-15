@@ -389,12 +389,13 @@ namespace Quraaa.Persistence.Repositories
                 {
                     SqlState: PostgresErrorCodes.UniqueViolation,
                     ConstraintName: "IX_BookPurchases_OrderItemId"
+                        or "IX_SellerPayouts_OrderId_LibraryId"
                 })
             {
-                // A verified webhook and provider reconciliation can both
-                // stage the same immutable purchases before the order's
-                // concurrency update is issued. The losing transaction rolls
-                // back and retries against the now-paid order.
+                // A verified webhook and provider reconciliation can both stage
+                // the same immutable purchases and seller-payout outbox rows
+                // before the order's concurrency update is issued. The losing
+                // transaction rolls back and retries against the now-paid order.
                 throw new ConflictException(
                     "This order payment was finalized concurrently. Retry the operation.");
             }

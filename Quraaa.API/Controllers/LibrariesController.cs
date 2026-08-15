@@ -7,6 +7,8 @@ using Quraaa.API.Requests.Libraries;
 using Quraaa.Application.Features.Libraries.Commands.RegisterLibrary;
 using Quraaa.Application.Features.Libraries.Commands.IssueLibraryRegistrationLink;
 using Quraaa.Application.Features.Libraries.Commands.ResendLibraryEmailOtp;
+using Quraaa.Application.Features.Libraries.Commands.StartRegistrationStripeOnboarding;
+using Quraaa.Application.Features.Libraries.Commands.SyncRegistrationStripeWallet;
 using Quraaa.Application.Features.Libraries.Commands.UpdateLibraryApprovalStatus;
 using Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp;
 using Quraaa.Application.Features.Libraries.Common;
@@ -15,6 +17,9 @@ using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraryRegistrationContext;
 using Quraaa.Application.Features.Libraries.Queries.GetMyProfile;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
+using Quraaa.Application.Features.Payouts.Commands.SetLibraryProfitShare;
+using Quraaa.Application.Features.Payouts.Common;
+using Quraaa.Application.Features.Payouts.Queries.GetLibraryProfitShare;
 using Quraaa.Application.Shared.Results;
 
 namespace Quraaa.API.Controllers
@@ -212,6 +217,75 @@ namespace Quraaa.API.Controllers
         }
 
         /// <summary>
+        /// Registration wizard, Stripe step (after email verification): starts
+        /// or resumes Stripe-hosted onboarding for the new library's wallet.
+        /// The dashboard must redirect the owner to the returned URL, and call
+        /// register/stripe/sync when Stripe sends them back. Optional — the
+        /// owner can also connect Stripe later from the owner dashboard once
+        /// the library is approved. Authenticated by the registration token in
+        /// the JSON body.
+        /// </summary>
+        /// <response code="200">Redirect the owner to the returned onboarding URL.</response>
+        /// <response code="400">Email not verified yet, or a redirect URL is not on an allowed origin.</response>
+        /// <response code="401">The registration token is invalid, expired, or revoked.</response>
+        /// <response code="409">The wallet is already active.</response>
+        /// <response code="502">Stripe rejected the request; the detail explains why.</response>
+        /// <response code="503">Stripe could not be reached; retry later.</response>
+        [AllowAnonymous]
+        [EnableRateLimiting(ServiceCollectionExtensions.LibraryWalletRateLimitPolicy)]
+        [HttpPost("register/stripe/onboarding")]
+        [ProducesResponseType(typeof(LibraryStripeOnboardingResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        [ProducesResponseType(StatusCodes.Status502BadGateway)]
+        [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+        public async Task<IActionResult> StartRegistrationStripeOnboarding(
+            [FromBody] LibraryRegistrationStripeOnboardingRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            SetNoStoreHeaders();
+
+            return await SendWithPayoutGatewayMappingAsync(
+                new StartRegistrationStripeOnboardingCommand(
+                    request.Token,
+                    request.ReturnUrl,
+                    request.RefreshUrl),
+                cancellationToken);
+        }
+
+        /// <summary>
+        /// Registration wizard, Stripe step: called when the owner returns from
+        /// Stripe onboarding. Re-checks the wallet with Stripe; once it can
+        /// receive transfers the wallet becomes Active and the registration
+        /// wizard is completed. Idempotent. Authenticated by the registration
+        /// token in the JSON body.
+        /// </summary>
+        /// <response code="200">The wallet state after synchronizing with Stripe.</response>
+        /// <response code="401">The registration token is invalid, expired, or revoked.</response>
+        /// <response code="502">Stripe rejected the request; the detail explains why.</response>
+        /// <response code="503">Stripe could not be reached; retry later.</response>
+        [AllowAnonymous]
+        [EnableRateLimiting(ServiceCollectionExtensions.LibraryRegistrationPublicRateLimitPolicy)]
+        [HttpPost("register/stripe/sync")]
+        [ProducesResponseType(typeof(LibraryWalletResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        [ProducesResponseType(StatusCodes.Status502BadGateway)]
+        [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+        public async Task<IActionResult> SyncRegistrationStripeWallet(
+            [FromBody] LibraryRegistrationTokenRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            SetNoStoreHeaders();
+
+            return await SendWithPayoutGatewayMappingAsync(
+                new SyncRegistrationStripeWalletCommand(request.Token),
+                cancellationToken);
+        }
+
+        /// <summary>
         /// Retrieves a paged list of library registration requests. Only accessible by administrators.
         /// </summary>
         /// <param name="request">
@@ -276,11 +350,66 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
-        private void SetNoStoreHeaders()
+        /// <summary>
+        /// Gets the profit-share percentage of a library — the share of its
+        /// gross sales paid out to the library owner on every paid order. Only
+        /// accessible by administrators.
+        /// </summary>
+        /// <param name="id">The library identifier.</param>
+        /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <response code="200">The library's current profit share.</response>
+        /// <response code="404">Library not found.</response>
+        [HttpGet("{id:guid}/profit-share")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(LibraryProfitShareResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetProfitShare(
+            [FromRoute] Guid id,
+            CancellationToken cancellationToken = default)
         {
-            Response.Headers.CacheControl = "no-store";
-            Response.Headers.Pragma = "no-cache";
-            Response.Headers.Append("Referrer-Policy", "no-referrer");
+            var result = await Mediator.Send(
+                new GetLibraryProfitShareQuery(id),
+                cancellationToken);
+
+            return HandleResult(result);
         }
+
+        /// <summary>
+        /// Sets the profit-share percentage of a library — the share of its
+        /// gross sales that is automatically transferred to the library owner's
+        /// Stripe wallet when an order is paid. The platform keeps the
+        /// remainder. Applies to orders paid from now on. Only accessible by
+        /// administrators.
+        /// </summary>
+        /// <param name="id">The library identifier.</param>
+        /// <param name="command">The new percentage (0–100, up to 4 decimal places).</param>
+        /// <param name="cancellationToken">A token to cancel the operation.</param>
+        /// <response code="200">The profit share was updated.</response>
+        /// <response code="400">The percentage is out of range or too precise.</response>
+        /// <response code="404">Library not found.</response>
+        /// <response code="409">The library changed concurrently; retry.</response>
+        [HttpPut("{id:guid}/profit-share")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(LibraryProfitShareResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> SetProfitShare(
+            [FromRoute] Guid id,
+            [FromBody] SetLibraryProfitShareCommand command,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var adminId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                command with { LibraryId = id, AdminId = adminId },
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
     }
 }

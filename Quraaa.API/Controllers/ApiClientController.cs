@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Authentication.Common;
+using Quraaa.Application.Features.Payouts.Exceptions;
 using Quraaa.Application.Shared.Results;
 using System.Security.Claims;
 
@@ -35,6 +36,66 @@ namespace Quraaa.API.Controllers
                 ?? User.FindFirstValue(ClaimTypes.Sid);
 
             return Guid.TryParse(claimValue, out sessionId);
+        }
+
+        /// <summary>
+        /// Marks a response as sensitive: never stored by caches or proxies and
+        /// never leaked through the Referer header.
+        /// </summary>
+        protected void SetNoStoreHeaders()
+        {
+            Response.Headers.CacheControl = "no-store";
+            Response.Headers.Pragma = "no-cache";
+            Response.Headers.Append("Referrer-Policy", "no-referrer");
+        }
+
+        /// <summary>
+        /// Sends a request that may reach the payment provider and maps a
+        /// provider failure onto the right status: a definitive rejection is a
+        /// 502 (the provider refused; retrying unchanged will not help), any
+        /// other failure is a retryable 503.
+        /// </summary>
+        protected async Task<IActionResult> SendWithPayoutGatewayMappingAsync<TResponse>(
+            IRequest<AppResult<TResponse>> request,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var result = await Mediator.Send(request, cancellationToken);
+
+                return HandleResult(result);
+            }
+            catch (PayoutGatewayException exception)
+            {
+                return PayoutGatewayFailure(exception);
+            }
+        }
+
+        /// <summary>
+        /// Maps a payment-provider failure onto a response. Definitive
+        /// rejections carry the provider's own explanation, because the caller
+        /// (or an administrator) has to act on it rather than retry.
+        /// </summary>
+        protected IActionResult PayoutGatewayFailure(PayoutGatewayException exception)
+        {
+            if (exception.IsDefinitiveRejection)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new
+                {
+                    type = "PaymentProviderRejected",
+                    title = "Payment Provider Rejected The Request",
+                    detail = exception.Message
+                });
+            }
+
+            Response.Headers.RetryAfter = "60";
+
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                type = "ServiceUnavailable",
+                title = "Payment Provider Unavailable",
+                detail = "The payment provider could not be reached right now. Please try again later."
+            });
         }
 
         protected UnauthorizedObjectResult InvalidUserIdResult()

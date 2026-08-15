@@ -6,6 +6,8 @@ using Quraaa.Application.Features.Libraries.Services;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
+using Quraaa.Domain.Library;
+using Quraaa.Domain.Library.Enums;
 using Quraaa.Domain.Shared.Exceptions;
 
 namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
@@ -20,6 +22,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
         private readonly ILibraryRepository _libraryRepository;
         private readonly ILibraryRegistrationRepository _registrationRepository;
         private readonly ILibraryEmailOtpProtector _otpProtector;
+        private readonly ILibraryRegistrationTokenService _tokenService;
         private readonly LibraryRegistrationOptions _options;
 
         public VerifyLibraryEmailOtpCommandHandler(
@@ -27,6 +30,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
             ILibraryRepository libraryRepository,
             ILibraryRegistrationRepository registrationRepository,
             ILibraryEmailOtpProtector otpProtector,
+            ILibraryRegistrationTokenService tokenService,
             LibraryRegistrationOptions options,
             ILogger<VerifyLibraryEmailOtpCommandHandler> logger,
             IServiceProvider serviceProvider)
@@ -36,6 +40,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
             _libraryRepository = libraryRepository;
             _registrationRepository = registrationRepository;
             _otpProtector = otpProtector;
+            _tokenService = tokenService;
             _options = options;
         }
 
@@ -78,11 +83,17 @@ namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
 
                     if (library.EmailVerifiedAtUtc.HasValue)
                     {
+                        // Replay (page reload / retry): report where the wizard
+                        // actually stands rather than always pointing back at
+                        // the Stripe step, and never mint a token for it.
                         return new LibraryEmailVerificationResponse(
                             library.Id,
                             challenge.Generation,
                             library.ApprovalStatus,
-                            library.EmailVerifiedAtUtc.Value);
+                            library.EmailVerifiedAtUtc.Value,
+                            ResolveStage(session, library),
+                            session.ExpiresAtUtc,
+                            RegistrationToken: null);
                     }
 
                     if (challenge.IsLockedAt(utcNow))
@@ -117,16 +128,47 @@ namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
 
                     library.VerifyEmail(utcNow);
                     challenge.MarkConsumed(utcNow);
-                    session.Complete(utcNow);
+
+                    // The session stays open for the optional Stripe wallet
+                    // step, but on a NEW token and a much shorter window: from
+                    // here the token can bind the payout account, so a copy of
+                    // the original link (browser history, shared machine) must
+                    // not still work.
+                    var rotatedToken = _tokenService.Generate();
+
+                    session.Reissue(
+                        session.AuthenticationSessionId,
+                        rotatedToken.TokenHash,
+                        utcNow.Add(_options.WalletSetupSessionLifetime),
+                        session.SubmittedAtUtc);
+
                     await _registrationRepository.SaveChangesAsync(cancellationToken);
 
                     return new LibraryEmailVerificationResponse(
                         library.Id,
                         challenge.Generation,
                         library.ApprovalStatus,
-                        library.EmailVerifiedAtUtc!.Value);
+                        library.EmailVerifiedAtUtc!.Value,
+                        ResolveStage(session, library),
+                        session.ExpiresAtUtc,
+                        rotatedToken.RawToken);
                 },
                 "Library email verified; the application is ready for admin review.");
+        }
+
+        /// <summary>
+        /// Mirrors GetLibraryRegistrationContext so both endpoints agree on
+        /// where the wizard stands.
+        /// </summary>
+        private static LibraryRegistrationStage ResolveStage(
+            LibraryRegistrationSession session,
+            LibraryAggregate library)
+        {
+            return session.CompletedAtUtc.HasValue
+                || library.IsStripeWalletActive
+                || library.ApprovalStatus == LibraryApprovalStatus.Rejected
+                ? LibraryRegistrationStage.Completed
+                : LibraryRegistrationStage.StripeWalletSetup;
         }
     }
 }

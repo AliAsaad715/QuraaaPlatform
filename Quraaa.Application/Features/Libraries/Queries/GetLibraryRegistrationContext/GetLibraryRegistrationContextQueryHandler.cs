@@ -6,6 +6,7 @@ using Quraaa.Application.Features.Libraries.Services;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
+using Quraaa.Domain.Library.Enums;
 
 namespace Quraaa.Application.Features.Libraries.Queries.GetLibraryRegistrationContext
 {
@@ -38,10 +39,13 @@ namespace Quraaa.Application.Features.Libraries.Queries.GetLibraryRegistrationCo
                 request,
                 async () =>
                 {
+                    // allowCompleted: a finished wizard still answers with its
+                    // Completed stage so the dashboard can render a summary.
                     var session = await _sessionService.ResolveActiveAsync(
                         request.Token,
                         requireSubmitted: false,
-                        cancellationToken);
+                        cancellationToken,
+                        allowCompleted: true);
                     var library = await _libraryRepository.GetByUserIdAsync(
                         session.UserId,
                         cancellationToken);
@@ -63,9 +67,31 @@ namespace Quraaa.Application.Features.Libraries.Queries.GetLibraryRegistrationCo
                             null);
                     }
 
-                    if (!session.SubmittedAtUtc.HasValue || library.EmailVerifiedAtUtc.HasValue)
+                    if (!session.SubmittedAtUtc.HasValue)
                     {
                         throw new UnauthenticatedException();
+                    }
+
+                    if (library.EmailVerifiedAtUtc.HasValue)
+                    {
+                        // Email done. Either the Stripe wallet step is open, or
+                        // the wizard is complete (wallet active / session closed).
+                        var stage = session.CompletedAtUtc.HasValue
+                            || library.IsStripeWalletActive
+                            || library.ApprovalStatus == LibraryApprovalStatus.Rejected
+                            ? LibraryRegistrationStage.Completed
+                            : LibraryRegistrationStage.StripeWalletSetup;
+
+                        return new LibraryRegistrationContextResponse(
+                            stage,
+                            session.ExpiresAtUtc,
+                            library.Id,
+                            null,
+                            LibraryEmailMasker.Mask(library.Email),
+                            null,
+                            null,
+                            library.WalletStatus,
+                            library.StripeConnectAccountId);
                     }
 
                     var challenge = await _registrationRepository.GetChallengeByLibraryIdAsync(

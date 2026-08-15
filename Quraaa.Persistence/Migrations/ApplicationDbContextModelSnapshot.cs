@@ -511,6 +511,16 @@ namespace Quraaa.Persistence.Migrations
                         .HasMaxLength(250)
                         .HasColumnType("character varying(250)");
 
+                    b.Property<decimal>("ProfitSharePercent")
+                        .HasColumnType("decimal(7,4)");
+
+                    b.Property<string>("StripeConnectAccountId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("StripeWalletActivatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
@@ -525,6 +535,8 @@ namespace Quraaa.Persistence.Migrations
                     b.ToTable("Libraries", null, t =>
                         {
                             t.HasCheckConstraint("CK_Libraries_ApprovalStatus_EmailVerification", "\"ApprovalStatus\" = 4 OR (\"ApprovalStatus\" IN (1, 2, 3) AND \"EmailVerifiedAtUtc\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_Libraries_ProfitSharePercent_Range", "\"ProfitSharePercent\" >= 0 AND \"ProfitSharePercent\" <= 100");
                         });
                 });
 
@@ -1024,6 +1036,118 @@ namespace Quraaa.Persistence.Migrations
                             t.HasCheckConstraint("CK_Orders_TotalAmountMinor_Consistent", "\"TotalAmountMinor\" = \"SubtotalAmountMinor\" + \"ShippingAmountMinor\" - \"DiscountAmountMinor\"");
 
                             t.HasCheckConstraint("CK_Orders_TotalAmountMinor_Positive", "\"TotalAmountMinor\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Payouts.SellerPayoutAggregate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateTime?>("DeleationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DestinationStripeAccountId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<long>("GrossAmountMinor")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("IdempotencyKeyGeneration")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("LibraryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("NetAmountMinor")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PaidAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("PlatformFeeMinor")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("ProfitSharePercent")
+                        .HasColumnType("decimal(7,4)");
+
+                    b.Property<string>("SourceChargeId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("SourcePaymentIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StripeTransferId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LibraryId", "CreationTime");
+
+                    b.HasIndex("OrderId", "LibraryId")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "NextAttemptAtUtc");
+
+                    b.HasIndex("StripeTransferId")
+                        .IsUnique()
+                        .HasFilter("\"StripeTransferId\" IS NOT NULL");
+
+                    b.ToTable("SellerPayouts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_SellerPayouts_Amounts_Consistent", "\"GrossAmountMinor\" = \"NetAmountMinor\" + \"PlatformFeeMinor\"");
+
+                            t.HasCheckConstraint("CK_SellerPayouts_GrossAmountMinor_Positive", "\"GrossAmountMinor\" > 0");
+
+                            t.HasCheckConstraint("CK_SellerPayouts_NetAmountMinor_NonNegative", "\"NetAmountMinor\" >= 0");
+
+                            t.HasCheckConstraint("CK_SellerPayouts_PlatformFeeMinor_NonNegative", "\"PlatformFeeMinor\" >= 0");
+
+                            t.HasCheckConstraint("CK_SellerPayouts_ProfitSharePercent_Range", "\"ProfitSharePercent\" >= 0 AND \"ProfitSharePercent\" <= 100");
                         });
                 });
 
@@ -1660,6 +1784,21 @@ namespace Quraaa.Persistence.Migrations
                         .WithMany("PaymentAttempts")
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Payouts.SellerPayoutAggregate", b =>
+                {
+                    b.HasOne("Quraaa.Domain.Library.LibraryAggregate", null)
+                        .WithMany()
+                        .HasForeignKey("LibraryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Quraaa.Domain.Orders.OrderAggregate", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

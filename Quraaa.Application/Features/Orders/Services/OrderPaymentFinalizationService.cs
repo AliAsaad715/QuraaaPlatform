@@ -1,11 +1,15 @@
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Carts.Interfaces;
+using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Payments.Common;
 using Quraaa.Application.Features.Payments.Interfaces;
+using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
+using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Domain.Orders;
 using Quraaa.Domain.Orders.Entities;
 using Quraaa.Domain.Orders.Enums;
+using Quraaa.Domain.Payouts;
 using Quraaa.Domain.Purchases;
 using Quraaa.Domain.Shared.Exceptions;
 
@@ -17,17 +21,23 @@ namespace Quraaa.Application.Features.Orders.Services
         private readonly IPaymentGateway _paymentGateway;
         private readonly ICartRepository _cartRepository;
         private readonly IBookPurchaseRepository _bookPurchaseRepository;
+        private readonly ISellerPayoutRepository _sellerPayoutRepository;
+        private readonly ILibraryRepository _libraryRepository;
         private readonly ILogger<OrderPaymentFinalizationService> _logger;
 
         public OrderPaymentFinalizationService(
             IPaymentGateway paymentGateway,
             ICartRepository cartRepository,
             IBookPurchaseRepository bookPurchaseRepository,
+            ISellerPayoutRepository sellerPayoutRepository,
+            ILibraryRepository libraryRepository,
             ILogger<OrderPaymentFinalizationService> logger)
         {
             _paymentGateway = paymentGateway;
             _cartRepository = cartRepository;
             _bookPurchaseRepository = bookPurchaseRepository;
+            _sellerPayoutRepository = sellerPayoutRepository;
+            _libraryRepository = libraryRepository;
             _logger = logger;
         }
 
@@ -148,6 +158,81 @@ namespace Quraaa.Application.Features.Orders.Services
             await _bookPurchaseRepository.AddRangeAsync(
                 purchases,
                 cancellationToken);
+
+            await StageSellerPayoutsAsync(order, cancellationToken);
+        }
+
+        /// <summary>
+        /// Stages one profit-share payout per library seller of the paid order,
+        /// using each library's admin-configured profit-share percentage as of
+        /// now. The rows commit atomically with the paid transition
+        /// (transactional outbox); the payout background service — woken right
+        /// after commit — then moves the money to each library's wallet.
+        /// </summary>
+        private async Task StageSellerPayoutsAsync(
+            OrderAggregate order,
+            CancellationToken cancellationToken)
+        {
+            var payouts = new List<SellerPayoutAggregate>();
+
+            // The payment that funds these payouts: transfers draw on this
+            // charge directly, so they are accepted while it is still settling.
+            var sourcePaymentIntentId = order.PaymentAttempts
+                .FirstOrDefault(attempt => attempt.Status == PaymentAttemptStatus.Succeeded)
+                ?.PaymentIntentId;
+
+            var libraryShares = order.Items
+                .Where(item => item.SellerType == SellerType.Library)
+                .GroupBy(item => item.SellerId)
+                .Select(group => new
+                {
+                    LibraryId = group.Key,
+                    GrossAmountMinor = group.Sum(item => item.TotalPriceMinor),
+                });
+
+            foreach (var share in libraryShares)
+            {
+                var library = await _libraryRepository.GetByIdAsync(
+                    share.LibraryId,
+                    cancellationToken);
+
+                if (library is null)
+                {
+                    // Order items reference libraries by FK, so this is a data
+                    // anomaly rather than a business case. Payment recognition
+                    // must not fail because of it; the sale is still recorded.
+                    _logger.LogError(
+                        "Paid order {OrderId} references library {LibraryId}, which could not be loaded; no payout staged for it.",
+                        order.Id,
+                        share.LibraryId);
+                    continue;
+                }
+
+                var payout = SellerPayoutAggregate.Create(
+                    order.Id,
+                    share.LibraryId,
+                    order.Currency,
+                    share.GrossAmountMinor,
+                    library.ProfitSharePercent,
+                    sourcePaymentIntentId);
+
+                if (payout.NetAmountMinor == 0)
+                {
+                    _logger.LogInformation(
+                        "Order {OrderId}: the {ProfitSharePercent}% share of {GrossAmountMinor} minor units for library {LibraryId} rounds to zero; recorded as no amount due.",
+                        order.Id,
+                        library.ProfitSharePercent,
+                        share.GrossAmountMinor,
+                        share.LibraryId);
+                }
+
+                payouts.Add(payout);
+            }
+
+            if (payouts.Count > 0)
+            {
+                await _sellerPayoutRepository.AddRangeAsync(payouts, cancellationToken);
+            }
         }
 
         private void EnsureProviderModeMatches(bool liveMode)

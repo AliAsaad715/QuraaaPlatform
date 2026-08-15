@@ -9,6 +9,7 @@ using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Features.Payouts.Common;
 using Quraaa.Application.Shared.Files;
 using Quraaa.Persistence.Extensions;
 using System.IdentityModel.Tokens.Jwt;
@@ -24,6 +25,8 @@ namespace Quraaa.API.Extensions
         public const string LibraryDashboardCorsPolicy = "library-dashboard";
         public const string LibraryRegistrationLinkRateLimitPolicy = "library-registration-link";
         public const string LibraryRegistrationPublicRateLimitPolicy = "library-registration-public";
+        public const string LibraryWalletRateLimitPolicy = "library-wallet";
+        public const string LibraryWalletSyncRateLimitPolicy = "library-wallet-sync";
 
         public static void AddApplicationServices(
             this IServiceCollection services,
@@ -64,6 +67,13 @@ namespace Quraaa.API.Extensions
             services.AddScoped<IBulkBookStorageService, BulkBookStorageService>();
             services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
             services.AddHostedService<FileRetentionCleanupService>();
+            services.AddHostedService<SellerPayoutProcessingService>();
+            services.AddOptions<PayoutOptions>()
+                .Bind(configuration.GetSection("Payouts"))
+                .Validate(
+                    options => options.MaxTransferAttempts is >= 1 and <= 100,
+                    "Payouts:MaxTransferAttempts must be between 1 and 100.")
+                .ValidateOnStart();
             PersistenceDependencyInjectionHandler.AddPersistenceDependencies(services, configuration);
             ApplicationPackagesRegisterExtensions.AddApplicationDependencies(services);
         }
@@ -89,22 +99,23 @@ namespace Quraaa.API.Extensions
                         });
                 });
 
-                options.AddPolicy(LibraryRegistrationLinkRateLimitPolicy, httpContext =>
-                {
-                    var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
-                    var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString()
-                        ?? "unknown-client";
+                options.AddPolicy(
+                    LibraryRegistrationLinkRateLimitPolicy,
+                    PerUserOrClientFixedWindow(permitLimit: 5, TimeSpan.FromMinutes(10)));
 
-                    return RateLimitPartition.GetFixedWindowLimiter(
-                        partitionKey: userId ?? clientAddress,
-                        factory: _ => new FixedWindowRateLimiterOptions
-                        {
-                            PermitLimit = 5,
-                            Window = TimeSpan.FromMinutes(10),
-                            QueueLimit = 0,
-                            AutoReplenishment = true
-                        });
-                });
+                // Every wallet PUT performs a live Stripe Account retrieve, so
+                // keep it from becoming an account-probing / quota-burning
+                // oracle.
+                options.AddPolicy(
+                    LibraryWalletRateLimitPolicy,
+                    PerUserOrClientFixedWindow(permitLimit: 5, TimeSpan.FromMinutes(10)));
+
+                // Wallet status sync also reads the account at Stripe, but a
+                // normal start -> return -> refresh cycle legitimately calls it
+                // several times, so it gets its own, roomier bucket.
+                options.AddPolicy(
+                    LibraryWalletSyncRateLimitPolicy,
+                    PerUserOrClientFixedWindow(permitLimit: 20, TimeSpan.FromMinutes(10)));
 
                 options.AddPolicy(LibraryRegistrationPublicRateLimitPolicy, httpContext =>
                 {
@@ -125,6 +136,50 @@ namespace Quraaa.API.Extensions
             });
         }
 
+        /// <summary>
+        /// A fixed window partitioned by the authenticated user, falling back to
+        /// the client address for anonymous callers.
+        /// </summary>
+        private static Func<HttpContext, RateLimitPartition<string>> PerUserOrClientFixedWindow(
+            int permitLimit,
+            TimeSpan window)
+        {
+            return httpContext =>
+            {
+                var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+                var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString()
+                    ?? "unknown-client";
+
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: userId ?? clientAddress,
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = permitLimit,
+                        Window = window,
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+            };
+        }
+
+        /// <summary>
+        /// The configured frontend origins, normalised to scheme://host[:port].
+        /// Shared by the CORS policy and the provider redirect allow-list so the
+        /// same setting cannot mean two different things.
+        /// </summary>
+        public static string[] ReadAllowedOrigins(IConfiguration configuration)
+        {
+            return (configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [])
+                .Select(origin => origin?.Trim())
+                .Where(origin => !string.IsNullOrWhiteSpace(origin))
+                .Select(origin => Uri.TryCreate(origin, UriKind.Absolute, out var originUri)
+                    ? originUri.GetLeftPart(UriPartial.Authority)
+                    : null)
+                .OfType<string>()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
         private static LibraryRegistrationOptions CreateLibraryRegistrationOptions(
             IConfiguration configuration,
             bool isDevelopment)
@@ -143,9 +198,17 @@ namespace Quraaa.API.Extensions
                     "LIBRARY_DASHBOARD_REGISTER_URL must be an absolute HTTPS URL without embedded credentials, a query string, or a fragment. Development may use HTTP only for a loopback URL.");
             }
 
+            // Stripe-hosted onboarding may redirect owners back to the
+            // dashboard origin or to any explicitly configured frontend origin.
+            var allowedReturnOrigins = ReadAllowedOrigins(configuration)
+                .Append(dashboardRegisterUrl.GetLeftPart(UriPartial.Authority))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
             return new LibraryRegistrationOptions
             {
-                DashboardRegisterUrl = dashboardRegisterUrl
+                DashboardRegisterUrl = dashboardRegisterUrl,
+                AllowedReturnOrigins = allowedReturnOrigins
             };
         }
 

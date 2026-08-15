@@ -56,27 +56,47 @@ namespace Quraaa.Application.Features.Libraries.Commands.IssueLibraryRegistratio
                     var library = await _libraryRepository.GetByUserIdAsync(
                         request.UserId,
                         cancellationToken);
+                    var session = await _registrationRepository.GetSessionByUserIdAsync(
+                        request.UserId,
+                        cancellationToken);
                     var isResumingEmailVerification = library is not null
                         && !library.EmailVerifiedAtUtc.HasValue
                         && library.ApprovalStatus is LibraryApprovalStatus.AwaitingEmailVerification
                             or LibraryApprovalStatus.Pending;
 
-                    if (library is not null && !isResumingEmailVerification)
+                    // Email verified but the (optional) Stripe wallet step was
+                    // not finished and the library is still awaiting review:
+                    // let the owner back into the wizard to connect Stripe.
+                    // Sessions that were already completed (registrations finished
+                    // before the Stripe step existed) cannot be reissued; those
+                    // owners connect Stripe from the dashboard after approval.
+                    var isResumingWalletSetup = library is not null
+                        && library.EmailVerifiedAtUtc.HasValue
+                        && library.ApprovalStatus == LibraryApprovalStatus.Pending
+                        && !library.IsStripeWalletActive
+                        && (session is null || !session.CompletedAtUtc.HasValue);
+
+                    if (library is not null && !isResumingEmailVerification && !isResumingWalletSetup)
                     {
                         throw new ConflictException(LibraryErrorCodes.DuplicateLibraryForUserMessage);
                     }
 
+                    var isResuming = isResumingEmailVerification || isResumingWalletSetup;
+
                     var utcNow = DateTime.UtcNow;
                     var token = _tokenService.Generate();
-                    var submittedAtUtc = isResumingEmailVerification ? utcNow : (DateTime?)null;
-                    var expiresAtUtc = utcNow.Add(
-                        isResumingEmailVerification
-                            ? _options.SubmittedSessionLifetime
-                            : _options.MagicLinkLifetime);
+                    var submittedAtUtc = isResuming ? utcNow : (DateTime?)null;
 
-                    var session = await _registrationRepository.GetSessionByUserIdAsync(
-                        request.UserId,
-                        cancellationToken);
+                    // A link that resumes the wallet step can bind the payout
+                    // account, so it gets the same short window as the token
+                    // issued right after email verification.
+                    var lifetime = isResumingWalletSetup
+                        ? _options.WalletSetupSessionLifetime
+                        : isResuming
+                            ? _options.SubmittedSessionLifetime
+                            : _options.MagicLinkLifetime;
+
+                    var expiresAtUtc = utcNow.Add(lifetime);
 
                     if (session is null)
                     {
