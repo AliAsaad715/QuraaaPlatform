@@ -3,7 +3,7 @@ using Quraaa.Domain.Catalog.Enums;
 namespace Quraaa.Application.Features.Books.Common
 {
     public record PopularBookResponse(
-        Guid BookId,
+        Guid ListingId,
         string Title,
         string? Author,
         string Description,

@@ -139,6 +139,19 @@ namespace Quraaa.Persistence.Repositories
                 select new PopularBookFlatProjection
                 {
                     BookId = book.Id,
+                    // Cheapest active, in-stock listing for this book; ties broken by
+                    // newest first. Can be Guid.Empty if the book has no such listing
+                    // (e.g. an unranked/out-of-stock book reached via includeUnranked).
+                    ListingId = _context.Listings
+                        .AsNoTracking()
+                        .Where(listing => listing.BookId == book.Id
+                            && !listing.IsDeleted
+                            && listing.Status == ListingStatus.Active
+                            && (listing.Stock ?? 0) > 0)
+                        .OrderBy(listing => listing.Price)
+                        .ThenByDescending(listing => listing.CreationTime)
+                        .Select(listing => listing.Id)
+                        .FirstOrDefault(),
                     Title = book.Title,
                     Author = author.Name,
                     Description = book.Description,
@@ -216,7 +229,7 @@ namespace Quraaa.Persistence.Repositories
 
             return projections
                 .Select(book => new PopularBookResponse(
-                    book.BookId,
+                    book.ListingId,
                     book.Title,
                     book.Author,
                     book.Description,
@@ -233,7 +246,10 @@ namespace Quraaa.Persistence.Repositories
 
         private sealed class PopularBookFlatProjection
         {
+            // Kept internal-only: still needed as a deterministic pagination tie-breaker
+            // in GetRecommendedAsync's ordering, but no longer exposed on PopularBookResponse.
             public Guid BookId { get; set; }
+            public Guid ListingId { get; set; }
             public string Title { get; set; } = null!;
             public string? Author { get; set; }
             public string Description { get; set; } = null!;

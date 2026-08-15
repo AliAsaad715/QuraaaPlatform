@@ -158,6 +158,16 @@ namespace Quraaa.Persistence.Repositories
                 select new HomeBookFlatProjection
                 {
                     BookId = book.Id,
+                    // Cheapest active listing for this book; ties broken by newest first.
+                    // filteredListings is guaranteed non-empty here (the inner join above
+                    // requires a matching listingStats row), so FirstOrDefault never
+                    // actually falls back to Guid.Empty in practice.
+                    CheapestListingId = filteredListings
+                        .Where(listing => listing.BookId == book.Id)
+                        .OrderBy(listing => listing.Price)
+                        .ThenByDescending(listing => listing.CreationTime)
+                        .Select(listing => listing.Id)
+                        .FirstOrDefault(),
                     Title = book.Title,
                     AuthorName = author.Name,
                     CoverImageUrl = book.CoverImageUrl,
@@ -238,7 +248,7 @@ namespace Quraaa.Persistence.Repositories
 
             return projections
                 .Select(book => new HomeBookResponse(
-                    book.BookId,
+                    book.CheapestListingId,
                     book.Title,
                     book.AuthorName,
                     _imageUrlFormatter.Format(book.CoverImageUrl),
@@ -256,7 +266,10 @@ namespace Quraaa.Persistence.Repositories
 
         private sealed class HomeBookFlatProjection
         {
+            // Kept internal-only: still needed as a deterministic pagination tie-breaker
+            // and for grouping/joins above, but no longer exposed on HomeBookResponse.
             public Guid BookId { get; set; }
+            public Guid CheapestListingId { get; set; }
             public string Title { get; set; } = null!;
             public string? AuthorName { get; set; }
             public string CoverImageUrl { get; set; } = null!;

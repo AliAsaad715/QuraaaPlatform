@@ -4,7 +4,7 @@ using Quraaa.Domain.Marketplace.Enums;
 namespace Quraaa.Application.Features.Books.Common
 {
     public record HomeBookResponse(
-        Guid BookId,
+        Guid ListingId,
         string Title,
         string? AuthorName,
         string CoverImageUrl,
