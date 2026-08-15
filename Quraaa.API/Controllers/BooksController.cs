@@ -6,6 +6,7 @@ using Quraaa.Application.Features.Books.Queries.GetHomePageCatalog;
 using Quraaa.Application.Features.Books.Queries.GetMostPopularBooks;
 using Quraaa.Application.Features.Books.Queries.GetRecommendedBooks;
 using Quraaa.Application.Shared.Results;
+using Quraaa.Domain.Catalog;
 
 namespace Quraaa.API.Controllers
 {
@@ -59,6 +60,10 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
+        /// <remarks>
+        /// The <c>Accept-Language</c> header selects the book language to recommend in;
+        /// only <c>ar</c> (Arabic) and <c>en</c> (English) are currently supported.
+        /// </remarks>
         [Authorize]
         [HttpGet("recommended")]
         [ProducesResponseType(typeof(PagedResult<PopularBookResponse>), StatusCodes.Status200OK)]
@@ -77,7 +82,7 @@ namespace Quraaa.API.Controllers
 
             var query = new GetRecommendedBooksQuery(
                 userId,
-                acceptLanguage?.Trim().ToLowerInvariant() ?? string.Empty,
+                string.IsNullOrWhiteSpace(acceptLanguage) ? null : LanguageCodeMapper.Parse(acceptLanguage),
                 request.PageNumber,
                 request.PageSize,
                 request.SearchTerm);

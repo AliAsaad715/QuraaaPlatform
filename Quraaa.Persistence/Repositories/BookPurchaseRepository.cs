@@ -72,8 +72,16 @@ namespace Quraaa.Persistence.Repositories
                     _context.Books.AsNoTracking(),
                     p => p.BookId,
                     b => b.Id,
-                    (p, b) => new PurchaseBookContext(
-                        p.UserId, b.Id, b.Title, b.Author, b.Description, b.CanonicalPdfUrl, b.CanonicalWordDocUrl))
+                    (p, b) => new { Purchase = p, Book = b })
+                .GroupJoin(
+                    _context.Authors.AsNoTracking(),
+                    x => x.Book.AuthorId,
+                    a => a.Id,
+                    (x, authors) => new { x.Purchase, x.Book, Authors = authors })
+                .SelectMany(
+                    x => x.Authors.DefaultIfEmpty(),
+                    (x, a) => new PurchaseBookContext(
+                        x.Purchase.UserId, x.Book.Id, x.Book.Title, a != null ? a.Name : null, x.Book.Description, x.Book.CanonicalPdfUrl, x.Book.CanonicalWordDocUrl))
                 .FirstOrDefaultAsync(cancellationToken);
 
         public async Task<HashSet<string>> FilterReferencedDigitalAssetPathsAsync(
@@ -114,14 +122,22 @@ namespace Quraaa.Persistence.Repositories
                     (x, categories) => new { x.Purchase, x.Book, Categories = categories })
                 .SelectMany(
                     x => x.Categories.DefaultIfEmpty(),
-                    (x, c) => new { x.Purchase, x.Book, Category = c });
+                    (x, c) => new { x.Purchase, x.Book, Category = c })
+                .GroupJoin(
+                    _context.Authors.AsNoTracking(),
+                    x => x.Book.AuthorId,
+                    a => a.Id,
+                    (x, authors) => new { x.Purchase, x.Book, x.Category, Authors = authors })
+                .SelectMany(
+                    x => x.Authors.DefaultIfEmpty(),
+                    (x, a) => new { x.Purchase, x.Book, x.Category, Author = a });
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
                 var normalized = searchTerm.Trim();
                 query = query.Where(x =>
                     EF.Functions.ILike(x.Book.Title, $"%{normalized}%") ||
-                    EF.Functions.ILike(x.Book.Author, $"%{normalized}%"));
+                    EF.Functions.ILike(x.Author!.Name, $"%{normalized}%"));
             }
 
             var totalCount = await query.CountAsync(cancellationToken);
@@ -140,7 +156,7 @@ namespace Quraaa.Persistence.Repositories
                     new BookDetails(
                         x.Book.Id,
                         x.Book.Title,
-                        x.Book.Author,
+                        x.Author?.Name,
                         x.Book.Description,
                         _imageUrlFormatter.Format(x.Book.CoverImageUrl),
                         x.Book.Language,
@@ -183,14 +199,22 @@ namespace Quraaa.Persistence.Repositories
                     (x, categories) => new { x.Purchase, x.Book, Categories = categories })
                 .SelectMany(
                     x => x.Categories.DefaultIfEmpty(),
-                    (x, c) => new { x.Purchase, x.Book, Category = c });
+                    (x, c) => new { x.Purchase, x.Book, Category = c })
+                .GroupJoin(
+                    _context.Authors.AsNoTracking(),
+                    x => x.Book.AuthorId,
+                    a => a.Id,
+                    (x, authors) => new { x.Purchase, x.Book, x.Category, Authors = authors })
+                .SelectMany(
+                    x => x.Authors.DefaultIfEmpty(),
+                    (x, a) => new { x.Purchase, x.Book, x.Category, Author = a });
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
                 var normalized = searchTerm.Trim();
                 query = query.Where(x =>
                     EF.Functions.ILike(x.Book.Title, $"%{normalized}%") ||
-                    EF.Functions.ILike(x.Book.Author, $"%{normalized}%"));
+                    EF.Functions.ILike(x.Author!.Name, $"%{normalized}%"));
             }
 
             var totalCount = await query.CountAsync(cancellationToken);
@@ -209,7 +233,7 @@ namespace Quraaa.Persistence.Repositories
                     new BookDetails(
                         x.Book.Id,
                         x.Book.Title,
-                        x.Book.Author,
+                        x.Author?.Name,
                         x.Book.Description,
                         _imageUrlFormatter.Format(x.Book.CoverImageUrl),
                         x.Book.Language,

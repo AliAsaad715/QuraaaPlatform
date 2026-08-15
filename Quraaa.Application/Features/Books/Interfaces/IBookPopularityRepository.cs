@@ -1,4 +1,5 @@
 using Quraaa.Application.Features.Books.Common;
+using Quraaa.Domain.Catalog.Enums;
 
 namespace Quraaa.Application.Features.Books.Interfaces
 {
@@ -14,7 +15,7 @@ namespace Quraaa.Application.Features.Books.Interfaces
 
         Task<(IReadOnlyCollection<PopularBookResponse> Items, int TotalCount)> GetRecommendedAsync(
             IReadOnlyCollection<Guid> interestedCategoryIds,
-            string language,
+            Language language,
             int pageNumber,
             int pageSize,
             string? searchTerm,

@@ -1,14 +1,15 @@
 ﻿using Quraaa.Application.Features.Categories.Common;
+using Quraaa.Domain.Catalog.Enums;
 
 namespace Quraaa.Application.Features.Catalog.Common
 {
     public record BookDetails(
         Guid BookId,
         string Title,
-        string Author,
+        string? Author,
         string Description,
         string CoverImageUrl,
-        string Language,
+        Language Language,
         string? Isbn,
         CategoryResponse? Category
     );

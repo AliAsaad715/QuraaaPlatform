@@ -1,11 +1,13 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Features.Books.Common;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
+using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
@@ -18,6 +20,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
           IRequestHandler<BulkUploadBooksCommand, AppResult<BulkUploadBooksResponse>>
     {
         private readonly IBookRepository _bookRepository;
+        private readonly IAuthorRepository _authorRepository;
         private readonly IListingRepository _listingRepository;
         private readonly ILibraryRepository _libraryRepository;
         private readonly IBulkBookStorageService _storageService;
@@ -25,6 +28,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
 
         public BulkUploadBooksCommandHandler(
             IBookRepository bookRepository,
+            IAuthorRepository authorRepository,
             IListingRepository listingRepository,
             ILibraryRepository libraryRepository,
             IBulkBookStorageService storageService,
@@ -34,6 +38,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             : base(logger, serviceProvider)
         {
             _bookRepository = bookRepository;
+            _authorRepository = authorRepository;
             _listingRepository = listingRepository;
             _libraryRepository = libraryRepository;
             _storageService = storageService;
@@ -138,19 +143,28 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
                 throw;
             }
 
-            // ── Phase 5: Create entities + bulk insert ────────────────────────────
+            // ── Phase 5: Resolve/create authors, then create entities + bulk insert ──
             try
             {
+                // Resolve or create an Author per distinct name in this batch so every new
+                // book links to a real Author row instead of storing free text. New Authors
+                // are staged only (no SaveChanges) so BulkInsertAsync's SaveChangesAsync call
+                // below commits authors, books, and listings together, atomically.
+                var authorIdByNormalizedName = await ResolveAuthorsAsync(savedResults, cancellationToken);
+
                 var entities = savedResults
                     .Select(r =>
                     {
+                        authorIdByNormalizedName.TryGetValue(
+                            BookTextNormalizer.Normalize(r.Group.Metadata.Author), out var authorId);
+
                         var book = new BookAggregate(
                             id:                  Guid.NewGuid(),
                             title:               r.Group.Metadata.Title.Trim(),
-                            author:              r.Group.Metadata.Author.Trim(),
+                            authorId:            authorId,
                             description:         r.Group.Metadata.Description.Trim(),
                             coverImageUrl:       r.CoverImageUrl,
-                            language:            r.Group.Metadata.Language.Trim(),
+                            language:            r.Group.Metadata.Language,
                             categoryId:          r.Group.Metadata.CategoryId,
                             canonicalPdfUrl:     r.PdfUrl,
                             canonicalWordDocUrl: r.WordDocUrl);
@@ -224,6 +238,52 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             };
 
         // ── Helpers ──────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Resolves an AuthorId per distinct normalized author name across the batch,
+        /// reusing existing Authors and staging (not saving) new ones so the caller's
+        /// later single SaveChangesAsync call commits everything atomically.
+        /// </summary>
+        private async Task<Dictionary<string, Guid>> ResolveAuthorsAsync(
+            IReadOnlyList<SavedFileSet> savedResults,
+            CancellationToken cancellationToken)
+        {
+            var normalizedNames = savedResults
+                .Select(r => BookTextNormalizer.Normalize(r.Group.Metadata.Author))
+                .Where(n => n.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var existingAuthors = await _authorRepository.GetByNormalizedNamesAsync(
+                normalizedNames, cancellationToken);
+
+            // GroupBy + First guards against two existing rows that only differ by
+            // diacritics/alef-variants BookTextNormalizer collapses but the DB-level
+            // backfill's plain lower(trim(...)) treated as distinct.
+            var authorIdByNormalizedName = existingAuthors
+                .GroupBy(a => BookTextNormalizer.Normalize(a.Name), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+
+            var newAuthors = new List<AuthorAggregate>();
+            foreach (var normalizedName in normalizedNames)
+            {
+                if (authorIdByNormalizedName.ContainsKey(normalizedName))
+                    continue;
+
+                var originalName = savedResults
+                    .Select(r => r.Group.Metadata.Author.Trim())
+                    .First(name => BookTextNormalizer.Normalize(name) == normalizedName);
+
+                var newAuthor = new AuthorAggregate(Guid.NewGuid(), originalName, null, null);
+                newAuthors.Add(newAuthor);
+                authorIdByNormalizedName[normalizedName] = newAuthor.Id;
+            }
+
+            if (newAuthors.Count > 0)
+                await _authorRepository.AddRangeAsync(newAuthors, cancellationToken);
+
+            return authorIdByNormalizedName;
+        }
 
         /// <summary>
         /// Removes books from the batch that share a normalized (Title, Author, Language) key,

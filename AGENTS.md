@@ -2,7 +2,7 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
-Last audited against the repository: **2026-08-14**.
+Last audited against the repository: **2026-08-15**.
 
 ## Project Overview
 
@@ -41,6 +41,7 @@ Current implemented business capabilities:
 - Stripe webhook processing through `POST /api/payments/stripe/webhook`; paid events and authoritative expired-attempt reconciliation share order/cart/purchase finalization, while confirmed failure/expiry paths release reservations and reopen the cart.
 - Authenticated user buy/sell history through `/api/purchases/me/buy-history` and `/api/purchases/me/sell-history`.
 - Category management through `GET /api/categories`, `GET /api/categories/{categoryId}`, and `POST /api/categories` (admin-only).
+- Author management (admin-only) through `POST /api/admin/authors`, `GET /api/admin/authors`, `GET /api/admin/authors/{id}`, `PUT /api/admin/authors/{id}`, and `DELETE /api/admin/authors/{id}`.
 - Standalone OTP send through `POST /api/otp/send`.
 - Standalone OTP verification through `POST /api/otp/verify`.
 - Authenticated push notification dispatch through `POST /api/notifications/send`.
@@ -51,7 +52,7 @@ Domain aggregates already modeled but only partially exposed via HTTP:
 - `UserAggregate` — profile/business data for authenticated users.
 - `LibraryAggregate` — library profiles with pending/approved/rejected status.
 - `CategoryAggregate` — book interest categories, seeded at startup.
-- `BookAggregate` — catalog books.
+- `BookAggregate` — catalog books; `AuthorId` is an optional scalar FK to `AuthorAggregate`.
 - `ListingAggregate` — marketplace listings for physical or digital books.
 - `FavoriteBookAggregate` — one active favorite per user/book pair.
 - `BookRatingAggregate` — one 1–5 rating per user/book pair; modeled and used by popularity queries but not exposed by a rating endpoint.
@@ -96,6 +97,7 @@ Quraaa.API/
   appsettings.Development.json
   Properties/launchSettings.json
   Controllers/
+    AdminAuthorsController.cs
     ApiClientController.cs
     AuthController.cs
     BooksController.cs
@@ -156,6 +158,14 @@ Quraaa.Application/
       Common/
       Interfaces/
       Helpers/
+    Authors/
+      Commands/CreateAuthor/
+      Commands/UpdateAuthor/
+      Commands/DeleteAuthor/
+      Queries/GetAuthorById/
+      Queries/GetAuthorsPaginated/
+      Common/
+      Interfaces/
     Books/
       Queries/GetMostPopularBooks/
       Queries/GetRecommendedBooks/
@@ -242,6 +252,8 @@ Quraaa.Application/
 
 Quraaa.Domain/
   Quraaa.Domain.csproj
+  Author/
+    AuthorAggregate.cs
   Catalog/
     BookAggregate.cs
   Cart/
@@ -287,6 +299,7 @@ Quraaa.Persistence/
   Quraaa.Persistence.csproj
   Configurations/
     ApplicationUserConfiguration.cs
+    AuthorConfiguration.cs
     ConsumedRefreshTokenConfiguration.cs
     OrderConfiguration.cs
     OrderItemConfiguration.cs
@@ -301,6 +314,7 @@ Quraaa.Persistence/
     PersistenceDependencyInjectionHandler.cs
   Migrations/
   Repositories/
+    AuthorRepository.cs
     OrderRepository.cs
     PaymentEventInboxRepository.cs
   Seed/
@@ -385,7 +399,7 @@ Layer responsibilities:
 - `Quraaa.Infrastructure`: external provider implementations such as Firebase FCM, Redis caching, Stripe payments, and Google Books metadata lookup.
 - `Quraaa.API`: HTTP controllers, startup, middleware, Swagger, environment configuration.
 
-Across aggregate boundaries, domain types expose scalar identity references such as `UserId`, `BookId`, `ListingId`, and `LibraryId`; do not add aggregate navigation properties or make business logic depend on tracked cross-aggregate graphs. The current Persistence mappings do use navigationless `HasOne<TAggregate>()` calls to create database foreign keys for books/listings, libraries/users, favorites, purchases, and ratings. Treat those as database integrity mappings only.
+Across aggregate boundaries, domain types expose scalar identity references such as `UserId`, `BookId`, `ListingId`, and `LibraryId`; do not add aggregate navigation properties or make business logic depend on tracked cross-aggregate graphs. The current Persistence mappings do use navigationless `HasOne<TAggregate>()` calls to create database foreign keys for books/listings, books/authors, libraries/users, favorites, purchases, and ratings. Treat those as database integrity mappings only.
 
 The user-to-library ownership rule is one-to-one: `LibraryAggregate` stores only scalar `UserId`; `LibraryConfiguration` uses a navigationless one-to-one mapping plus a unique index on `UserId`; the migration enforces the unique index; and application code checks for an existing library before creating another one. Library email is also unique.
 
@@ -552,6 +566,7 @@ Secrets handling:
 
 DbSets:
 
+- `Authors` (`AuthorAggregate`)
 - `UsersProfiles` (`UserAggregate`)
 - `UserLocations` (`UserLocation`; named profile locations with one profile-selected default)
 - `Libraries` (`LibraryAggregate`)
@@ -599,8 +614,12 @@ Located in `Quraaa.Persistence/Migrations/`:
 19. `20260807120954_AddBookCanonicalFilesAndRenameListingDigitalAsset`
 20. `20260809202025_AddMultipleUserLocations`
 21. `20260810134114_PreventUserLocationOwnerReassignment`
+22. `20260813192304_AddComments`
+23. `20260814201322_AddUserDeviceTokens`
+24. `20260815083731_AddAuthorsTable`
+25. `20260815092204_RefactorBookAuthorToForeignKeyAndAddBirthDate`
 
-The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, and saved-location storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, and saved-location storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work. `AddComments` adds book comment storage; `AddUserDeviceTokens` adds FCM device-token storage for push notifications. `AddAuthorsTable` creates the standalone `Authors` table (`AuthorAggregate`). `RefactorBookAuthorToForeignKeyAndAddBirthDate` adds `Authors.BirthDate`; adds nullable `Books.AuthorId`; backfills it by creating an `Author` row (via `gen_random_uuid()`, a PostgreSQL 13+ core builtin) for every distinct existing `Books.Author` string and matching books to it by normalized name; adds the `Books`→`Authors` foreign key and an index on `AuthorId`; and only then drops the old free-text `Books.Author` column. Its downgrade re-adds `Author` and best-effort backfills it from the linked `Authors.Name`.
 
 `Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
 
@@ -850,13 +869,20 @@ GET    /api/purchases/me/sell-history             User
 GET    /api/categories                            anonymous by controller configuration
 GET    /api/categories/{categoryId}               anonymous by controller configuration
 POST   /api/categories                            Admin
+
+POST   /api/admin/authors                         Admin
+GET    /api/admin/authors                         Admin
+GET    /api/admin/authors/{id}                    Admin
+PUT    /api/admin/authors/{id}                    Admin
+DELETE /api/admin/authors/{id}                    Admin
+
 POST   /api/otp/send                              anonymous
 POST   /api/otp/verify                            anonymous
 POST   /api/notifications/send                    authenticated
 POST   /api/notifications/test                    anonymous when enabled
 ```
 
-`Program.cs` sets `RouteOptions.LowercaseUrls = true`; incoming ASP.NET Core routes are case-insensitive, but use the lowercase forms above in examples and generated links. `LibraryListingsController`, `OrdersController`, `PurchaseHistoryController`, `SellerOrdersController`, and `UserListingsController` have explicit route templates; the other controllers normally inherit `api/[controller]`.
+`Program.cs` sets `RouteOptions.LowercaseUrls = true`; incoming ASP.NET Core routes are case-insensitive, but use the lowercase forms above in examples and generated links. `AdminAuthorsController`, `LibraryListingsController`, `OrdersController`, `PurchaseHistoryController`, `SellerOrdersController`, and `UserListingsController` have explicit route templates; the other controllers normally inherit `api/[controller]`.
 
 ### Authentication
 
@@ -1312,6 +1338,31 @@ Buy history returns the authenticated user's Stripe-created purchases with book/
 `GET /api/categories/{categoryId}` returns a single category.
 
 `POST /api/categories` is admin-only (`[Authorize(Roles = "Admin")]`) and creates a new category.
+
+### Authors (Admin)
+
+All five routes require the `Admin` role. `AdminAuthorsController` uses the explicit route `api/admin/authors`.
+
+```text
+POST   /api/admin/authors
+GET    /api/admin/authors
+GET    /api/admin/authors/{id}
+PUT    /api/admin/authors/{id}
+DELETE /api/admin/authors/{id}
+```
+
+`POST`/`PUT` request body:
+
+```json
+{
+  "name": "J.K. Rowling",
+  "bio": "British author, best known for the Harry Potter series.",
+  "photoUrl": "https://example.com/authors/jk-rowling.jpg",
+  "birthDate": "1965-07-31"
+}
+```
+
+`bio`, `photoUrl`, and `birthDate` are optional; when present, `photoUrl` must be an absolute `http`/`https` URL and `birthDate` must be in the past. `GET /api/admin/authors` supports `pageNumber`, `pageSize`, and a `searchTerm` filter on `name` (case-insensitive). `BookAggregate.AuthorId` is a nullable scalar FK to `AuthorAggregate` (no navigation property, per the cross-aggregate convention above); deleting an author still referenced by a book returns `409 Conflict` — `AuthorRepository.RemoveAsync` catches the foreign-key violation, mirroring `CategoryRepository.RemoveAsync`.
 
 ### OTP
 
@@ -2428,6 +2479,89 @@ HTTP POST /api/categories
   -> CreateCategoryCommandHandler
   -> ICategoryRepository.AddAsync(category)
   -> CategoryResponse
+```
+
+### Authors Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/AdminAuthorsController.cs
+Quraaa.Application/Features/Authors/Commands/CreateAuthor/
+Quraaa.Application/Features/Authors/Commands/UpdateAuthor/
+Quraaa.Application/Features/Authors/Commands/DeleteAuthor/
+Quraaa.Application/Features/Authors/Queries/GetAuthorById/
+Quraaa.Application/Features/Authors/Queries/GetAuthorsPaginated/
+Quraaa.Application/Features/Authors/Common/AuthorResponse.cs
+Quraaa.Application/Features/Authors/Interfaces/IAuthorRepository.cs
+Quraaa.Persistence/Repositories/AuthorRepository.cs
+Quraaa.Persistence/Configurations/AuthorConfiguration.cs
+Quraaa.Domain/Author/AuthorAggregate.cs
+```
+
+Routes:
+
+```text
+POST   /api/admin/authors
+GET    /api/admin/authors
+GET    /api/admin/authors/{id}
+PUT    /api/admin/authors/{id}
+DELETE /api/admin/authors/{id}
+```
+
+Authentication:
+
+```text
+All routes -> Authorization: Bearer <admin-access-token> ([Authorize(Roles = "Admin")] at the controller level)
+```
+
+The `AuthorAggregate` model includes:
+
+- `Name` — required, max 150 characters.
+- `Bio` — optional, max 2000 characters.
+- `PhotoUrl` — optional, max 500 characters; must be an absolute `http`/`https` URL when present.
+- `BirthDate` — optional; must be in the past when present.
+
+Unlike `CategoryAggregate`, `AuthorAggregate` has no `IsActive`/soft-delete flag. `DeleteAuthorCommandHandler` performs a real row delete; since the migration `RefactorBookAuthorToForeignKeyAndAddBirthDate` added `Books.AuthorId` as a `Restrict`-on-delete foreign key to this table, `AuthorRepository.RemoveAsync` catches the resulting foreign-key violation and raises `ConflictException` (→ `409`), exactly like `CategoryRepository.RemoveAsync` does for books referencing a category.
+
+Flow:
+
+```text
+HTTP POST /api/admin/authors
+  -> AdminAuthorsController.CreateAuthor(command)
+  -> [Authorize(Roles = "Admin")]
+  -> CreateAuthorCommand(...)
+  -> CreateAuthorCommandHandler
+  -> IAuthorRepository.AddAsync(author)
+  -> AuthorResponse
+
+HTTP GET /api/admin/authors
+  -> AdminAuthorsController.GetAuthors(query)
+  -> GetAuthorsPaginatedQuery
+  -> GetAuthorsPaginatedQueryHandler
+  -> IAuthorRepository.GetPagedAsync(pageNumber, pageSize, searchTerm)
+  -> PagedResult<AuthorResponse>
+
+HTTP GET /api/admin/authors/{id}
+  -> AdminAuthorsController.GetAuthorById(id)
+  -> GetAuthorByIdQuery(id)
+  -> GetAuthorByIdQueryHandler
+  -> IAuthorRepository.GetByIdAsync(id)
+  -> AuthorDetailsResponse or NotFound
+
+HTTP PUT /api/admin/authors/{id}
+  -> AdminAuthorsController.UpdateAuthor(id, command)
+  -> UpdateAuthorCommand(...) with { Id = id, ModifiedBy = adminId }
+  -> UpdateAuthorCommandHandler
+  -> IAuthorRepository.GetByIdAsync(id) -> AuthorAggregate.UpdateDetails(...) -> IAuthorRepository.SaveChangesAsync()
+  -> AuthorResponse or NotFound
+
+HTTP DELETE /api/admin/authors/{id}
+  -> AdminAuthorsController.DeleteAuthor(id)
+  -> DeleteAuthorCommand(id)
+  -> DeleteAuthorCommandHandler
+  -> IAuthorRepository.GetByIdAsync(id) -> IAuthorRepository.RemoveAsync(author)
+  -> Success or NotFound
 ```
 
 ## Development Tips & Common Patterns

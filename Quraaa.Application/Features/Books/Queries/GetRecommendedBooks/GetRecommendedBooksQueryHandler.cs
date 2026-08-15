@@ -50,7 +50,7 @@ namespace Quraaa.Application.Features.Books.Queries.GetRecommendedBooks
 
                 var (books, totalCount) = await _bookPopularityRepository.GetRecommendedAsync(
                     interestedCategoryIds,
-                    request.Language,
+                    request.Language!.Value,
                     request.PageNumber,
                     request.PageSize,
                     request.SearchTerm,

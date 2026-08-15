@@ -1,13 +1,15 @@
+using Quraaa.Domain.Catalog.Enums;
+
 namespace Quraaa.Application.Features.Books.Common
 {
     public record PopularBookResponse(
         Guid BookId,
         string Title,
-        string Author,
+        string? Author,
         string Description,
         string CoverImageUrl,
         Guid? CategoryId,
-        string Language,
+        Language Language,
         string? Isbn,
         long PurchaseCount,
         int RatingCount,

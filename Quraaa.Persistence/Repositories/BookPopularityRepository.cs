@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Quraaa.Application.Features.Books.Common;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Shared.Services;
+using Quraaa.Domain.Catalog.Enums;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Persistence.Data;
 
@@ -46,7 +47,7 @@ namespace Quraaa.Persistence.Repositories
 
         public async Task<(IReadOnlyCollection<PopularBookResponse> Items, int TotalCount)> GetRecommendedAsync(
             IReadOnlyCollection<Guid> interestedCategoryIds,
-            string language,
+            Language language,
             int pageNumber,
             int pageSize,
             string? searchTerm,
@@ -62,13 +63,11 @@ namespace Quraaa.Persistence.Repositories
                 return (Array.Empty<PopularBookResponse>(), 0);
             }
 
-            var normalizedLanguage = language.Trim().ToLowerInvariant();
-
             var query = BuildPopularityQuery()
                 .Where(book =>
                     book.CategoryId.HasValue &&
                     categoryIds.Contains(book.CategoryId.Value) &&
-                    book.Language.ToLower() == normalizedLanguage &&
+                    book.Language == language &&
                     book.ActiveListingCount > 0);
 
             query = ApplySearch(query, searchTerm);
@@ -125,6 +124,9 @@ namespace Quraaa.Persistence.Repositories
             return
                 from book in _context.Books.AsNoTracking()
                 where !book.IsDeleted
+                join author in _context.Authors.AsNoTracking()
+                    on book.AuthorId equals author.Id into authorGroup
+                from author in authorGroup.DefaultIfEmpty()
                 join purchase in purchaseStats
                     on book.Id equals purchase.BookId into purchaseGroup
                 from purchase in purchaseGroup.DefaultIfEmpty()
@@ -138,7 +140,7 @@ namespace Quraaa.Persistence.Repositories
                 {
                     BookId = book.Id,
                     Title = book.Title,
-                    Author = book.Author,
+                    Author = author.Name,
                     Description = book.Description,
                     CoverImageUrl = book.CoverImageUrl,
                     CategoryId = book.CategoryId,
@@ -163,7 +165,7 @@ namespace Quraaa.Persistence.Repositories
             var normalized = searchTerm.Trim();
             return query.Where(book =>
                 EF.Functions.ILike(book.Title, $"%{normalized}%") ||
-                EF.Functions.ILike(book.Author, $"%{normalized}%"));
+                EF.Functions.ILike(book.Author!, $"%{normalized}%"));
         }
 
         private static IQueryable<PopularBookFlatProjection> ApplySorting(
@@ -233,11 +235,11 @@ namespace Quraaa.Persistence.Repositories
         {
             public Guid BookId { get; set; }
             public string Title { get; set; } = null!;
-            public string Author { get; set; } = null!;
+            public string? Author { get; set; }
             public string Description { get; set; } = null!;
             public string CoverImageUrl { get; set; } = null!;
             public Guid? CategoryId { get; set; }
-            public string Language { get; set; } = null!;
+            public Language Language { get; set; }
             public string? Isbn { get; set; }
             public long PurchaseCount { get; set; }
             public int RatingCount { get; set; }

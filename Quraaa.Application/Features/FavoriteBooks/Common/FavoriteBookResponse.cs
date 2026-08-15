@@ -1,14 +1,16 @@
+using Quraaa.Domain.Catalog.Enums;
+
 namespace Quraaa.Application.Features.FavoriteBooks.Common
 {
     public record FavoriteBookResponse(
         Guid FavoriteId,
         Guid BookId,
         string Title,
-        string Author,
+        string? Author,
         string Description,
         string CoverImageUrl,
         Guid? CategoryId,
-        string Language,
+        Language Language,
         string? Isbn,
         DateTime FavoritedAt);
 }

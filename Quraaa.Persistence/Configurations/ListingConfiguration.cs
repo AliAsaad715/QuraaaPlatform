@@ -31,6 +31,10 @@ namespace Quraaa.Persistence.Configurations
             builder.Property(l => l.Status)
                    .IsRequired();
 
+            builder.Property(l => l.Version)
+                   .IsRequired()
+                   .HasDefaultValue(1);
+
             // Adjust precision to match whatever convention you use for
             // money elsewhere - this is just a sensible default.
             builder.Property(l => l.Price)

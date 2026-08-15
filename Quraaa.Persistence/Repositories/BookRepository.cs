@@ -2,6 +2,7 @@
 using Npgsql;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Domain.Catalog;
+using Quraaa.Domain.Catalog.Enums;
 using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
@@ -26,17 +27,26 @@ namespace Quraaa.Persistence.Repositories
                 .FirstOrDefaultAsync(b => b.Id == id, cancellationToken);
 
         public async Task<BookAggregate?> FindByTitleAuthorLanguageAsync(
-            string title, string author, string language,
+            string title, string author, Language language,
             CancellationToken cancellationToken = default) =>
             await _context.Books
                 .AsNoTracking()
-                .FirstOrDefaultAsync(b =>
-                    EF.Functions.ILike(b.Title, title) &&
-                    EF.Functions.ILike(b.Author, author) &&
-                    EF.Functions.ILike(b.Language, language),
-                    cancellationToken);
+                .GroupJoin(
+                    _context.Authors.AsNoTracking(),
+                    b => b.AuthorId,
+                    a => a.Id,
+                    (b, authors) => new { Book = b, Authors = authors })
+                .SelectMany(
+                    x => x.Authors.DefaultIfEmpty(),
+                    (x, a) => new { x.Book, AuthorName = a != null ? a.Name : null })
+                .Where(x =>
+                    EF.Functions.ILike(x.Book.Title, title) &&
+                    EF.Functions.ILike(x.AuthorName!, author) &&
+                    x.Book.Language == language)
+                .Select(x => x.Book)
+                .FirstOrDefaultAsync(cancellationToken);
 
-        public async Task<IReadOnlyList<(string Title, string Author, string Language)>>
+        public async Task<IReadOnlyList<(string Title, string? Author, Language Language)>>
             FindExistingCandidatesAsync(
                 IReadOnlyList<string> normalizedTitles,
                 CancellationToken cancellationToken = default)
@@ -46,16 +56,22 @@ namespace Quraaa.Persistence.Repositories
 
             // EF Core + Npgsql translates string.ToLower() → lower() in PostgreSQL.
             // normalizedTitles.Contains(...) → lower("Title") IN ('t1', 't2', ...)
-            // This can leverage the expression index on lower("Title") created by migration
-            // AddCaseInsensitiveBookIndexes.
+            // Author is resolved via a left join since AuthorId is optional.
             var matches = await _context.Books
                 .AsNoTracking()
                 .Where(b => normalizedTitles.Contains(b.Title.ToLower()))
-                .Select(b => new { b.Title, b.Author, b.Language })
+                .GroupJoin(
+                    _context.Authors.AsNoTracking(),
+                    b => b.AuthorId,
+                    a => a.Id,
+                    (b, authors) => new { Book = b, Authors = authors })
+                .SelectMany(
+                    x => x.Authors.DefaultIfEmpty(),
+                    (x, a) => new { x.Book.Title, AuthorName = a != null ? a.Name : null, x.Book.Language })
                 .ToListAsync(cancellationToken);
 
             return matches
-                .Select(m => (m.Title, m.Author, m.Language))
+                .Select(m => (m.Title, m.AuthorName, m.Language))
                 .ToList();
         }
 

@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
+using Quraaa.Domain.Catalog.Enums;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Persistence.Data;
@@ -13,15 +15,28 @@ namespace Quraaa.Persistence.Seed
 
         private const string Title = "Ebook One";
         private const string Author = "Quraaa Seed Data";
-        private const string Language = "en";
+        private const Language BookLanguage = Language.English;
         private const string DigitalAssetUrl = "books/book1.pdf";
 
         public static async Task SeedAsync(ApplicationDbContext context, CancellationToken cancellationToken = default)
         {
+            var authorId = await context.Authors
+                .Where(a => a.Name == Author)
+                .Select(a => (Guid?)a.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (authorId is null)
+            {
+                var newAuthor = new AuthorAggregate(Guid.NewGuid(), Author, null, null);
+                await context.Authors.AddAsync(newAuthor, cancellationToken);
+                await context.SaveChangesAsync(cancellationToken);
+                authorId = newAuthor.Id;
+            }
+
             var bookId = await context.Books
                 .Where(book =>
                     book.Id == EbookBookId ||
-                    (book.Title == Title && book.Author == Author && book.Language == Language))
+                    (book.Title == Title && book.AuthorId == authorId && book.Language == BookLanguage))
                 .Select(book => book.Id)
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -36,10 +51,10 @@ namespace Quraaa.Persistence.Seed
                 var ebook = new BookAggregate(
                     EbookBookId,
                     Title,
-                    Author,
+                    authorId,
                     "Seeded ebook for development and manual testing.",
                     "/uploads/books/book1-cover.jpg",
-                    Language,
+                    BookLanguage,
                     categoryId);
 
                 await context.Books.AddAsync(ebook, cancellationToken);

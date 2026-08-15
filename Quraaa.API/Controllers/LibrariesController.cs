@@ -167,6 +167,10 @@ namespace Quraaa.API.Controllers
         /// <param name="libraryId" example="01f185c0-dff4-45fa-8fe6-60d1c870ea8b">The unique identifier of the library (Pre-loaded example containing books for testing(FrontEnd)).</param>
         /// <param name="request">Pagination, filtering, and sorting parameters.</param>
         /// <param name="cancellationToken"></param>
+        /// <remarks>
+        /// Each item includes <c>Version</c>, an integer counter incremented every time
+        /// the listing's price, stock, condition, or digital asset changes.
+        /// </remarks>
         [AllowAnonymous]
         [HttpGet("{libraryId}/books")]
         [ProducesResponseType(typeof(PagedResult<ListingSummaryResponse>), StatusCodes.Status200OK)]

@@ -9,6 +9,8 @@ namespace Quraaa.Application.Features.Listings.Queries.GetListingById
         int? Stock,
         BookCondition? Condition,
         ListingStatus Status,
+        ListingFormat Format,
+        int Version,
         BookDetails Book
     );
 }

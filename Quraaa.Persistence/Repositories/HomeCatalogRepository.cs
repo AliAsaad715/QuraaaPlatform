@@ -146,6 +146,9 @@ namespace Quraaa.Persistence.Repositories
                 join category in _context.Categories.AsNoTracking()
                     on book.CategoryId equals category.Id into categoryJoin
                 from category in categoryJoin.DefaultIfEmpty()
+                join author in _context.Authors.AsNoTracking()
+                    on book.AuthorId equals author.Id into authorJoin
+                from author in authorJoin.DefaultIfEmpty()
                 join rating in ratingStats
                     on book.Id equals rating.BookId into ratingJoin
                 from rating in ratingJoin.DefaultIfEmpty()
@@ -156,7 +159,7 @@ namespace Quraaa.Persistence.Repositories
                 {
                     BookId = book.Id,
                     Title = book.Title,
-                    AuthorName = book.Author,
+                    AuthorName = author.Name,
                     CoverImageUrl = book.CoverImageUrl,
                     CategoryId = book.CategoryId,
                     CategoryNameAr = category.NameAr,
@@ -183,7 +186,7 @@ namespace Quraaa.Persistence.Repositories
             var normalized = searchTerm.Trim();
             return query.Where(book =>
                 EF.Functions.ILike(book.Title, $"%{normalized}%") ||
-                EF.Functions.ILike(book.AuthorName, $"%{normalized}%"));
+                EF.Functions.ILike(book.AuthorName!, $"%{normalized}%"));
         }
 
         private static IQueryable<HomeBookFlatProjection> ApplySorting(
@@ -255,7 +258,7 @@ namespace Quraaa.Persistence.Repositories
         {
             public Guid BookId { get; set; }
             public string Title { get; set; } = null!;
-            public string AuthorName { get; set; } = null!;
+            public string? AuthorName { get; set; }
             public string CoverImageUrl { get; set; } = null!;
             public Guid? CategoryId { get; set; }
             public string? CategoryNameAr { get; set; }

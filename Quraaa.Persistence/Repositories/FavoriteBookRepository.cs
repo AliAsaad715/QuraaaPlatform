@@ -38,6 +38,9 @@ namespace Quraaa.Persistence.Repositories
                 from favorite in _context.FavoriteBooks.AsNoTracking()
                 join book in _context.Books.AsNoTracking()
                     on favorite.BookId equals book.Id
+                join author in _context.Authors.AsNoTracking()
+                    on book.AuthorId equals author.Id into authorJoin
+                from author in authorJoin.DefaultIfEmpty()
                 where favorite.UserId == userId
                     && favorite.BookId == bookId
                     && !favorite.IsDeleted
@@ -46,7 +49,8 @@ namespace Quraaa.Persistence.Repositories
                 {
                     favorite.Id,
                     favorite.CreationTime,
-                    Book = book
+                    Book = book,
+                    AuthorName = author.Name
                 })
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -59,7 +63,7 @@ namespace Quraaa.Persistence.Repositories
                 row.Id,
                 row.Book.Id,
                 row.Book.Title,
-                row.Book.Author,
+                row.AuthorName,
                 row.Book.Description,
                 _imageUrlFormatter.Format(row.Book.CoverImageUrl),
                 row.Book.CategoryId,
@@ -79,6 +83,9 @@ namespace Quraaa.Persistence.Repositories
                 from favorite in _context.FavoriteBooks.AsNoTracking()
                 join book in _context.Books.AsNoTracking()
                     on favorite.BookId equals book.Id
+                join author in _context.Authors.AsNoTracking()
+                    on book.AuthorId equals author.Id into authorJoin
+                from author in authorJoin.DefaultIfEmpty()
                 where favorite.UserId == userId
                     && !favorite.IsDeleted
                     && !book.IsDeleted
@@ -88,7 +95,7 @@ namespace Quraaa.Persistence.Repositories
                     FavoriteCreationTime = favorite.CreationTime,
                     BookId = book.Id,
                     book.Title,
-                    book.Author,
+                    Author = author.Name,
                     book.Description,
                     book.CoverImageUrl,
                     book.CategoryId,

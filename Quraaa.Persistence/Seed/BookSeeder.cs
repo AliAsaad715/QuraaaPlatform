@@ -1,5 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
+using Quraaa.Domain.Catalog.Enums;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.Library.Enums;
 using Quraaa.Domain.Marketplace;
@@ -17,6 +19,7 @@ namespace Quraaa.Persistence.Seed
             var bookSet = db.Set<BookAggregate>();
             var listingSet = db.Set<ListingAggregate>();
             var librarySet = db.Set<LibraryAggregate>();
+            var authorSet = db.Set<AuthorAggregate>();
 
             var targetLibraryId = await librarySet
                 .AsNoTracking()
@@ -45,6 +48,26 @@ namespace Quraaa.Persistence.Seed
             var arabicTitles = new[] { "أرض زيكولا", "مقدمة ابن خلدون", "ثلاثية غرناطة", "عابر سرير", "الخيميائي", "قواعد العشق الأربعون", "ساق البامبو", "الفيل الأزرق" };
             var englishTitles = new[] { "Clean Code", "The Pragmatic Programmer", "To Kill a Mockingbird", "180°C Knowledge", "Atomic Habits", "Dune", "The Hobbit", "Zero to One" };
             var authors = new[] { "Ahmed Khaled", "Robert C. Martin", "Radwa Ashour", "James Clear", "Naguib Mahfouz", "Dan Brown" };
+
+            var authorIdByName = await authorSet
+                .Where(a => authors.Contains(a.Name))
+                .ToDictionaryAsync(a => a.Name, a => a.Id);
+
+            var newAuthors = authors
+                .Where(name => !authorIdByName.ContainsKey(name))
+                .Select(name => new AuthorAggregate(Guid.NewGuid(), name, null, null))
+                .ToList();
+
+            if (newAuthors.Count > 0)
+            {
+                await authorSet.AddRangeAsync(newAuthors);
+                await db.SaveChangesAsync();
+
+                foreach (var newAuthor in newAuthors)
+                {
+                    authorIdByName[newAuthor.Name] = newAuthor.Id;
+                }
+            }
 
             var seedIsbns = Enumerable.Range(0, 60)
                 .Select(i => $"978-3-16-14{i:D4}-0")
@@ -82,12 +105,12 @@ namespace Quraaa.Persistence.Seed
                     : "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=500&q=80";
 
                 var categoryId = categories[i % categories.Length];
-                var language = isArabic ? "ar" : "en";
+                var language = isArabic ? Language.Arabic : Language.English;
 
                 var book = new BookAggregate(
                     bookId,
                     title,
-                    author,
+                    authorIdByName[author],
                     description,
                     coverImage,
                     language,
