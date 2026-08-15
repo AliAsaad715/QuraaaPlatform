@@ -8,6 +8,7 @@ using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Library.Enums;
 using Quraaa.Domain.User.Enums;
 using Quraaa.Domain.Shared.Exceptions;
+using Quraaa.Domain.Notifications;
 
 namespace Quraaa.Application.Features.Libraries.Commands.UpdateLibraryApprovalStatus
 {
@@ -19,12 +20,14 @@ namespace Quraaa.Application.Features.Libraries.Commands.UpdateLibraryApprovalSt
         private readonly IUserRepository _userRepository;
         private readonly IIdentityService _identityService;
         private readonly IAuthenticationUnitOfWork _unitOfWork;
+        private readonly ILibraryApprovalNotificationRepository _approvalNotificationRepository;
 
         public UpdateLibraryApprovalStatusCommandHandler(
             ILibraryRepository libraryRepository,
             IUserRepository userRepository,
             IIdentityService identityService,
             IAuthenticationUnitOfWork unitOfWork,
+            ILibraryApprovalNotificationRepository approvalNotificationRepository,
             ILogger<UpdateLibraryApprovalStatusCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -33,6 +36,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.UpdateLibraryApprovalSt
             _userRepository = userRepository;
             _identityService = identityService;
             _unitOfWork = unitOfWork;
+            _approvalNotificationRepository = approvalNotificationRepository;
         }
 
         public async Task<AppResult> Handle(
@@ -71,6 +75,15 @@ namespace Quraaa.Application.Features.Libraries.Commands.UpdateLibraryApprovalSt
                                 "The library was not approved because its owner role could not be assigned: " +
                                 string.Join("; ", roleResult.Errors));
                         }
+
+                        await _approvalNotificationRepository.AddAsync(
+                            LibraryApprovalNotification.Create(
+                                library.Id,
+                                library.UserId,
+                                library.Email,
+                                library.LibraryName,
+                                DateTime.UtcNow),
+                            transactionCancellationToken);
                     }
                     else
                     {

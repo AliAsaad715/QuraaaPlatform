@@ -2,6 +2,7 @@ using MediatR;
 using Quraaa.Application.Features.Books.Common;
 using Quraaa.Application.Shared.Files;
 using Quraaa.Application.Shared.Results;
+using Quraaa.Domain.Catalog.Enums;
 using Quraaa.Domain.Marketplace.Enums;
 
 namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
@@ -18,7 +19,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
         string Author,
         string Description,
         Guid? CategoryId,
-        string Language,
+        Language Language,
         decimal Price,
         int Quantity,
         ListingFormat Format

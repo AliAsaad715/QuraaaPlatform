@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Features.Listings.Queries.GetListingById;
 using Quraaa.Application.Shared.Services;
+using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Category;
 using Quraaa.Domain.Marketplace;
@@ -83,6 +84,14 @@ namespace Quraaa.Persistence.Repositories
                 .SelectMany(
                     x => x.Categories.DefaultIfEmpty(),
                     (x, c) => new { x.Listing, x.Book, Category = c })
+                .GroupJoin(
+                    _context.Authors.AsNoTracking(),
+                    x => x.Book.AuthorId,
+                    a => a.Id,
+                    (x, authors) => new { x.Listing, x.Book, x.Category, Authors = authors })
+                .SelectMany(
+                    x => x.Authors.DefaultIfEmpty(),
+                    (x, a) => new { x.Listing, x.Book, x.Category, Author = a })
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (row is null)
@@ -96,10 +105,12 @@ namespace Quraaa.Persistence.Repositories
                 row.Listing.Stock,
                 row.Listing.Condition,
                 row.Listing.Status,
+                row.Listing.Format,
+                row.Listing.Version,
                 new BookDetails(
                     row.Book.Id,
                     row.Book.Title,
-                    row.Book.Author,
+                    row.Author?.Name,
                     row.Book.Description,
                     _imageUrlFormatter.Format(row.Book.CoverImageUrl),
                     row.Book.Language,
@@ -145,11 +156,20 @@ namespace Quraaa.Persistence.Repositories
                     (x, categories) => new { x.Listing, x.Book, Categories = categories })
                 .SelectMany(
                     x => x.Categories.DefaultIfEmpty(),
-                    (x, c) => new UserListingFlatProjection
+                    (x, c) => new { x.Listing, x.Book, Category = c })
+                .GroupJoin(
+                    _context.Authors.AsNoTracking(),
+                    x => x.Book.AuthorId,
+                    a => a.Id,
+                    (x, authors) => new { x.Listing, x.Book, x.Category, Authors = authors })
+                .SelectMany(
+                    x => x.Authors.DefaultIfEmpty(),
+                    (x, a) => new UserListingFlatProjection
                     {
                         Listing = x.Listing,
                         Book = x.Book,
-                        Category = c
+                        Category = x.Category,
+                        Author = a
                     });
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -157,8 +177,7 @@ namespace Quraaa.Persistence.Repositories
                 var normalized = searchTerm.Trim();
                 query = query.Where(x =>
                     EF.Functions.ILike(x.Book.Title, $"%{normalized}%") ||
-                    EF.Functions.ILike(x.Book.Author, $"%{normalized}%") ||
-                    EF.Functions.ILike(x.Book.Language, $"%{normalized}%"));
+                    EF.Functions.ILike(x.Author!.Name, $"%{normalized}%"));
             }
 
             query = ApplySorting(query, sortBy, sortDescending);
@@ -179,10 +198,11 @@ namespace Quraaa.Persistence.Repositories
                     x.Listing.Stock,
                     x.Listing.Condition,
                     x.Listing.Status,
+                    x.Listing.Version,
                     new BookDetails(
                         x.Book.Id,
                         x.Book.Title,
-                        x.Book.Author,
+                        x.Author?.Name,
                         x.Book.Description,
                         _imageUrlFormatter.Format(x.Book.CoverImageUrl),
                         x.Book.Language,
@@ -236,7 +256,7 @@ namespace Quraaa.Persistence.Repositories
         {
             return sortBy?.ToLowerInvariant() switch
             {
-                "author" => sortDescending ? query.OrderByDescending(x => x.Book.Author) : query.OrderBy(x => x.Book.Author),
+                "author" => sortDescending ? query.OrderByDescending(x => x.Author!.Name) : query.OrderBy(x => x.Author!.Name),
                 "quantity" => sortDescending ? query.OrderByDescending(x => x.Listing.Stock) : query.OrderBy(x => x.Listing.Stock),
                 _ => sortDescending ? query.OrderByDescending(x => x.Book.Title) : query.OrderBy(x => x.Book.Title),
             };
@@ -247,6 +267,7 @@ namespace Quraaa.Persistence.Repositories
             public required ListingAggregate Listing { get; set; }
             public required BookAggregate Book { get; set; }
             public CategoryAggregate? Category { get; set; }
+            public AuthorAggregate? Author { get; set; }
         }
     }
 }

@@ -14,6 +14,13 @@ namespace Quraaa.API.Controllers
     [Route("api/listings")]
     public class UserListingsController : ApiClientController
     {
+        /// <summary>
+        /// Get a paged list of the authenticated user's own listings.
+        /// </summary>
+        /// <remarks>
+        /// Each item includes <c>Version</c>, an integer counter incremented every time
+        /// the listing's price, stock, condition, or digital asset changes.
+        /// </remarks>
         [HttpGet("me")]
         [ProducesResponseType(typeof(PagedResult<ListingSummaryResponse>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetMyListings(

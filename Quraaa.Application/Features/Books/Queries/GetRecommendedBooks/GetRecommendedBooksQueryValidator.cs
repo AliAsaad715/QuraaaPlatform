@@ -1,4 +1,5 @@
 using FluentValidation;
+using Quraaa.Domain.Catalog.Enums;
 
 namespace Quraaa.Application.Features.Books.Queries.GetRecommendedBooks
 {
@@ -11,12 +12,9 @@ namespace Quraaa.Application.Features.Books.Queries.GetRecommendedBooks
 
             RuleFor(x => x.Language)
                 .Cascade(CascadeMode.Stop)
-                .NotEmpty().WithMessage("Language is required.")
-                .MaximumLength(20).WithMessage("Language must be 20 characters or fewer.")
-                .Must(language =>
-                    language.Equals("ar", StringComparison.OrdinalIgnoreCase) ||
-                    language.Equals("en", StringComparison.OrdinalIgnoreCase))
-                .WithMessage("Language must be either 'ar' or 'en'.");
+                .NotNull().WithMessage("Language is required.")
+                .Must(language => language is Language.Arabic or Language.English)
+                .WithMessage("Language must be either Arabic or English.");
 
             RuleFor(x => x.PageNumber)
                 .GreaterThanOrEqualTo(1).WithMessage("Page number must be at least 1.");

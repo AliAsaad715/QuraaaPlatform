@@ -6,7 +6,7 @@ namespace Quraaa.Application.Features.Books.Common
     public record HomeBookResponse(
         Guid BookId,
         string Title,
-        string AuthorName,
+        string? AuthorName,
         string CoverImageUrl,
         CategoryResponse? Category,
         ListingFormat Format,

@@ -11,10 +11,16 @@ namespace Quraaa.Application.Features.Notifications.Interfaces
             IReadOnlyDictionary<string, string>? data = null,
             CancellationToken cancellationToken = default);
 
+        Task<PushBatchDeliveryResult> SendToDevicesAsync(
+            IReadOnlyCollection<string> deviceTokens,
+            string title,
+            string body,
+            IReadOnlyDictionary<string, string>? data = null,
+            CancellationToken cancellationToken = default);
+
         /// <summary>
-        /// Best-effort fan-out to many devices at once (chunked to FCM's 500-token-per-request
-        /// limit). Never throws — per-token and per-chunk failures are reported back in the
-        /// result instead, since callers treat delivery as best-effort.
+        /// Sends notifications to multiple devices in chunks.
+        /// Individual delivery failures are returned in the result.
         /// </summary>
         Task<FirebaseMulticastResult> SendMulticastAsync(
             IReadOnlyCollection<string> deviceTokens,

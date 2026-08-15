@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using Quraaa.Domain.Catalog.Enums;
 
 namespace Quraaa.Domain.Catalog
 {
@@ -60,8 +61,9 @@ namespace Quraaa.Domain.Catalog
         /// <summary>
         /// Returns a pipe-delimited composite key over all three deduplication fields.
         /// Suitable as a <see cref="HashSet{T}"/> key with <see cref="StringComparer.OrdinalIgnoreCase"/>.
+        /// Language is a fixed enum (no free-text variance), so it is embedded as-is.
         /// </summary>
-        public static string CompositeKey(string title, string author, string language)
-            => $"{Normalize(title)}|{Normalize(author)}|{Normalize(language)}";
+        public static string CompositeKey(string title, string? author, Language language)
+            => $"{Normalize(title)}|{Normalize(author)}|{language}";
     }
 }

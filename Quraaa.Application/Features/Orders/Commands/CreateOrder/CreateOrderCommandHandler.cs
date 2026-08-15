@@ -187,7 +187,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
                         sellerId,
                         listing.Format,
                         details.Book.Title,
-                        details.Book.Author,
+                        details.Book.Author ?? "Unknown",
                         details.Book.CoverImageUrl,
                         sellerName,
                         listing.CustomDigitalAssetUrl,

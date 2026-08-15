@@ -2,7 +2,7 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
-Last audited against the repository: **2026-08-14**.
+Last audited against the repository: **2026-08-15**.
 
 ## Project Overview
 
@@ -25,6 +25,7 @@ Current implemented business capabilities:
 - Authenticated named saved-location list/create/edit/default/delete through `/api/profile/locations`.
 - Authenticated mobile library-registration link issuance through `POST /api/libraries/register`.
 - Token-authenticated dashboard registration context/detail submission and SMTP email-OTP verification through `/api/libraries/register/*`; only verified applications enter the admin queue.
+- Admin approval atomically promotes the owner and enqueues durable delivery of an approval email plus an FCM push to the owner's registered mobile devices.
 - Public, searchable library listing through `GET /api/libraries`.
 - Paged/searchable/sortable active physical-book listing by library through `GET /api/libraries/{libraryId}/books`.
 - Public ebook listing through `GET /api/ebooks`.
@@ -32,7 +33,7 @@ Current implemented business capabilities:
 - Interest/category/language-based authenticated recommendations through `GET /api/books/recommended`.
 - Authenticated favorite-book list/add/remove through `/api/favorite-books`.
 - User physical-book listing creation and current-user listing retrieval through `/api/listings`.
-- Library inventory listing create/update/detail operations through `/api/library-admin/listings`.
+- Library inventory listing create/update/detail operations through `/api/library-admin/listings`, including digital-asset replacement with a 110 MB multipart transport allowance for the validated 100 MB PDF limit.
 - User cart retrieval/mutation through `/api/cart`, with one open cart per user, Stripe-compatible line/quantity limits, and cumulative physical-stock validation.
 - Authenticated checkout context through `GET /api/orders/checkout-context`; physical and mixed carts return default-first owned saved-location choices, while empty and digital-only carts require no shipping location.
 - Order-driven Stripe Checkout through `POST /api/orders`: the order, cart lock, physical-stock reservations, and payment attempt are persisted before Stripe is called.
@@ -41,8 +42,11 @@ Current implemented business capabilities:
 - Stripe webhook processing through `POST /api/payments/stripe/webhook`; paid events and authoritative expired-attempt reconciliation share order/cart/purchase finalization, while confirmed failure/expiry paths release reservations and reopen the cart.
 - Authenticated user buy/sell history through `/api/purchases/me/buy-history` and `/api/purchases/me/sell-history`.
 - Category management through `GET /api/categories`, `GET /api/categories/{categoryId}`, and `POST /api/categories` (admin-only).
+- Author management (admin-only) through `POST /api/admin/authors`, `GET /api/admin/authors`, `GET /api/admin/authors/{id}`, `PUT /api/admin/authors/{id}`, and `DELETE /api/admin/authors/{id}`.
 - Standalone OTP send through `POST /api/otp/send`.
 - Standalone OTP verification through `POST /api/otp/verify`.
+- Authenticated FCM device-token registration/removal through `PUT` and `DELETE /api/notifications/devices`; deprecated `POST /api/notifications/device-token` remains a registration alias backed by the same `PushDevices` store.
+- Library listing publication and digital-asset-update pushes are committed to a durable outbox with the listing change and delivered by a retrying background worker; publications committed together for one library are coalesced into one notification.
 - Authenticated push notification dispatch through `POST /api/notifications/send`.
 - Development/test push notification dispatch through `POST /api/notifications/test`.
 
@@ -51,7 +55,7 @@ Domain aggregates already modeled but only partially exposed via HTTP:
 - `UserAggregate` — profile/business data for authenticated users.
 - `LibraryAggregate` — library profiles with pending/approved/rejected status.
 - `CategoryAggregate` — book interest categories, seeded at startup.
-- `BookAggregate` — catalog books.
+- `BookAggregate` — catalog books; `AuthorId` is an optional scalar FK to `AuthorAggregate`.
 - `ListingAggregate` — marketplace listings for physical or digital books.
 - `FavoriteBookAggregate` — one active favorite per user/book pair.
 - `BookRatingAggregate` — one 1–5 rating per user/book pair; modeled and used by popularity queries but not exposed by a rating endpoint.
@@ -71,7 +75,7 @@ Core technologies:
 - Firebase Admin SDK for FCM push notifications and OTP SMS gateway data messages
 - `IDistributedCache`, with Redis support for production OTP cache and in-memory cache for local/development fallback
 - Stripe.net for Checkout session creation and signed webhook parsing
-- MailKit for SMTP/STARTTLS library email verification
+- MailKit for SMTP/STARTTLS library email verification and approval messages
 - CloudinaryDotNet for durable public images and authenticated private PDF/Word assets
 - Typed `HttpClient` integration with Google Books for ISBN metadata lookup
 - DotNetEnv plus environment variables for runtime secrets/configuration
@@ -96,6 +100,7 @@ Quraaa.API/
   appsettings.Development.json
   Properties/launchSettings.json
   Controllers/
+    AdminAuthorsController.cs
     ApiClientController.cs
     AuthController.cs
     BooksController.cs
@@ -156,6 +161,14 @@ Quraaa.Application/
       Common/
       Interfaces/
       Helpers/
+    Authors/
+      Commands/CreateAuthor/
+      Commands/UpdateAuthor/
+      Commands/DeleteAuthor/
+      Queries/GetAuthorById/
+      Queries/GetAuthorsPaginated/
+      Common/
+      Interfaces/
     Books/
       Queries/GetMostPopularBooks/
       Queries/GetRecommendedBooks/
@@ -242,6 +255,8 @@ Quraaa.Application/
 
 Quraaa.Domain/
   Quraaa.Domain.csproj
+  Author/
+    AuthorAggregate.cs
   Catalog/
     BookAggregate.cs
   Cart/
@@ -287,6 +302,7 @@ Quraaa.Persistence/
   Quraaa.Persistence.csproj
   Configurations/
     ApplicationUserConfiguration.cs
+    AuthorConfiguration.cs
     ConsumedRefreshTokenConfiguration.cs
     OrderConfiguration.cs
     OrderItemConfiguration.cs
@@ -301,6 +317,7 @@ Quraaa.Persistence/
     PersistenceDependencyInjectionHandler.cs
   Migrations/
   Repositories/
+    AuthorRepository.cs
     OrderRepository.cs
     PaymentEventInboxRepository.cs
   Seed/
@@ -385,7 +402,7 @@ Layer responsibilities:
 - `Quraaa.Infrastructure`: external provider implementations such as Firebase FCM, Redis caching, Stripe payments, and Google Books metadata lookup.
 - `Quraaa.API`: HTTP controllers, startup, middleware, Swagger, environment configuration.
 
-Across aggregate boundaries, domain types expose scalar identity references such as `UserId`, `BookId`, `ListingId`, and `LibraryId`; do not add aggregate navigation properties or make business logic depend on tracked cross-aggregate graphs. The current Persistence mappings do use navigationless `HasOne<TAggregate>()` calls to create database foreign keys for books/listings, libraries/users, favorites, purchases, and ratings. Treat those as database integrity mappings only.
+Across aggregate boundaries, domain types expose scalar identity references such as `UserId`, `BookId`, `ListingId`, and `LibraryId`; do not add aggregate navigation properties or make business logic depend on tracked cross-aggregate graphs. The current Persistence mappings do use navigationless `HasOne<TAggregate>()` calls to create database foreign keys for books/listings, books/authors, libraries/users, favorites, purchases, and ratings. Treat those as database integrity mappings only.
 
 The user-to-library ownership rule is one-to-one: `LibraryAggregate` stores only scalar `UserId`; `LibraryConfiguration` uses a navigationless one-to-one mapping plus a unique index on `UserId`; the migration enforces the unique index; and application code checks for an existing library before creating another one. Library email is also unique.
 
@@ -552,9 +569,13 @@ Secrets handling:
 
 DbSets:
 
+- `Authors` (`AuthorAggregate`)
 - `UsersProfiles` (`UserAggregate`)
 - `UserLocations` (`UserLocation`; named profile locations with one profile-selected default)
+- `PushDevices` (`PushDevice`; user-owned FCM registrations keyed by a unique SHA-256 token hash)
+- `ListingPushNotifications` (`ListingPushNotification`; leased/retried durable outbox for coalesced listing publication and digital-asset-update pushes)
 - `Libraries` (`LibraryAggregate`)
+- `LibraryApprovalNotifications` (`LibraryApprovalNotification`; per-channel durable approval-delivery outbox)
 - `Books` (`BookAggregate`)
 - `Listings` (`ListingAggregate`)
 - `Categories` (`CategoryAggregate`)
@@ -599,8 +620,18 @@ Located in `Quraaa.Persistence/Migrations/`:
 19. `20260807120954_AddBookCanonicalFilesAndRenameListingDigitalAsset`
 20. `20260809202025_AddMultipleUserLocations`
 21. `20260810134114_PreventUserLocationOwnerReassignment`
+22. `20260813192304_AddComments`
+23. `20260814201322_AddUserDeviceTokens`
+24. `20260815083731_AddAuthorsTable`
+25. `20260815092204_RefactorBookAuthorToForeignKeyAndAddBirthDate`
+22. `20260813192304_AddComments`
+23. `20260814173751_AddPushDevicesAndLibraryApprovalNotifications`
+24. `20260814201322_AddUserDeviceTokens`
+25. `20260815102801_ConsolidateUserDeviceTokensIntoPushDevices`
+26. `20260815115240_AddListingPushNotificationOutbox`
 
-The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, and saved-location storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, and saved-location storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work. `AddComments` adds book comment storage; `AddUserDeviceTokens` adds FCM device-token storage for push notifications. `AddAuthorsTable` creates the standalone `Authors` table (`AuthorAggregate`). `RefactorBookAuthorToForeignKeyAndAddBirthDate` adds `Authors.BirthDate`; adds nullable `Books.AuthorId`; backfills it by creating an `Author` row (via `gen_random_uuid()`, a PostgreSQL 13+ core builtin) for every distinct existing `Books.Author` string and matching books to it by normalized name; adds the `Books`→`Authors` foreign key and an index on `AuthorId`; and only then drops the old free-text `Books.Author` column. Its downgrade re-adds `Author` and best-effort backfills it from the linked `Authors.Name`.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, saved-location, comment, push-device, library-approval-notification, and listing-push-notification storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. `AddPushDevicesAndLibraryApprovalNotifications` stores up to the actively retained device registrations per user using a unique token hash and adds an independently retried email/push outbox created by admin approval. `AddUserDeviceTokens` is retained as applied migration history; `ConsolidateUserDeviceTokensIntoPushDevices` validates and copies its rows into `PushDevices`, retains the ten most recent devices per user, and drops the duplicate table. `AddListingPushNotificationOutbox` adds the leased/retried push outbox populated atomically from listing domain events; publication events in one save are grouped per library so bulk upload creates one push. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
 `Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
 
@@ -850,13 +881,20 @@ GET    /api/purchases/me/sell-history             User
 GET    /api/categories                            anonymous by controller configuration
 GET    /api/categories/{categoryId}               anonymous by controller configuration
 POST   /api/categories                            Admin
+
+POST   /api/admin/authors                         Admin
+GET    /api/admin/authors                         Admin
+GET    /api/admin/authors/{id}                    Admin
+PUT    /api/admin/authors/{id}                    Admin
+DELETE /api/admin/authors/{id}                    Admin
+
 POST   /api/otp/send                              anonymous
 POST   /api/otp/verify                            anonymous
 POST   /api/notifications/send                    authenticated
 POST   /api/notifications/test                    anonymous when enabled
 ```
 
-`Program.cs` sets `RouteOptions.LowercaseUrls = true`; incoming ASP.NET Core routes are case-insensitive, but use the lowercase forms above in examples and generated links. `LibraryListingsController`, `OrdersController`, `PurchaseHistoryController`, `SellerOrdersController`, and `UserListingsController` have explicit route templates; the other controllers normally inherit `api/[controller]`.
+`Program.cs` sets `RouteOptions.LowercaseUrls = true`; incoming ASP.NET Core routes are case-insensitive, but use the lowercase forms above in examples and generated links. `AdminAuthorsController`, `LibraryListingsController`, `OrdersController`, `PurchaseHistoryController`, `SellerOrdersController`, and `UserListingsController` have explicit route templates; the other controllers normally inherit `api/[controller]`.
 
 ### Authentication
 
@@ -1091,7 +1129,7 @@ headerImage: uploaded image file
 email: library@example.com
 ```
 
-The dashboard request does not accept `userId`; the validated session supplies it. New libraries start as `AwaitingEmailVerification`. The API creates a durable, generation-bound HMAC-SHA256 challenge, attempts SMTP delivery, and returns `202 Accepted` with `verificationId` plus `emailDeliveryStatus` (`Sent`, `NotSent`, or `Unknown`). `POST /api/libraries/register/email/resend` redelivers the same derived code and verification id subject to a 60-second cooldown and a fixed five-send/hour window; definite non-delivery restores the quota slot. `POST /api/libraries/register/email/verify` requires that verification id plus exactly six ASCII digits, allows five failures, applies a five-minute lockout, and atomically changes the library to `Pending`. Only verified pending libraries appear in the admin queue or can be approved/rejected. Approval also promotes the domain profile and Identity role transactionally.
+The dashboard request does not accept `userId`; the validated session supplies it. New libraries start as `AwaitingEmailVerification`. The API creates a durable, generation-bound HMAC-SHA256 challenge, attempts SMTP delivery, and returns `202 Accepted` with `verificationId` plus `emailDeliveryStatus` (`Sent`, `NotSent`, or `Unknown`). `POST /api/libraries/register/email/resend` redelivers the same derived code and verification id subject to a 60-second cooldown and a fixed five-send/hour window; definite non-delivery restores the quota slot. `POST /api/libraries/register/email/verify` requires that verification id plus exactly six ASCII digits, allows five failures, applies a five-minute lockout, and atomically changes the library to `Pending`. Only verified pending libraries appear in the admin queue or can be approved/rejected. Approval promotes the domain profile and Identity role and creates the durable email/push notification outbox row in the same transaction.
 
 `GET /api/libraries` is anonymous and returns approved libraries only. It supports `pageNumber`, `pageSize`, and `searchTerm` (library name/location). `GetLibrariesQuery` inherits `PaginationRequestDTO`, which coerces non-positive page numbers to `1` and any page size outside `1..20` to `10`.
 
@@ -1313,6 +1351,31 @@ Buy history returns the authenticated user's Stripe-created purchases with book/
 
 `POST /api/categories` is admin-only (`[Authorize(Roles = "Admin")]`) and creates a new category.
 
+### Authors (Admin)
+
+All five routes require the `Admin` role. `AdminAuthorsController` uses the explicit route `api/admin/authors`.
+
+```text
+POST   /api/admin/authors
+GET    /api/admin/authors
+GET    /api/admin/authors/{id}
+PUT    /api/admin/authors/{id}
+DELETE /api/admin/authors/{id}
+```
+
+`POST`/`PUT` request body:
+
+```json
+{
+  "name": "J.K. Rowling",
+  "bio": "British author, best known for the Harry Potter series.",
+  "photoUrl": "https://example.com/authors/jk-rowling.jpg",
+  "birthDate": "1965-07-31"
+}
+```
+
+`bio`, `photoUrl`, and `birthDate` are optional; when present, `photoUrl` must be an absolute `http`/`https` URL and `birthDate` must be in the past. `GET /api/admin/authors` supports `pageNumber`, `pageSize`, and a `searchTerm` filter on `name` (case-insensitive). `BookAggregate.AuthorId` is a nullable scalar FK to `AuthorAggregate` (no navigation property, per the cross-aggregate convention above); deleting an author still referenced by a book returns `409 Conflict` — `AuthorRepository.RemoveAsync` catches the foreign-key violation, mirroring `CategoryRepository.RemoveAsync`.
+
 ### OTP
 
 `POST /api/otp/send` request body:
@@ -1333,6 +1396,16 @@ Buy history returns the authenticated user's Stripe-created purchases with book/
 ```
 
 ### Notifications
+
+`PUT /api/notifications/devices`, deprecated `POST /api/notifications/device-token`, and `DELETE /api/notifications/devices` request body:
+
+```json
+{
+  "deviceToken": "fcm-registration-token-from-client-app"
+}
+```
+
+All three routes are authenticated and bind the token to the JWT user. Both registration routes are idempotent, reassign a rotated token to the latest authenticated owner, and retain only the ten most recently registered devices for that user. `POST /api/notifications/device-token` is a compatibility alias; new clients should use `PUT`. `DELETE` removes the token only when it belongs to the caller. Clients should register after login and after every Firebase token refresh.
 
 `POST /api/notifications/send` request body:
 
@@ -1898,7 +1971,7 @@ Details submission requires `token`, `libraryName`, `location`, `libraryImage`, 
 
 The OTP is never stored in plaintext. `LIBRARY_EMAIL_OTP_PEPPER` is an independent secret used both to derive the six-digit code and to HMAC it with separate purposes and the library id, user id, normalized email, and generation. Resends retain that generation/code and failed-attempt state; the client must echo the exposed `verificationId`, and mismatched generations fail without consuming an attempt from the current challenge. EF concurrency prevents a stale resend/verification mutation from winning. Successful verification atomically sets `EmailVerifiedAtUtc`, changes `AwaitingEmailVerification` to `Pending`, consumes the challenge, and completes the temporary session.
 
-The admin request repository excludes `AwaitingEmailVerification` and legacy unverified `Pending` rows. `LibraryAggregate.Approve` and `Reject` independently require both `Pending` and `EmailVerifiedAtUtc`, so a direct PATCH cannot bypass email verification. Approval runs in the shared EF transaction, changes `UserAggregate.Role`, adds the Identity `LibraryOwner` role, and invalidates the old refresh family immediately; startup reconciliation remains an idempotent repair path.
+The admin request repository excludes `AwaitingEmailVerification` and legacy unverified `Pending` rows. `LibraryAggregate.Approve` and `Reject` independently require both `Pending` and `EmailVerifiedAtUtc`, so a direct PATCH cannot bypass email verification. Approval runs in the shared EF transaction, changes `UserAggregate.Role`, adds the Identity `LibraryOwner` role, invalidates the old refresh family immediately, and inserts one unique `LibraryApprovalNotification`; startup reconciliation remains an idempotent repair path. A hosted worker claims committed outbox rows with a PostgreSQL lease, then independently sends SMTP to the verified `LibraryAggregate.Email` and FCM to the owner's registered devices. Definite failures retry with bounded backoff, ambiguous SMTP acceptance is not automatically retried, permanently invalid FCM tokens are removed, and no provider failure reverses approval. The push payload sets `type=library_registration_approved`, `libraryId`, `approvalStatus=Approved`, and `requiresReauthentication=true` because the previous access-token family is no longer active.
 
 ### Library Listing Flow
 
@@ -2293,16 +2366,27 @@ Files:
 
 ```text
 Quraaa.API/Controllers/NotificationsController.cs
+Quraaa.API/Requests/Notifications/RegisterPushDeviceRequest.cs
+Quraaa.API/Requests/Notifications/UnregisterPushDeviceRequest.cs
 Quraaa.API/Requests/Notifications/SendNotificationRequest.cs
+Quraaa.API/Services/LibraryApprovalNotificationDeliveryService.cs
+Quraaa.Application/Features/Notifications/Commands/RegisterPushDevice/
+Quraaa.Application/Features/Notifications/Commands/UnregisterPushDevice/
 Quraaa.Application/Features/Notifications/Commands/SendNotification/
 Quraaa.Application/Features/Notifications/Common/NotificationSendResponse.cs
 Quraaa.Application/Features/Notifications/Interfaces/IFirebaseNotificationService.cs
+Quraaa.Application/Features/Notifications/Interfaces/IPushDeviceRepository.cs
+Quraaa.Domain/User/Entities/PushDevice.cs
+Quraaa.Persistence/Repositories/PushDeviceRepository.cs
 Quraaa.Infrastructure/Services/FirebaseNotificationService.cs
 ```
 
-Route:
+Routes:
 
 ```text
+PUT /api/notifications/devices
+POST /api/notifications/device-token
+DELETE /api/notifications/devices
 POST /api/notifications/send
 POST /api/notifications/test
 ```
@@ -2310,6 +2394,9 @@ POST /api/notifications/test
 Authentication:
 
 ```text
+PUT /api/notifications/devices -> Authorization: Bearer <access-token>
+POST /api/notifications/device-token -> Authorization: Bearer <access-token> (deprecated alias)
+DELETE /api/notifications/devices -> Authorization: Bearer <access-token>
 POST /api/notifications/send -> Authorization: Bearer <access-token>
 POST /api/notifications/test -> AllowAnonymous when enabled
 ```
@@ -2340,6 +2427,19 @@ Successful response:
 Flow:
 
 ```text
+HTTP PUT /api/notifications/devices
+  -> NotificationsController extracts UserId from token claims
+  -> RegisterPushDeviceCommand(userId, deviceToken)
+  -> PushDeviceRepository hashes the token, upserts/reassigns it, and prunes old devices
+
+HTTP POST /api/notifications/device-token (deprecated compatibility alias)
+  -> follows the same RegisterPushDeviceCommand and PushDevices path as PUT /devices
+
+HTTP DELETE /api/notifications/devices
+  -> NotificationsController extracts UserId from token claims
+  -> UnregisterPushDeviceCommand(userId, deviceToken)
+  -> PushDeviceRepository removes only the caller-owned matching token
+
 HTTP POST /api/notifications/send
   -> NotificationsController.Send(body request)
   -> [Authorize] validates JWT bearer token
@@ -2428,6 +2528,89 @@ HTTP POST /api/categories
   -> CreateCategoryCommandHandler
   -> ICategoryRepository.AddAsync(category)
   -> CategoryResponse
+```
+
+### Authors Flow
+
+Files:
+
+```text
+Quraaa.API/Controllers/AdminAuthorsController.cs
+Quraaa.Application/Features/Authors/Commands/CreateAuthor/
+Quraaa.Application/Features/Authors/Commands/UpdateAuthor/
+Quraaa.Application/Features/Authors/Commands/DeleteAuthor/
+Quraaa.Application/Features/Authors/Queries/GetAuthorById/
+Quraaa.Application/Features/Authors/Queries/GetAuthorsPaginated/
+Quraaa.Application/Features/Authors/Common/AuthorResponse.cs
+Quraaa.Application/Features/Authors/Interfaces/IAuthorRepository.cs
+Quraaa.Persistence/Repositories/AuthorRepository.cs
+Quraaa.Persistence/Configurations/AuthorConfiguration.cs
+Quraaa.Domain/Author/AuthorAggregate.cs
+```
+
+Routes:
+
+```text
+POST   /api/admin/authors
+GET    /api/admin/authors
+GET    /api/admin/authors/{id}
+PUT    /api/admin/authors/{id}
+DELETE /api/admin/authors/{id}
+```
+
+Authentication:
+
+```text
+All routes -> Authorization: Bearer <admin-access-token> ([Authorize(Roles = "Admin")] at the controller level)
+```
+
+The `AuthorAggregate` model includes:
+
+- `Name` — required, max 150 characters.
+- `Bio` — optional, max 2000 characters.
+- `PhotoUrl` — optional, max 500 characters; must be an absolute `http`/`https` URL when present.
+- `BirthDate` — optional; must be in the past when present.
+
+Unlike `CategoryAggregate`, `AuthorAggregate` has no `IsActive`/soft-delete flag. `DeleteAuthorCommandHandler` performs a real row delete; since the migration `RefactorBookAuthorToForeignKeyAndAddBirthDate` added `Books.AuthorId` as a `Restrict`-on-delete foreign key to this table, `AuthorRepository.RemoveAsync` catches the resulting foreign-key violation and raises `ConflictException` (→ `409`), exactly like `CategoryRepository.RemoveAsync` does for books referencing a category.
+
+Flow:
+
+```text
+HTTP POST /api/admin/authors
+  -> AdminAuthorsController.CreateAuthor(command)
+  -> [Authorize(Roles = "Admin")]
+  -> CreateAuthorCommand(...)
+  -> CreateAuthorCommandHandler
+  -> IAuthorRepository.AddAsync(author)
+  -> AuthorResponse
+
+HTTP GET /api/admin/authors
+  -> AdminAuthorsController.GetAuthors(query)
+  -> GetAuthorsPaginatedQuery
+  -> GetAuthorsPaginatedQueryHandler
+  -> IAuthorRepository.GetPagedAsync(pageNumber, pageSize, searchTerm)
+  -> PagedResult<AuthorResponse>
+
+HTTP GET /api/admin/authors/{id}
+  -> AdminAuthorsController.GetAuthorById(id)
+  -> GetAuthorByIdQuery(id)
+  -> GetAuthorByIdQueryHandler
+  -> IAuthorRepository.GetByIdAsync(id)
+  -> AuthorDetailsResponse or NotFound
+
+HTTP PUT /api/admin/authors/{id}
+  -> AdminAuthorsController.UpdateAuthor(id, command)
+  -> UpdateAuthorCommand(...) with { Id = id, ModifiedBy = adminId }
+  -> UpdateAuthorCommandHandler
+  -> IAuthorRepository.GetByIdAsync(id) -> AuthorAggregate.UpdateDetails(...) -> IAuthorRepository.SaveChangesAsync()
+  -> AuthorResponse or NotFound
+
+HTTP DELETE /api/admin/authors/{id}
+  -> AdminAuthorsController.DeleteAuthor(id)
+  -> DeleteAuthorCommand(id)
+  -> DeleteAuthorCommandHandler
+  -> IAuthorRepository.GetByIdAsync(id) -> IAuthorRepository.RemoveAsync(author)
+  -> Success or NotFound
 ```
 
 ## Development Tips & Common Patterns

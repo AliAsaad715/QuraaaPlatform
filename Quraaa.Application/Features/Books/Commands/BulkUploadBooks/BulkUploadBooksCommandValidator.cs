@@ -62,8 +62,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
                 .MaximumLength(2000).WithMessage("Description must not exceed 2000 characters.");
 
             RuleFor(x => x.Metadata.Language)
-                .NotEmpty().WithMessage("Language is required.")
-                .MaximumLength(20).WithMessage("Language must not exceed 20 characters.");
+                .IsInEnum().WithMessage("Language must be a valid language (Arabic, English, French, or Other).");
 
             RuleFor(x => x.Metadata.Price)
                 .GreaterThan(0m).WithMessage("Price must be greater than zero.");

@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.API.Requests.Notifications;
-using Quraaa.Application.Features.Notifications.Commands.RegisterDeviceToken;
+using Quraaa.Application.Features.Notifications.Commands.RegisterPushDevice;
 using Quraaa.Application.Features.Notifications.Commands.SendNotification;
 using Quraaa.Application.Features.Notifications.Commands.SendTestNotification;
+using Quraaa.Application.Features.Notifications.Commands.UnregisterPushDevice;
 using Quraaa.Application.Features.Notifications.Common;
 
 namespace Quraaa.API.Controllers
@@ -18,6 +19,37 @@ namespace Quraaa.API.Controllers
         {
             _configuration = configuration;
             _environment = environment;
+        }
+
+        [HttpPut("devices")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public Task<IActionResult> RegisterDevice(
+            [FromBody] RegisterPushDeviceRequest request,
+            CancellationToken cancellationToken = default) =>
+            RegisterDeviceAsync(request.DeviceToken, cancellationToken);
+
+        [HttpDelete("devices")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UnregisterDevice(
+            [FromBody] UnregisterPushDeviceRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                new UnregisterPushDeviceCommand(userId, request.DeviceToken),
+                cancellationToken);
+
+            return HandleResult(result);
         }
 
         [HttpPost("send")]
@@ -71,11 +103,18 @@ namespace Quraaa.API.Controllers
         }
 
         [HttpPost("device-token")]
+        [Obsolete("Use PUT /api/notifications/devices.")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> RegisterDeviceToken(
-            [FromBody] RegisterDeviceTokenRequest request,
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public Task<IActionResult> RegisterDeviceToken(
+            [FromBody] RegisterPushDeviceRequest request,
+            CancellationToken cancellationToken = default) =>
+            RegisterDeviceAsync(request.DeviceToken, cancellationToken);
+
+        private async Task<IActionResult> RegisterDeviceAsync(
+            string deviceToken,
             CancellationToken cancellationToken)
         {
             if (!TryGetCurrentUserId(out var userId))
@@ -83,13 +122,10 @@ namespace Quraaa.API.Controllers
                 return InvalidUserIdResult();
             }
 
-            var command = new RegisterDeviceTokenCommand
-            {
-                RequestingUserId = userId,
-                DeviceToken = request.DeviceToken
-            };
+            var result = await Mediator.Send(
+                new RegisterPushDeviceCommand(userId, deviceToken),
+                cancellationToken);
 
-            var result = await Mediator.Send(command, cancellationToken);
             return HandleResult(result);
         }
 

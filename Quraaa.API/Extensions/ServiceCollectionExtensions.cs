@@ -74,6 +74,8 @@ namespace Quraaa.API.Extensions
                     options => options.MaxTransferAttempts is >= 1 and <= 100,
                     "Payouts:MaxTransferAttempts must be between 1 and 100.")
                 .ValidateOnStart();
+            services.AddHostedService<LibraryApprovalNotificationDeliveryService>();
+            services.AddHostedService<ListingPushNotificationDeliveryService>();
             PersistenceDependencyInjectionHandler.AddPersistenceDependencies(services, configuration);
             ApplicationPackagesRegisterExtensions.AddApplicationDependencies(services);
         }

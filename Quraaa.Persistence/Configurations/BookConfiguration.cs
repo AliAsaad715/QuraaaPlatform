@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Category;
 
@@ -19,9 +20,8 @@ namespace Quraaa.Persistence.Configurations
                    .HasMaxLength(250)
                    .IsRequired();
 
-            builder.Property(b => b.Author)
-                   .HasMaxLength(150)
-                   .IsRequired();
+            builder.Property(b => b.AuthorId)
+                   .IsRequired(false);
 
             builder.Property(b => b.Description)
                    .HasMaxLength(2000)
@@ -32,7 +32,6 @@ namespace Quraaa.Persistence.Configurations
                    .IsRequired();
 
             builder.Property(b => b.Language)
-                   .HasMaxLength(20)
                    .IsRequired();
 
             builder.Property(b => b.Isbn)
@@ -55,7 +54,14 @@ namespace Quraaa.Persistence.Configurations
                    .HasForeignKey(b => b.CategoryId)
                    .OnDelete(DeleteBehavior.Restrict);
 
+            builder.HasOne<AuthorAggregate>()
+                   .WithMany()
+                   .HasForeignKey(b => b.AuthorId)
+                   .OnDelete(DeleteBehavior.Restrict);
+
             builder.HasIndex(b => b.CategoryId);
+
+            builder.HasIndex(b => b.AuthorId);
 
             // Fast path for the broad title-IN lookup used by FindExistingCandidatesAsync.
             builder.HasIndex(b => b.Title);

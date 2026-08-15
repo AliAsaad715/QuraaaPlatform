@@ -1,4 +1,5 @@
 ﻿using Quraaa.Domain.Catalog;
+using Quraaa.Domain.Catalog.Enums;
 
 namespace Quraaa.Application.Features.Listings.Interfaces
 {
@@ -11,7 +12,7 @@ namespace Quraaa.Application.Features.Listings.Interfaces
             CancellationToken cancellationToken = default);
 
         Task<BookAggregate?> FindByTitleAuthorLanguageAsync(
-            string title, string author, string language,
+            string title, string author, Language language,
             CancellationToken cancellationToken = default);
 
         Task AddAsync(BookAggregate book,
@@ -20,10 +21,11 @@ namespace Quraaa.Application.Features.Listings.Interfaces
         /// <summary>
         /// Returns (Title, Author, Language) for every book whose lower-cased title
         /// matches any entry in <paramref name="normalizedTitles"/> — in a single roundtrip.
-        /// The caller narrows to precise matches via
+        /// Author is resolved via a left join to Authors and is null for a book with no
+        /// linked author. The caller narrows to precise matches via
         /// <see cref="Quraaa.Domain.Catalog.BookTextNormalizer.CompositeKey"/>.
         /// </summary>
-        Task<IReadOnlyList<(string Title, string Author, string Language)>> FindExistingCandidatesAsync(
+        Task<IReadOnlyList<(string Title, string? Author, Language Language)>> FindExistingCandidatesAsync(
             IReadOnlyList<string> normalizedTitles,
             CancellationToken cancellationToken = default);
 

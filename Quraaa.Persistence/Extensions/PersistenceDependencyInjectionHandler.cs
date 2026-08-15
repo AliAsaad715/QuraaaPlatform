@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Quraaa.Application.Features.Admin.Interfaces;
 using Quraaa.Application.Features.Authentication.Interfaces;
+using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
@@ -28,8 +29,12 @@ namespace Quraaa.Persistence.Extensions
             var assembly = typeof(PersistenceDependencyInjectionHandler).Assembly;
 
             services.AddScoped<IUserRepository, UserRepository>();
+            services.AddScoped<IAuthorRepository, AuthorRepository>();
             services.AddScoped<ILibraryRepository, LibraryRepository>();
             services.AddScoped<ILibraryRegistrationRepository, LibraryRegistrationRepository>();
+            services.AddScoped<ILibraryApprovalNotificationRepository, LibraryApprovalNotificationRepository>();
+            services.AddScoped<IPushDeviceRepository, PushDeviceRepository>();
+            services.AddScoped<IListingPushNotificationRepository, ListingPushNotificationRepository>();
             services.AddScoped<IIdentityService, IdentityService>();
             services.AddScoped<IAuthenticationUnitOfWork, AuthenticationUnitOfWork>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
@@ -47,8 +52,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IPaymentEventInbox, PaymentEventInboxRepository>();
             services.AddScoped<IOrphanFileCandidateRepository, OrphanFileCandidateRepository>();
             services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();
-            services.AddScoped<IUserDeviceTokenRepository, UserDeviceTokenRepository>();
-            services.AddScoped<DomainEventDispatchInterceptor>();
+            services.AddScoped<DomainEventOutboxInterceptor>();
             return services;
         }
     }
