@@ -6,6 +6,8 @@ namespace Quraaa.Application.Features.Authors.Interfaces
     {
         Task<AuthorAggregate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
+        Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
+
         Task<(IReadOnlyCollection<AuthorAggregate> Items, int TotalCount)> GetPagedAsync(
             int pageNumber,
             int pageSize,

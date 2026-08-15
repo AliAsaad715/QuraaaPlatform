@@ -16,6 +16,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin
         private readonly IIdentityService _identityService;
         private readonly IUserRepository _userRepository;
         private readonly ILibraryRepository _libraryRepository;
+        private readonly ILibraryPasswordHasher _libraryPasswordHasher;
         private readonly IOtpCacheService _otpCacheService;
 
         private const string InvalidLibraryOwnerLoginMessage = "Invalid library email or password.";
@@ -28,6 +29,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin
             IIdentityService identityService,
             IUserRepository userRepository,
             ILibraryRepository libraryRepository,
+            ILibraryPasswordHasher libraryPasswordHasher,
             IOtpCacheService otpCacheService,
             ILogger<LibraryOwnerLoginCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
@@ -35,6 +37,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin
             _identityService = identityService;
             _userRepository = userRepository;
             _libraryRepository = libraryRepository;
+            _libraryPasswordHasher = libraryPasswordHasher;
             _otpCacheService = otpCacheService;
         }
 
@@ -71,7 +74,12 @@ namespace Quraaa.Application.Features.Authentication.Commands.LibraryOwnerLogin
                     throw new InvalidOperationException("Library owner credential failure handling did not throw.");
                 }
 
-                var isPasswordValid = await _identityService.CheckPasswordAsync(identity.UserId, request.Password);
+                // The library dashboard has its own password, set when the
+                // library was registered — NOT the owner's account password.
+                var isPasswordValid = _libraryPasswordHasher.Verify(
+                    library.PasswordHash,
+                    request.Password);
+
                 if (!isPasswordValid)
                 {
                     await RecordCredentialFailureAndThrowAsync(normalizedEmail, clientTargetKey, cancellationToken);

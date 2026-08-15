@@ -14,6 +14,13 @@ namespace Quraaa.Application.Features.Authentication.Interfaces
             Guid userId,
             CancellationToken cancellationToken = default);
         Task<bool> CheckPasswordAsync(Guid userId, string password);
+
+        /// <summary>
+        /// Drops the user's refresh token and family, so every outstanding
+        /// access token for them stops validating. Used when a credential that
+        /// grants their session is replaced.
+        /// </summary>
+        Task RevokeActiveSessionsAsync(Guid userId);
         Task<bool> IsInRoleAsync(Guid userId, string role);
         Task<bool> IsRegularUserIdentityAsync(Guid userId);
         Task<bool> IsLibraryOwnerIdentityAsync(Guid userId);

@@ -100,7 +100,9 @@ namespace Quraaa.API.Controllers
                 request.Location,
                 request.LibraryImage is null ? null : new FormFileUploadedFile(request.LibraryImage),
                 request.HeaderImage is null ? null : new FormFileUploadedFile(request.HeaderImage),
-                request.Email
+                request.Email,
+                request.Password,
+                request.ConfirmPassword
             );
 
             var result = await Mediator.Send(command, cancellationToken);

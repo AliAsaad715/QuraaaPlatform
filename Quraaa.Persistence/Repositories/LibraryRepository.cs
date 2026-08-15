@@ -52,6 +52,19 @@ namespace Quraaa.Persistence.Repositories
                 l => l.UserId == userId && l.ApprovalStatus == LibraryApprovalStatus.Approved,
                 cancellationToken);
 
+        public async Task<LibraryAggregate?> GetApprovedByEmailForUpdateAsync(
+            string email,
+            CancellationToken cancellationToken = default)
+        {
+            var normalizedEmail = NormalizeEmail(email);
+
+            return await _context.Libraries
+                .FirstOrDefaultAsync(
+                    l => l.ApprovalStatus == LibraryApprovalStatus.Approved
+                        && l.Email.ToLower() == normalizedEmail,
+                    cancellationToken);
+        }
+
         public async Task<LibraryAggregate?> GetApprovedByEmailAsync(
             string email,
             CancellationToken cancellationToken = default)

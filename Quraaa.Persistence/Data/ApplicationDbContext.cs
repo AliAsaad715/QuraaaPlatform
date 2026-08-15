@@ -13,6 +13,7 @@ using Quraaa.Domain.Notifications;
 using Quraaa.Domain.Orders;
 using Quraaa.Domain.Payouts;
 using Quraaa.Domain.Purchases;
+using Quraaa.Domain.Reports;
 using Quraaa.Domain.Ratings;
 using Quraaa.Domain.User;
 using Quraaa.Domain.User.Entities;
@@ -35,10 +36,12 @@ namespace Quraaa.Persistence.Data
         public DbSet<LibraryApprovalNotification> LibraryApprovalNotifications { get; set; }
         public DbSet<LibraryRegistrationSession> LibraryRegistrationSessions { get; set; }
         public DbSet<LibraryEmailVerificationChallenge> LibraryEmailVerificationChallenges { get; set; }
+        public DbSet<LibraryPasswordResetChallenge> LibraryPasswordResetChallenges { get; set; }
         public DbSet<BookAggregate> Books { get; set; }
         public DbSet<ListingAggregate> Listings { get; set; }
         public DbSet<CategoryAggregate> Categories { get; set; }
         public DbSet<CommentAggregate> Comments { get; set; }
+        public DbSet<BookReportAggregate> BookReports { get; set; }
         public DbSet<FavoriteBookAggregate> FavoriteBooks { get; set; }
         public DbSet<BookPurchaseAggregate> BookPurchases { get; set; }
         public DbSet<BookRatingAggregate> BookRatings { get; set; }

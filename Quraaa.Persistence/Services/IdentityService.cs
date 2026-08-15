@@ -98,6 +98,24 @@ namespace Quraaa.Persistence.Services
             return IdentityResultDto.Success(identityUser.PasswordHash!);
         }
 
+        public async Task RevokeActiveSessionsAsync(Guid userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user is null)
+            {
+                return;
+            }
+
+            // Same fields ChangePasswordAsync/ResetPasswordAsync clear: the
+            // access-token validator rejects any token whose family no longer
+            // matches this row.
+            user.RefreshToken = null;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow;
+            user.RefreshTokenFamilyId = null;
+
+            await _userManager.UpdateAsync(user);
+        }
+
         public async Task<IdentityResultDto> ChangePasswordAsync(Guid userId, string oldPassword, string newPassword)
         {
             var user = await _userManager.FindByIdAsync(userId.ToString());
