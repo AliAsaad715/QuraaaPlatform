@@ -15,6 +15,13 @@ namespace Quraaa.Domain.Library
         public LibraryApprovalStatus ApprovalStatus { get; private set; }
         public DateTime? EmailVerifiedAtUtc { get; private set; }
         /// <summary>
+        /// Hash of the library dashboard's own password. Separate from the
+        /// owner's personal account password so the two credentials can never
+        /// be the same secret.
+        /// </summary>
+        public string? PasswordHash { get; private set; }
+
+        /// <summary>
         /// The Stripe Connect account (wallet) profit shares are transferred
         /// to. Created through Stripe-hosted onboarding started by the owner,
         /// or attached by id.
@@ -58,9 +65,16 @@ namespace Quraaa.Domain.Library
             string libraryImage,
             string headerImage,
             string email,
-            Guid userId)
+            Guid userId,
+            string passwordHash)
         {
+            if (string.IsNullOrWhiteSpace(passwordHash))
+            {
+                throw new DomainException("A library password is required.");
+            }
+
             Id = id;
+            PasswordHash = passwordHash;
             LibraryName = libraryName;
             Location = location;
             LibraryImage = libraryImage;
@@ -125,6 +139,22 @@ namespace Quraaa.Domain.Library
                 : StripeWalletActivatedAtUtc.HasValue
                     ? LibraryWalletStatus.Active
                     : LibraryWalletStatus.OnboardingIncomplete;
+
+        /// <summary>
+        /// Replaces the library dashboard password. The caller hashes it; the
+        /// aggregate never sees the plain text.
+        /// </summary>
+        public void SetPasswordHash(string passwordHash, Guid modifiedBy)
+        {
+            if (string.IsNullOrWhiteSpace(passwordHash))
+            {
+                throw new DomainException("A library password is required.");
+            }
+
+            PasswordHash = passwordHash;
+            ConcurrencyStamp = Guid.NewGuid();
+            UpdateAudit(modifiedBy);
+        }
 
         /// <summary>
         /// Attaches a Stripe connected account as this library's wallet.

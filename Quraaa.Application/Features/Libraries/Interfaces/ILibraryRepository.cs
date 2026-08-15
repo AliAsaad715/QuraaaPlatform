@@ -11,6 +11,15 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
         Task<bool> ExistsByUserIdAsync(Guid userId);
         Task<bool> ExistsByEmailAsync(string email, CancellationToken cancellationToken = default);
         Task<bool> ExistsApprovedByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
+        /// <summary>
+        /// The approved library for this email, tracked for update. Use when the
+        /// library will be modified; <see cref="GetApprovedByEmailAsync"/> is
+        /// no-tracking and its changes would be silently discarded.
+        /// </summary>
+        Task<LibraryAggregate?> GetApprovedByEmailForUpdateAsync(
+            string email,
+            CancellationToken cancellationToken = default);
+
         Task<LibraryAggregate?> GetApprovedByEmailAsync(string email, CancellationToken cancellationToken = default);
         Task AddLibraryAsync(LibraryAggregate library);
         Task<(IReadOnlyCollection<LibraryAggregate> Items, int TotalCount)> GetPagedAsync(

@@ -53,6 +53,38 @@ namespace Quraaa.Infrastructure.Services
                 cancellationToken);
         }
 
+        public async Task<EmailDeliveryStatus> SendPasswordResetOtpAsync(
+            string recipientEmail,
+            string libraryName,
+            string otpCode,
+            TimeSpan validity,
+            CancellationToken cancellationToken = default)
+        {
+            if (!IsSixAsciiDigits(otpCode)
+                || validity <= TimeSpan.Zero
+                || string.IsNullOrWhiteSpace(libraryName)
+                || !MailboxAddress.TryParse(recipientEmail, out var recipient))
+            {
+                _logger.LogWarning(
+                    "Library password reset email was not attempted because its message data was invalid.");
+                return EmailDeliveryStatus.NotSent;
+            }
+
+            // The correlation id only tags logs; unlike verification, the reset
+            // code is not paired with a client-supplied verification id.
+            var correlationId = Guid.NewGuid();
+
+            return await SendMessageAsync(
+                () => CreatePasswordResetMessage(
+                    recipient,
+                    SanitizePlainText(libraryName),
+                    otpCode,
+                    validity),
+                LibraryEmailKind.PasswordReset,
+                correlationId,
+                cancellationToken);
+        }
+
         public async Task<EmailDeliveryStatus> SendApprovalAsync(
             string recipientEmail,
             string libraryName,
@@ -163,6 +195,27 @@ namespace Quraaa.Infrastructure.Services
                 $"Verification ID: {verificationId:D}\n\n" +
                 $"This code is valid for {validityDescription}.\n\n" +
                 "If you did not submit this library registration, you can ignore this email.");
+        }
+
+        private MimeMessage CreatePasswordResetMessage(
+            MailboxAddress recipient,
+            string libraryName,
+            string otpCode,
+            TimeSpan validity)
+        {
+            var validityMinutes = Math.Max(1, (long)Math.Ceiling(validity.TotalMinutes));
+            var validityDescription = validityMinutes == 1
+                ? "1 minute"
+                : $"{validityMinutes.ToString(CultureInfo.InvariantCulture)} minutes";
+
+            return CreateMessage(
+                recipient,
+                "Reset your library dashboard password",
+                $"Use this one-time code to set a new dashboard password for {libraryName}:\n\n" +
+                $"{otpCode}\n\n" +
+                $"This code is valid for {validityDescription}.\n\n" +
+                "If you did not ask to reset this password, you can ignore this email; " +
+                "your current password stays unchanged.");
         }
 
         private MimeMessage CreateApprovalMessage(
@@ -276,6 +329,7 @@ namespace Quraaa.Infrastructure.Services
         private enum LibraryEmailKind
         {
             Verification,
+            PasswordReset,
             Approval
         }
     }

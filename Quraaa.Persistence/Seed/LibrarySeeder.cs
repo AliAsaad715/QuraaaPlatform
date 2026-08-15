@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.User;
 
@@ -6,8 +7,18 @@ namespace Quraaa.Persistence.Seed
 {
     public static class LibrarySeeder
     {
+        /// <summary>
+        /// Dashboard password for every seeded library. Deliberately different
+        /// from the seeded user account password so the two credentials stay
+        /// distinct, exactly as registration requires.
+        /// </summary>
+        private const string SeedLibraryPassword = "Library@12345";
+
         public static async Task SeedAsync(DbContext db)
         {
+            var libraryPasswordHash = new PasswordHasher<LibraryAggregate>()
+                .HashPassword(null!, SeedLibraryPassword);
+
             var librarySet = db.Set<LibraryAggregate>();
 
             if (await librarySet.AnyAsync())
@@ -61,7 +72,8 @@ namespace Quraaa.Persistence.Seed
                             libraryImage,
                             headerImage,
                             email,
-                            userId
+                            userId,
+                            libraryPasswordHash
                         );
 
                         library.VerifyEmail(DateTime.UtcNow);

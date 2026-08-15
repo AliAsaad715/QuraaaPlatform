@@ -1,4 +1,5 @@
 using FluentValidation;
+using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Shared.Files;
 
 namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
@@ -60,6 +61,18 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                 .EmailAddress().WithMessage("Email format is invalid.")
                 .MaximumLength(256).WithMessage("Email must not exceed 256 characters.");
 
+            AddPasswordRules();
+        }
+
+        private void AddPasswordRules()
+        {
+            RuleFor(x => x.Password)
+                .ApplyPasswordRules();
+
+            RuleFor(x => x.ConfirmPassword)
+                .NotEmpty().WithMessage("Confirm the library password.")
+                .Equal(x => x.Password)
+                    .WithMessage("The library password and its confirmation do not match.");
         }
 
         private static bool HasAllowedImageExtension(IUploadedFile? file)

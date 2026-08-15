@@ -18,6 +18,8 @@ using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Features.Ratings.Interfaces;
 using Quraaa.Persistence.Interceptors;
+using Microsoft.AspNetCore.Identity;
+using Quraaa.Domain.Library;
 using Quraaa.Persistence.Repositories;
 using Quraaa.Persistence.Services;
 
@@ -32,6 +34,9 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IAuthorRepository, AuthorRepository>();
             services.AddScoped<ILibraryRepository, LibraryRepository>();
+            services.AddScoped<IPasswordHasher<LibraryAggregate>, PasswordHasher<LibraryAggregate>>();
+            services.AddScoped<ILibraryPasswordHasher, LibraryPasswordHasher>();
+            services.AddScoped<ILibraryPasswordResetRepository, LibraryPasswordResetRepository>();
             services.AddScoped<ILibraryRegistrationRepository, LibraryRegistrationRepository>();
             services.AddScoped<ILibraryApprovalNotificationRepository, LibraryApprovalNotificationRepository>();
             services.AddScoped<IPushDeviceRepository, PushDeviceRepository>();

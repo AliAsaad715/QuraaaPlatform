@@ -52,6 +52,9 @@ namespace Quraaa.Persistence.Configurations
 
                      builder.Property(l => l.EmailVerifiedAtUtc);
 
+                     builder.Property(l => l.PasswordHash)
+                            .HasMaxLength(500);
+
                      builder.Property(l => l.StripeConnectAccountId)
                             .HasMaxLength(255);
 

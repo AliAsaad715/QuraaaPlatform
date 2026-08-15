@@ -26,6 +26,7 @@ namespace Quraaa.API.Extensions
         public const string LibraryRegistrationLinkRateLimitPolicy = "library-registration-link";
         public const string LibraryRegistrationPublicRateLimitPolicy = "library-registration-public";
         public const string LibraryWalletRateLimitPolicy = "library-wallet";
+        public const string LibraryPasswordResetRateLimitPolicy = "library-password-reset";
         public const string LibraryWalletSyncRateLimitPolicy = "library-wallet-sync";
 
         public static void AddApplicationServices(
@@ -111,6 +112,12 @@ namespace Quraaa.API.Extensions
                 options.AddPolicy(
                     LibraryWalletRateLimitPolicy,
                     PerUserOrClientFixedWindow(permitLimit: 5, TimeSpan.FromMinutes(10)));
+
+                // Anonymous and email-triggering: throttle per client so it
+                // cannot be used to spray reset mail or probe addresses.
+                options.AddPolicy(
+                    LibraryPasswordResetRateLimitPolicy,
+                    PerUserOrClientFixedWindow(permitLimit: 10, TimeSpan.FromMinutes(10)));
 
                 // Wallet status sync also reads the account at Stripe, but a
                 // normal start -> return -> refresh cycle legitimately calls it

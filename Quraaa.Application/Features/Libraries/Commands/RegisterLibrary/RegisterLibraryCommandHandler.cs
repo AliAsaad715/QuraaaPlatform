@@ -18,6 +18,8 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
     {
         private readonly ILibraryRepository _libraryRepository;
         private readonly IUserRepository _userRepository;
+        private readonly ILibraryPasswordHasher _libraryPasswordHasher;
+        private readonly IIdentityService _identityService;
         private readonly ILibraryImageStorageService _libraryImageStorageService;
         private readonly ILibraryRegistrationRepository _registrationRepository;
         private readonly LibraryRegistrationSessionService _sessionService;
@@ -28,6 +30,8 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
         public RegisterLibraryCommandHandler(
             ILibraryRepository libraryRepository,
             IUserRepository userRepository,
+            ILibraryPasswordHasher libraryPasswordHasher,
+            IIdentityService identityService,
             ILibraryImageStorageService libraryImageStorageService,
             ILibraryRegistrationRepository registrationRepository,
             LibraryRegistrationSessionService sessionService,
@@ -40,6 +44,8 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
         {
             _libraryRepository = libraryRepository;
             _userRepository = userRepository;
+            _libraryPasswordHasher = libraryPasswordHasher;
+            _identityService = identityService;
             _libraryImageStorageService = libraryImageStorageService;
             _registrationRepository = registrationRepository;
             _sessionService = sessionService;
@@ -81,6 +87,16 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                     if (await _libraryRepository.ExistsByEmailAsync(normalizedEmail, cancellationToken))
                     {
                         throw new DomainException(LibraryErrorCodes.DuplicateLibraryEmail);
+                    }
+
+                    // The library dashboard must not be reachable with the
+                    // owner's personal account password: two separate
+                    // credentials, two separate secrets.
+                    if (await _identityService.CheckPasswordAsync(session.UserId, request.Password))
+                    {
+                        throw new ApplicationBusinessException(
+                            LibraryPasswordRules.MustDifferFromAccountPasswordMessage,
+                            nameof(RegisterLibraryCommand.Password));
                     }
 
                     string? libraryImagePath = null;
@@ -134,7 +150,8 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                             libraryImagePath,
                             headerImagePath,
                             normalizedEmail,
-                            session.UserId);
+                            session.UserId,
+                            _libraryPasswordHasher.Hash(request.Password));
 
                         challenge = new LibraryEmailVerificationChallenge(
                             Guid.NewGuid(),

@@ -36,6 +36,7 @@ namespace Quraaa.Persistence.Data
         public DbSet<LibraryApprovalNotification> LibraryApprovalNotifications { get; set; }
         public DbSet<LibraryRegistrationSession> LibraryRegistrationSessions { get; set; }
         public DbSet<LibraryEmailVerificationChallenge> LibraryEmailVerificationChallenges { get; set; }
+        public DbSet<LibraryPasswordResetChallenge> LibraryPasswordResetChallenges { get; set; }
         public DbSet<BookAggregate> Books { get; set; }
         public DbSet<ListingAggregate> Listings { get; set; }
         public DbSet<CategoryAggregate> Categories { get; set; }
