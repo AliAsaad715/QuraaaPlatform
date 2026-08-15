@@ -24,7 +24,9 @@ namespace Quraaa.Persistence.Repositories
                 .AsNoTracking()
                 .CountAsync(library => !library.IsDeleted, cancellationToken);
 
+            // Platform totals count the whole catalogue, withheld books included.
             var totalBooksCount = await _context.Books
+                .IgnoreQueryFilters()
                 .AsNoTracking()
                 .CountAsync(book => !book.IsDeleted, cancellationToken);
 

@@ -70,6 +70,7 @@ namespace Quraaa.API.Extensions
             services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
             services.AddHostedService<FileRetentionCleanupService>();
             services.AddHostedService<SellerPayoutProcessingService>();
+            services.AddHostedService<BookModerationNotificationDeliveryService>();
             services.AddOptions<PayoutOptions>()
                 .Bind(configuration.GetSection("Payouts"))
                 .Validate(

@@ -17,6 +17,30 @@ namespace Quraaa.Application.Features.BookReports.Interfaces
             Guid bookId,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// How many DISTINCT users have an open or upheld report against this
+        /// book. Rejected reports are excluded, so dismissed complaints never
+        /// push a book toward being hidden.
+        /// </summary>
+        /// <summary>
+        /// How many distinct readers have an open (non-rejected) report against
+        /// this book. <paramref name="includingUserId"/> is counted even when
+        /// their report is still only staged, so escalation sees the report that
+        /// triggered it.
+        /// </summary>
+        Task<int> CountDistinctReportersAsync(
+            Guid bookId,
+            Guid? includingUserId = null,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>The user ids of every library that currently lists this book.</summary>
+        Task<IReadOnlyCollection<Guid>> GetListingLibraryOwnerIdsAsync(
+            Guid bookId,
+            CancellationToken cancellationToken = default);
+
+        Task<IReadOnlyCollection<Guid>> GetAdminUserIdsAsync(
+            CancellationToken cancellationToken = default);
+
         Task<BookReportAggregate?> GetByIdAsync(
             Guid reportId,
             CancellationToken cancellationToken = default);

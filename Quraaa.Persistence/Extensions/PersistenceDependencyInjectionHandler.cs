@@ -46,6 +46,8 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<ICommentRepository, CommentRepository>();
             services.AddScoped<IBookReportRepository, BookReportRepository>();
+            services.AddScoped<IBookVersionRepository, BookVersionRepository>();
+            services.AddScoped<IBookModerationNotificationRepository, BookModerationNotificationRepository>();
             services.AddScoped<IBookRatingRepository, BookRatingRepository>();
             services.AddScoped<IFavoriteBookRepository, FavoriteBookRepository>();
             services.AddScoped<IBookPopularityRepository, BookPopularityRepository>();
@@ -60,6 +62,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IOrphanFileCandidateRepository, OrphanFileCandidateRepository>();
             services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();
             services.AddScoped<DomainEventOutboxInterceptor>();
+            services.AddScoped<BookVersionInterceptor>();
             return services;
         }
     }

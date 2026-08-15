@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.BookReports.Common;
 using Quraaa.Application.Features.BookReports.Interfaces;
+using Quraaa.Application.Features.BookReports.Services;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
@@ -17,15 +18,18 @@ namespace Quraaa.Application.Features.BookReports.Commands.CreateBookReport
     {
         private readonly IBookReportRepository _bookReportRepository;
         private readonly IUserRepository _userRepository;
+        private readonly BookReportEscalationService _escalationService;
 
         public CreateBookReportCommandHandler(
             IBookReportRepository bookReportRepository,
             IUserRepository userRepository,
+            BookReportEscalationService escalationService,
             ILogger<CreateBookReportCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _bookReportRepository = bookReportRepository;
             _userRepository = userRepository;
+            _escalationService = escalationService;
         }
 
         public async Task<AppResult<BookReportResponse>> Handle(
@@ -60,6 +64,15 @@ namespace Quraaa.Application.Features.BookReports.Commands.CreateBookReport
                     request.Details);
 
                 await _bookReportRepository.AddAsync(report, cancellationToken);
+
+                // Staged before the save so the report, the book's new
+                // moderation state, and the notices all commit together — a
+                // book can never end up hidden without the report that hid it,
+                // or vice versa.
+                await _escalationService.EscalateAsync(
+                    report.BookId,
+                    report.UserId,
+                    cancellationToken);
 
                 try
                 {

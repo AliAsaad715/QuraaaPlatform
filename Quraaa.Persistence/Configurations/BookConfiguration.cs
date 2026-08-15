@@ -12,6 +12,22 @@ namespace Quraaa.Persistence.Configurations
         {
             builder.ToTable("Books");
 
+            builder.Property(b => b.CurrentVersionNumber)
+                   .IsRequired()
+                   .HasDefaultValue(1);
+
+            builder.Property(b => b.ModerationStatus)
+                   .HasConversion<int>()
+                   .IsRequired()
+                   .HasDefaultValue(Quraaa.Domain.Catalog.Enums.BookModerationStatus.Visible);
+
+            builder.Property(b => b.HiddenAtUtc);
+
+            builder.Property(b => b.ModerationNote)
+                   .HasMaxLength(BookAggregate.MaxModerationNoteLength);
+
+            builder.HasIndex(b => b.ModerationStatus);
+
             builder.HasKey(b => b.Id);
             builder.Property(b => b.Id)
                    .ValueGeneratedNever();

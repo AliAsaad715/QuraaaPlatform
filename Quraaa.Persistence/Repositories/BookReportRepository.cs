@@ -7,6 +7,7 @@ using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Reports;
 using Quraaa.Domain.Reports.Enums;
+using Quraaa.Domain.User.Enums;
 using Quraaa.Domain.User;
 using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
@@ -26,6 +27,8 @@ namespace Quraaa.Persistence.Repositories
             Guid bookId,
             CancellationToken cancellationToken = default)
         {
+            // Withheld books are deliberately NOT reportable: a reader cannot
+            // see them, so this reads as "no such book".
             return await _context.Books
                 .AsNoTracking()
                 .AnyAsync(book => book.Id == bookId && !book.IsDeleted, cancellationToken);
@@ -43,6 +46,68 @@ namespace Quraaa.Persistence.Repositories
                         && report.BookId == bookId
                         && !report.IsDeleted,
                     cancellationToken);
+        }
+
+        public async Task<int> CountDistinctReportersAsync(
+            Guid bookId,
+            Guid? includingUserId = null,
+            CancellationToken cancellationToken = default)
+        {
+            // Rejected reports are excluded so dismissed complaints cannot push
+            // a book toward being hidden.
+            var query = _context.BookReports
+                .AsNoTracking()
+                .IgnoreQueryFilters()
+                .Where(report => report.BookId == bookId
+                    && !report.IsDeleted
+                    && report.Status != BookReportStatus.Rejected);
+
+            if (includingUserId.HasValue)
+            {
+                // The caller's own report is usually still only staged in the
+                // change tracker, which no database query can see. Exclude it
+                // here and add it back, so the count never lags by one.
+                var otherReporterCount = await query
+                    .Where(report => report.UserId != includingUserId.Value)
+                    .Select(report => report.UserId)
+                    .Distinct()
+                    .CountAsync(cancellationToken);
+
+                return otherReporterCount + 1;
+            }
+
+            return await query
+                .Select(report => report.UserId)
+                .Distinct()
+                .CountAsync(cancellationToken);
+        }
+
+        public async Task<IReadOnlyCollection<Guid>> GetListingLibraryOwnerIdsAsync(
+            Guid bookId,
+            CancellationToken cancellationToken = default)
+        {
+            // Books are a shared catalogue: every library currently listing this
+            // book is a recipient. The owner's user id is what push targets.
+            return await (
+                from listing in _context.Listings.AsNoTracking()
+                join library in _context.Libraries.AsNoTracking()
+                    on listing.LibraryId equals library.Id
+                where listing.BookId == bookId
+                    && !listing.IsDeleted
+                    && !library.IsDeleted
+                select library.UserId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+        }
+
+        public async Task<IReadOnlyCollection<Guid>> GetAdminUserIdsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return await _context.UsersProfiles
+                .AsNoTracking()
+                .Where(user => user.Role == Role.Admin && !user.IsDeleted)
+                .Select(user => user.Id)
+                .ToListAsync(cancellationToken);
         }
 
         public async Task<BookReportAggregate?> GetByIdAsync(
@@ -152,8 +217,10 @@ namespace Quraaa.Persistence.Repositories
         /// </summary>
         private IQueryable<BookReportRow> JoinedQuery()
         {
-            return from report in _context.BookReports.AsNoTracking()
-                   join book in _context.Books.AsNoTracking()
+            // IgnoreQueryFilters so the moderation queue keeps showing reports
+            // for books the escalation already withheld.
+            return from report in _context.BookReports.AsNoTracking().IgnoreQueryFilters()
+                   join book in _context.Books.AsNoTracking().IgnoreQueryFilters()
                        on report.BookId equals book.Id
                    join reporter in _context.UsersProfiles.AsNoTracking()
                        on report.UserId equals reporter.Id

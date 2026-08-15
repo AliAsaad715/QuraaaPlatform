@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
+using Quraaa.Domain.Catalog.Enums;
 using Quraaa.Domain.Cart;
 using Quraaa.Domain.Category;
 using Quraaa.Domain.Comments;
@@ -42,6 +43,8 @@ namespace Quraaa.Persistence.Data
         public DbSet<CategoryAggregate> Categories { get; set; }
         public DbSet<CommentAggregate> Comments { get; set; }
         public DbSet<BookReportAggregate> BookReports { get; set; }
+        public DbSet<BookVersion> BookVersions { get; set; }
+        public DbSet<BookModerationNotification> BookModerationNotifications { get; set; }
         public DbSet<FavoriteBookAggregate> FavoriteBooks { get; set; }
         public DbSet<BookPurchaseAggregate> BookPurchases { get; set; }
         public DbSet<BookRatingAggregate> BookRatings { get; set; }
@@ -56,6 +59,12 @@ namespace Quraaa.Persistence.Data
             base.OnModelCreating(modelBuilder);
             modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
             modelBuilder.Entity<CategoryAggregate>().HasQueryFilter(c => c.IsActive == true);
+
+            // A book withheld by moderation disappears from every read path by
+            // default. Moderation and admin queries opt back in with
+            // IgnoreQueryFilters(); nothing else should see it.
+            modelBuilder.Entity<BookAggregate>()
+                .HasQueryFilter(book => book.ModerationStatus != BookModerationStatus.HiddenForReview);
         }
     }
 }

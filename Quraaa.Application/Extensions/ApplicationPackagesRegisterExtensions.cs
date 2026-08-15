@@ -3,6 +3,7 @@ using IdentityServer.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using Quraaa.Application.Features.Orders.Services;
 using Quraaa.Application.Features.Libraries.Services;
+using Quraaa.Application.Features.BookReports.Services;
 using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Features.Payouts.Services;
 using Quraaa.Application.Shared.Services;
@@ -31,6 +32,7 @@ namespace Quraaa.Application.Extensions
             services.AddScoped<
                 IOrderPaymentReconciliationService,
                 OrderPaymentReconciliationService>();
+            services.AddScoped<BookReportEscalationService>();
             services.AddSingleton<ISellerPayoutDispatchSignal, SellerPayoutDispatchSignal>();
             services.AddScoped<LibraryStripeOnboardingService>();
             return services;

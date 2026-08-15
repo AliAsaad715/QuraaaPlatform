@@ -96,7 +96,15 @@ namespace Quraaa.Persistence.Repositories
             catch (DbUpdateException ex) when (IsUniqueViolation(ex))
             {
                 // Detach pending entities so the DbContext remains usable after the failure.
-                foreach (var entry in _context.ChangeTracker.Entries<BookAggregate>().ToList())
+                // The version interceptor staged one BookVersion per book; leaving
+            // them Added would break the next SaveChanges on this context with a
+            // foreign key to a book that was never inserted.
+            foreach (var versionEntry in _context.ChangeTracker.Entries<BookVersion>().ToList())
+            {
+                versionEntry.State = EntityState.Detached;
+            }
+
+            foreach (var entry in _context.ChangeTracker.Entries<BookAggregate>().ToList())
                     entry.State = EntityState.Detached;
 
                 throw new ConflictException(
