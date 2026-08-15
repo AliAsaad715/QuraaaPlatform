@@ -49,6 +49,19 @@ namespace Quraaa.Application.Features.BookReports.Interfaces
             Guid reportId,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Reports against books this library currently lists. Withheld books
+        /// are included on purpose — they are the ones the owner most needs to
+        /// see.
+        /// </summary>
+        Task<(IReadOnlyCollection<LibraryBookReportResponse> Items, int TotalCount)> GetPagedForLibraryAsync(
+            Guid libraryId,
+            BookReportStatus? status,
+            Guid? bookId,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken = default);
+
         Task<(IReadOnlyCollection<BookReportResponse> Items, int TotalCount)> GetPagedAsync(
             BookReportStatus? status,
             Guid? bookId,

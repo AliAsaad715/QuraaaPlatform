@@ -181,6 +181,66 @@ namespace Quraaa.Persistence.Repositories
             return (items, totalCount);
         }
 
+        public async Task<(IReadOnlyCollection<LibraryBookReportResponse> Items, int TotalCount)> GetPagedForLibraryAsync(
+            Guid libraryId,
+            BookReportStatus? status,
+            Guid? bookId,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken = default)
+        {
+            // Scoped by the library's own listings, so an owner only ever sees
+            // reports about books they actually sell. IgnoreQueryFilters keeps
+            // withheld books visible here — that is the case the owner has to
+            // act on.
+            var query =
+                from report in _context.BookReports.AsNoTracking().IgnoreQueryFilters()
+                join book in _context.Books.AsNoTracking().IgnoreQueryFilters()
+                    on report.BookId equals book.Id
+                join author in _context.Authors.AsNoTracking()
+                    on book.AuthorId equals author.Id into bookAuthors
+                from author in bookAuthors.DefaultIfEmpty()
+                where !report.IsDeleted
+                    && _context.Listings
+                        .Any(listing => listing.BookId == report.BookId
+                            && listing.LibraryId == libraryId
+                            && !listing.IsDeleted)
+                select new { Report = report, Book = book, Author = author };
+
+            if (status.HasValue)
+            {
+                query = query.Where(row => row.Report.Status == status.Value);
+            }
+
+            if (bookId.HasValue)
+            {
+                query = query.Where(row => row.Report.BookId == bookId.Value);
+            }
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            var items = await query
+                .OrderByDescending(row => row.Report.CreationTime)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(row => new LibraryBookReportResponse(
+                    row.Report.Id,
+                    row.Report.BookId,
+                    row.Book.Title,
+                    row.Author != null ? row.Author.Name : string.Empty,
+                    row.Book.CoverImageUrl,
+                    row.Report.Reason,
+                    row.Report.Details,
+                    row.Report.Status,
+                    row.Report.ReviewedAtUtc,
+                    row.Report.CreationTime,
+                    row.Book.ModerationStatus,
+                    row.Book.CurrentVersionNumber))
+                .ToListAsync(cancellationToken);
+
+            return (items, totalCount);
+        }
+
         public async Task AddAsync(
             BookReportAggregate report,
             CancellationToken cancellationToken = default)
