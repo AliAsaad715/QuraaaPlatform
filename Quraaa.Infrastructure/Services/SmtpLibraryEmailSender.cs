@@ -41,15 +41,50 @@ namespace Quraaa.Infrastructure.Services
                 return EmailDeliveryStatus.NotSent;
             }
 
-            var sendAttemptStarted = false;
-            try
-            {
-                var message = CreateMessage(
+            return await SendMessageAsync(
+                () => CreateVerificationMessage(
                     recipient,
                     SanitizePlainText(libraryName),
                     verificationId,
                     otpCode,
-                    validity);
+                    validity),
+                LibraryEmailKind.Verification,
+                verificationId,
+                cancellationToken);
+        }
+
+        public async Task<EmailDeliveryStatus> SendApprovalAsync(
+            string recipientEmail,
+            string libraryName,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(libraryName)
+                || !MailboxAddress.TryParse(recipientEmail, out var recipient))
+            {
+                _logger.LogWarning(
+                    "Library approval email was not attempted because its message data was invalid.");
+                return EmailDeliveryStatus.NotSent;
+            }
+
+            return await SendMessageAsync(
+                () => CreateApprovalMessage(
+                    recipient,
+                    SanitizePlainText(libraryName)),
+                LibraryEmailKind.Approval,
+                verificationId: null,
+                cancellationToken);
+        }
+
+        private async Task<EmailDeliveryStatus> SendMessageAsync(
+            Func<MimeMessage> messageFactory,
+            LibraryEmailKind emailKind,
+            Guid? verificationId,
+            CancellationToken cancellationToken)
+        {
+            var sendAttemptStarted = false;
+            try
+            {
+                var message = messageFactory();
 
                 using var smtpClient = new SmtpClient();
                 try
@@ -93,60 +128,68 @@ namespace Quraaa.Infrastructure.Services
             }
             catch (SmtpCommandException exception) when (sendAttemptStarted)
             {
-                _logger.LogWarning(
-                    exception,
-                    "SMTP explicitly rejected library verification email {VerificationId}.",
-                    verificationId);
+                LogExplicitRejection(exception, emailKind, verificationId);
                 return EmailDeliveryStatus.NotSent;
             }
             catch (Exception exception) when (!sendAttemptStarted)
             {
-                _logger.LogWarning(
-                    exception,
-                    "Library verification email {VerificationId} failed before SMTP send started.",
-                    verificationId);
+                LogPreSendFailure(exception, emailKind, verificationId);
                 return EmailDeliveryStatus.NotSent;
             }
             catch (Exception exception)
             {
-                _logger.LogWarning(
-                    exception,
-                    "Library verification email {VerificationId} has an unknown SMTP delivery outcome.",
-                    verificationId);
+                LogUnknownOutcome(exception, emailKind, verificationId);
                 return EmailDeliveryStatus.Unknown;
             }
         }
 
-        private MimeMessage CreateMessage(
+        private MimeMessage CreateVerificationMessage(
             MailboxAddress recipient,
             string libraryName,
             Guid verificationId,
             string otpCode,
             TimeSpan validity)
         {
-            if (!MailboxAddress.TryParse(_options.FromAddress.Trim(), out var fromAddress))
-            {
-                throw new InvalidOperationException("The SMTP sender address is invalid.");
-            }
-
             var validityMinutes = Math.Max(1, (long)Math.Ceiling(validity.TotalMinutes));
             var validityDescription = validityMinutes == 1
                 ? "1 minute"
                 : $"{validityMinutes.ToString(CultureInfo.InvariantCulture)} minutes";
 
+            return CreateMessage(
+                recipient,
+                "Verify your library email address",
+                $"Use this one-time code to verify the email address for {libraryName}:\n\n" +
+                $"{otpCode}\n\n" +
+                $"Verification ID: {verificationId:D}\n\n" +
+                $"This code is valid for {validityDescription}.\n\n" +
+                "If you did not submit this library registration, you can ignore this email.");
+        }
+
+        private MimeMessage CreateApprovalMessage(
+            MailboxAddress recipient,
+            string libraryName) =>
+            CreateMessage(
+                recipient,
+                "Your library registration has been approved",
+                $"Your registration for {libraryName} has been approved.\n\n" +
+                "You can now sign in and manage your library on Quraaa Platform.\n\n" +
+                "Thank you for joining Quraaa Platform.");
+
+        private MimeMessage CreateMessage(
+            MailboxAddress recipient,
+            string subject,
+            string body)
+        {
+            if (!MailboxAddress.TryParse(_options.FromAddress.Trim(), out var fromAddress))
+            {
+                throw new InvalidOperationException("The SMTP sender address is invalid.");
+            }
+
             var message = new MimeMessage
             {
                 Date = DateTimeOffset.UtcNow,
-                Subject = "Verify your library email address",
-                Body = new TextPart("plain")
-                {
-                    Text =
-                        $"Use this one-time code to verify the email address for {libraryName}:\n\n" +
-                        $"{otpCode}\n\n" +
-                        $"Verification ID: {verificationId:D}\n\n" +
-                        $"This code is valid for {validityDescription}.\n\n" +
-                        "If you did not submit this library registration, you can ignore this email."
-                }
+                Subject = subject,
+                Body = new TextPart("plain") { Text = body }
             };
 
             message.From.Add(new MailboxAddress(
@@ -155,6 +198,61 @@ namespace Quraaa.Infrastructure.Services
             message.To.Add(recipient);
 
             return message;
+        }
+
+        private void LogExplicitRejection(
+            Exception exception,
+            LibraryEmailKind emailKind,
+            Guid? verificationId)
+        {
+            if (emailKind == LibraryEmailKind.Verification)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "SMTP explicitly rejected library verification email {VerificationId}.",
+                    verificationId);
+                return;
+            }
+
+            _logger.LogWarning(exception, "SMTP explicitly rejected library approval email.");
+        }
+
+        private void LogPreSendFailure(
+            Exception exception,
+            LibraryEmailKind emailKind,
+            Guid? verificationId)
+        {
+            if (emailKind == LibraryEmailKind.Verification)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Library verification email {VerificationId} failed before SMTP send started.",
+                    verificationId);
+                return;
+            }
+
+            _logger.LogWarning(
+                exception,
+                "Library approval email failed before SMTP send started.");
+        }
+
+        private void LogUnknownOutcome(
+            Exception exception,
+            LibraryEmailKind emailKind,
+            Guid? verificationId)
+        {
+            if (emailKind == LibraryEmailKind.Verification)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Library verification email {VerificationId} has an unknown SMTP delivery outcome.",
+                    verificationId);
+                return;
+            }
+
+            _logger.LogWarning(
+                exception,
+                "Library approval email has an unknown SMTP delivery outcome.");
         }
 
         private static SecureSocketOptions GetSocketOptions(string encryption) =>
@@ -174,5 +272,11 @@ namespace Quraaa.Infrastructure.Services
         private static bool IsSixAsciiDigits(string code) =>
             code is { Length: 6 }
             && code.All(character => character is >= '0' and <= '9');
+
+        private enum LibraryEmailKind
+        {
+            Verification,
+            Approval
+        }
     }
 }

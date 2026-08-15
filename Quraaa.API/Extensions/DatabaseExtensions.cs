@@ -14,7 +14,7 @@ namespace Quraaa.API.Extensions
 
             services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
                 options.UseNpgsql(connectionString)
-                    .AddInterceptors(serviceProvider.GetRequiredService<DomainEventDispatchInterceptor>()));
+                    .AddInterceptors(serviceProvider.GetRequiredService<DomainEventOutboxInterceptor>()));
 
             // Register Identity services with custom options
             services.AddIdentityCore<ApplicationUser>(options =>

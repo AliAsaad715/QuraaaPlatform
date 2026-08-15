@@ -25,6 +25,7 @@ Current implemented business capabilities:
 - Authenticated named saved-location list/create/edit/default/delete through `/api/profile/locations`.
 - Authenticated mobile library-registration link issuance through `POST /api/libraries/register`.
 - Token-authenticated dashboard registration context/detail submission and SMTP email-OTP verification through `/api/libraries/register/*`; only verified applications enter the admin queue.
+- Admin approval atomically promotes the owner and enqueues durable delivery of an approval email plus an FCM push to the owner's registered mobile devices.
 - Public, searchable library listing through `GET /api/libraries`.
 - Paged/searchable/sortable active physical-book listing by library through `GET /api/libraries/{libraryId}/books`.
 - Public ebook listing through `GET /api/ebooks`.
@@ -32,7 +33,7 @@ Current implemented business capabilities:
 - Interest/category/language-based authenticated recommendations through `GET /api/books/recommended`.
 - Authenticated favorite-book list/add/remove through `/api/favorite-books`.
 - User physical-book listing creation and current-user listing retrieval through `/api/listings`.
-- Library inventory listing create/update/detail operations through `/api/library-admin/listings`.
+- Library inventory listing create/update/detail operations through `/api/library-admin/listings`, including digital-asset replacement with a 110 MB multipart transport allowance for the validated 100 MB PDF limit.
 - User cart retrieval/mutation through `/api/cart`, with one open cart per user, Stripe-compatible line/quantity limits, and cumulative physical-stock validation.
 - Authenticated checkout context through `GET /api/orders/checkout-context`; physical and mixed carts return default-first owned saved-location choices, while empty and digital-only carts require no shipping location.
 - Order-driven Stripe Checkout through `POST /api/orders`: the order, cart lock, physical-stock reservations, and payment attempt are persisted before Stripe is called.
@@ -44,6 +45,8 @@ Current implemented business capabilities:
 - Author management (admin-only) through `POST /api/admin/authors`, `GET /api/admin/authors`, `GET /api/admin/authors/{id}`, `PUT /api/admin/authors/{id}`, and `DELETE /api/admin/authors/{id}`.
 - Standalone OTP send through `POST /api/otp/send`.
 - Standalone OTP verification through `POST /api/otp/verify`.
+- Authenticated FCM device-token registration/removal through `PUT` and `DELETE /api/notifications/devices`; deprecated `POST /api/notifications/device-token` remains a registration alias backed by the same `PushDevices` store.
+- Library listing publication and digital-asset-update pushes are committed to a durable outbox with the listing change and delivered by a retrying background worker; publications committed together for one library are coalesced into one notification.
 - Authenticated push notification dispatch through `POST /api/notifications/send`.
 - Development/test push notification dispatch through `POST /api/notifications/test`.
 
@@ -72,7 +75,7 @@ Core technologies:
 - Firebase Admin SDK for FCM push notifications and OTP SMS gateway data messages
 - `IDistributedCache`, with Redis support for production OTP cache and in-memory cache for local/development fallback
 - Stripe.net for Checkout session creation and signed webhook parsing
-- MailKit for SMTP/STARTTLS library email verification
+- MailKit for SMTP/STARTTLS library email verification and approval messages
 - CloudinaryDotNet for durable public images and authenticated private PDF/Word assets
 - Typed `HttpClient` integration with Google Books for ISBN metadata lookup
 - DotNetEnv plus environment variables for runtime secrets/configuration
@@ -569,7 +572,10 @@ DbSets:
 - `Authors` (`AuthorAggregate`)
 - `UsersProfiles` (`UserAggregate`)
 - `UserLocations` (`UserLocation`; named profile locations with one profile-selected default)
+- `PushDevices` (`PushDevice`; user-owned FCM registrations keyed by a unique SHA-256 token hash)
+- `ListingPushNotifications` (`ListingPushNotification`; leased/retried durable outbox for coalesced listing publication and digital-asset-update pushes)
 - `Libraries` (`LibraryAggregate`)
+- `LibraryApprovalNotifications` (`LibraryApprovalNotification`; per-channel durable approval-delivery outbox)
 - `Books` (`BookAggregate`)
 - `Listings` (`ListingAggregate`)
 - `Categories` (`CategoryAggregate`)
@@ -618,8 +624,14 @@ Located in `Quraaa.Persistence/Migrations/`:
 23. `20260814201322_AddUserDeviceTokens`
 24. `20260815083731_AddAuthorsTable`
 25. `20260815092204_RefactorBookAuthorToForeignKeyAndAddBirthDate`
+22. `20260813192304_AddComments`
+23. `20260814173751_AddPushDevicesAndLibraryApprovalNotifications`
+24. `20260814201322_AddUserDeviceTokens`
+25. `20260815102801_ConsolidateUserDeviceTokensIntoPushDevices`
+26. `20260815115240_AddListingPushNotificationOutbox`
 
 The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, and saved-location storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work. `AddComments` adds book comment storage; `AddUserDeviceTokens` adds FCM device-token storage for push notifications. `AddAuthorsTable` creates the standalone `Authors` table (`AuthorAggregate`). `RefactorBookAuthorToForeignKeyAndAddBirthDate` adds `Authors.BirthDate`; adds nullable `Books.AuthorId`; backfills it by creating an `Author` row (via `gen_random_uuid()`, a PostgreSQL 13+ core builtin) for every distinct existing `Books.Author` string and matching books to it by normalized name; adds the `Books`→`Authors` foreign key and an index on `AuthorId`; and only then drops the old free-text `Books.Author` column. Its downgrade re-adds `Author` and best-effort backfills it from the linked `Authors.Name`.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, saved-location, comment, push-device, library-approval-notification, and listing-push-notification storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. `AddPushDevicesAndLibraryApprovalNotifications` stores up to the actively retained device registrations per user using a unique token hash and adds an independently retried email/push outbox created by admin approval. `AddUserDeviceTokens` is retained as applied migration history; `ConsolidateUserDeviceTokensIntoPushDevices` validates and copies its rows into `PushDevices`, retains the ten most recent devices per user, and drops the duplicate table. `AddListingPushNotificationOutbox` adds the leased/retried push outbox populated atomically from listing domain events; publication events in one save are grouped per library so bulk upload creates one push. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
 `Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
 
@@ -1117,7 +1129,7 @@ headerImage: uploaded image file
 email: library@example.com
 ```
 
-The dashboard request does not accept `userId`; the validated session supplies it. New libraries start as `AwaitingEmailVerification`. The API creates a durable, generation-bound HMAC-SHA256 challenge, attempts SMTP delivery, and returns `202 Accepted` with `verificationId` plus `emailDeliveryStatus` (`Sent`, `NotSent`, or `Unknown`). `POST /api/libraries/register/email/resend` redelivers the same derived code and verification id subject to a 60-second cooldown and a fixed five-send/hour window; definite non-delivery restores the quota slot. `POST /api/libraries/register/email/verify` requires that verification id plus exactly six ASCII digits, allows five failures, applies a five-minute lockout, and atomically changes the library to `Pending`. Only verified pending libraries appear in the admin queue or can be approved/rejected. Approval also promotes the domain profile and Identity role transactionally.
+The dashboard request does not accept `userId`; the validated session supplies it. New libraries start as `AwaitingEmailVerification`. The API creates a durable, generation-bound HMAC-SHA256 challenge, attempts SMTP delivery, and returns `202 Accepted` with `verificationId` plus `emailDeliveryStatus` (`Sent`, `NotSent`, or `Unknown`). `POST /api/libraries/register/email/resend` redelivers the same derived code and verification id subject to a 60-second cooldown and a fixed five-send/hour window; definite non-delivery restores the quota slot. `POST /api/libraries/register/email/verify` requires that verification id plus exactly six ASCII digits, allows five failures, applies a five-minute lockout, and atomically changes the library to `Pending`. Only verified pending libraries appear in the admin queue or can be approved/rejected. Approval promotes the domain profile and Identity role and creates the durable email/push notification outbox row in the same transaction.
 
 `GET /api/libraries` is anonymous and returns approved libraries only. It supports `pageNumber`, `pageSize`, and `searchTerm` (library name/location). `GetLibrariesQuery` inherits `PaginationRequestDTO`, which coerces non-positive page numbers to `1` and any page size outside `1..20` to `10`.
 
@@ -1384,6 +1396,16 @@ DELETE /api/admin/authors/{id}
 ```
 
 ### Notifications
+
+`PUT /api/notifications/devices`, deprecated `POST /api/notifications/device-token`, and `DELETE /api/notifications/devices` request body:
+
+```json
+{
+  "deviceToken": "fcm-registration-token-from-client-app"
+}
+```
+
+All three routes are authenticated and bind the token to the JWT user. Both registration routes are idempotent, reassign a rotated token to the latest authenticated owner, and retain only the ten most recently registered devices for that user. `POST /api/notifications/device-token` is a compatibility alias; new clients should use `PUT`. `DELETE` removes the token only when it belongs to the caller. Clients should register after login and after every Firebase token refresh.
 
 `POST /api/notifications/send` request body:
 
@@ -1949,7 +1971,7 @@ Details submission requires `token`, `libraryName`, `location`, `libraryImage`, 
 
 The OTP is never stored in plaintext. `LIBRARY_EMAIL_OTP_PEPPER` is an independent secret used both to derive the six-digit code and to HMAC it with separate purposes and the library id, user id, normalized email, and generation. Resends retain that generation/code and failed-attempt state; the client must echo the exposed `verificationId`, and mismatched generations fail without consuming an attempt from the current challenge. EF concurrency prevents a stale resend/verification mutation from winning. Successful verification atomically sets `EmailVerifiedAtUtc`, changes `AwaitingEmailVerification` to `Pending`, consumes the challenge, and completes the temporary session.
 
-The admin request repository excludes `AwaitingEmailVerification` and legacy unverified `Pending` rows. `LibraryAggregate.Approve` and `Reject` independently require both `Pending` and `EmailVerifiedAtUtc`, so a direct PATCH cannot bypass email verification. Approval runs in the shared EF transaction, changes `UserAggregate.Role`, adds the Identity `LibraryOwner` role, and invalidates the old refresh family immediately; startup reconciliation remains an idempotent repair path.
+The admin request repository excludes `AwaitingEmailVerification` and legacy unverified `Pending` rows. `LibraryAggregate.Approve` and `Reject` independently require both `Pending` and `EmailVerifiedAtUtc`, so a direct PATCH cannot bypass email verification. Approval runs in the shared EF transaction, changes `UserAggregate.Role`, adds the Identity `LibraryOwner` role, invalidates the old refresh family immediately, and inserts one unique `LibraryApprovalNotification`; startup reconciliation remains an idempotent repair path. A hosted worker claims committed outbox rows with a PostgreSQL lease, then independently sends SMTP to the verified `LibraryAggregate.Email` and FCM to the owner's registered devices. Definite failures retry with bounded backoff, ambiguous SMTP acceptance is not automatically retried, permanently invalid FCM tokens are removed, and no provider failure reverses approval. The push payload sets `type=library_registration_approved`, `libraryId`, `approvalStatus=Approved`, and `requiresReauthentication=true` because the previous access-token family is no longer active.
 
 ### Library Listing Flow
 
@@ -2344,16 +2366,27 @@ Files:
 
 ```text
 Quraaa.API/Controllers/NotificationsController.cs
+Quraaa.API/Requests/Notifications/RegisterPushDeviceRequest.cs
+Quraaa.API/Requests/Notifications/UnregisterPushDeviceRequest.cs
 Quraaa.API/Requests/Notifications/SendNotificationRequest.cs
+Quraaa.API/Services/LibraryApprovalNotificationDeliveryService.cs
+Quraaa.Application/Features/Notifications/Commands/RegisterPushDevice/
+Quraaa.Application/Features/Notifications/Commands/UnregisterPushDevice/
 Quraaa.Application/Features/Notifications/Commands/SendNotification/
 Quraaa.Application/Features/Notifications/Common/NotificationSendResponse.cs
 Quraaa.Application/Features/Notifications/Interfaces/IFirebaseNotificationService.cs
+Quraaa.Application/Features/Notifications/Interfaces/IPushDeviceRepository.cs
+Quraaa.Domain/User/Entities/PushDevice.cs
+Quraaa.Persistence/Repositories/PushDeviceRepository.cs
 Quraaa.Infrastructure/Services/FirebaseNotificationService.cs
 ```
 
-Route:
+Routes:
 
 ```text
+PUT /api/notifications/devices
+POST /api/notifications/device-token
+DELETE /api/notifications/devices
 POST /api/notifications/send
 POST /api/notifications/test
 ```
@@ -2361,6 +2394,9 @@ POST /api/notifications/test
 Authentication:
 
 ```text
+PUT /api/notifications/devices -> Authorization: Bearer <access-token>
+POST /api/notifications/device-token -> Authorization: Bearer <access-token> (deprecated alias)
+DELETE /api/notifications/devices -> Authorization: Bearer <access-token>
 POST /api/notifications/send -> Authorization: Bearer <access-token>
 POST /api/notifications/test -> AllowAnonymous when enabled
 ```
@@ -2391,6 +2427,19 @@ Successful response:
 Flow:
 
 ```text
+HTTP PUT /api/notifications/devices
+  -> NotificationsController extracts UserId from token claims
+  -> RegisterPushDeviceCommand(userId, deviceToken)
+  -> PushDeviceRepository hashes the token, upserts/reassigns it, and prunes old devices
+
+HTTP POST /api/notifications/device-token (deprecated compatibility alias)
+  -> follows the same RegisterPushDeviceCommand and PushDevices path as PUT /devices
+
+HTTP DELETE /api/notifications/devices
+  -> NotificationsController extracts UserId from token claims
+  -> UnregisterPushDeviceCommand(userId, deviceToken)
+  -> PushDeviceRepository removes only the caller-owned matching token
+
 HTTP POST /api/notifications/send
   -> NotificationsController.Send(body request)
   -> [Authorize] validates JWT bearer token

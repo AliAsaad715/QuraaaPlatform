@@ -9,6 +9,7 @@ using Quraaa.Domain.Comments;
 using Quraaa.Domain.Favorites;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.Marketplace;
+using Quraaa.Domain.Notifications;
 using Quraaa.Domain.Orders;
 using Quraaa.Domain.Purchases;
 using Quraaa.Domain.Ratings;
@@ -27,7 +28,10 @@ namespace Quraaa.Persistence.Data
         public DbSet<AuthorAggregate> Authors { get; set; }
         public DbSet<UserAggregate> UsersProfiles { get; set; }
         public DbSet<UserLocation> UserLocations { get; set; }
+        public DbSet<PushDevice> PushDevices { get; set; }
+        public DbSet<ListingPushNotification> ListingPushNotifications { get; set; }
         public DbSet<LibraryAggregate> Libraries { get; set; }
+        public DbSet<LibraryApprovalNotification> LibraryApprovalNotifications { get; set; }
         public DbSet<LibraryRegistrationSession> LibraryRegistrationSessions { get; set; }
         public DbSet<LibraryEmailVerificationChallenge> LibraryEmailVerificationChallenges { get; set; }
         public DbSet<BookAggregate> Books { get; set; }
@@ -42,8 +46,6 @@ namespace Quraaa.Persistence.Data
         public DbSet<ProcessedPaymentEvent> ProcessedPaymentEvents { get; set; }
         public DbSet<ConsumedRefreshToken> ConsumedRefreshTokens { get; set; }
         public DbSet<OrphanFileCandidate> OrphanFileCandidates { get; set; }
-        public DbSet<UserDeviceToken> UserDeviceTokens { get; set; }
-
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

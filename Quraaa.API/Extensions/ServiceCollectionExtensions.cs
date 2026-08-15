@@ -64,6 +64,8 @@ namespace Quraaa.API.Extensions
             services.AddScoped<IBulkBookStorageService, BulkBookStorageService>();
             services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
             services.AddHostedService<FileRetentionCleanupService>();
+            services.AddHostedService<LibraryApprovalNotificationDeliveryService>();
+            services.AddHostedService<ListingPushNotificationDeliveryService>();
             PersistenceDependencyInjectionHandler.AddPersistenceDependencies(services, configuration);
             ApplicationPackagesRegisterExtensions.AddApplicationDependencies(services);
         }

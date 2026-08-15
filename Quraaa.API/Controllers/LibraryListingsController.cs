@@ -148,6 +148,8 @@ namespace Quraaa.API.Controllers
         /// </remarks>
         [HttpPut("{listingId:guid}/digital-asset")]
         [Consumes("multipart/form-data")]
+        [RequestSizeLimit(110 * 1024 * 1024)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 110 * 1024 * 1024)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
