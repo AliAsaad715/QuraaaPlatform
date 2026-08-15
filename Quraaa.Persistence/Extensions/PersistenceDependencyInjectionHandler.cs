@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Quraaa.Application.Features.Admin.Interfaces;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Authors.Interfaces;
+using Quraaa.Application.Features.BookReports.Interfaces;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
@@ -39,6 +40,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IAuthenticationUnitOfWork, AuthenticationUnitOfWork>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<ICommentRepository, CommentRepository>();
+            services.AddScoped<IBookReportRepository, BookReportRepository>();
             services.AddScoped<IBookRatingRepository, BookRatingRepository>();
             services.AddScoped<IFavoriteBookRepository, FavoriteBookRepository>();
             services.AddScoped<IBookPopularityRepository, BookPopularityRepository>();
