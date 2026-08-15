@@ -92,9 +92,12 @@ app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 
-// Seed the database with categories
-using (var scope = app.Services.CreateScope())
+// Seed the database with categories. Skipped in the "Testing" environment so
+// WebApplicationFactory-based integration tests can boot the app without a
+// real Postgres instance — see Quraaa.API.IntegrationTests.
+if (!app.Environment.IsEnvironment("Testing"))
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
     await CategorySeeder.SeedAsync(db);
@@ -138,3 +141,7 @@ static void CreateFirebaseCredentialsFile(string contentRootPath)
     Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", firebasePath);
     Environment.SetEnvironmentVariable("FIREBASE_CREDENTIALS", firebasePath);
 }
+
+// Makes the top-level Program class visible to WebApplicationFactory<Program> in the
+// integration test project (it's otherwise an internal compiler-generated type).
+public partial class Program { }

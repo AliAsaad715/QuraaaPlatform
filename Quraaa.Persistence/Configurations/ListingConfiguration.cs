@@ -42,11 +42,15 @@ namespace Quraaa.Persistence.Configurations
                    .IsRequired();
 
             // Nullable by design: Condition/Stock only apply to physical
-            // listings, CustomDigitalAssetUrl only to digital ones - enforced in
+            // listings, CustomDigitalAssetUrl only to digital ones, and
+            // CustomCoverImageUrl only to user-sold physical ones - enforced in
             // ListingAggregate's factory methods, not here.
             builder.Property(l => l.Condition);
 
             builder.Property(l => l.CustomDigitalAssetUrl)
+                   .HasMaxLength(500);
+
+            builder.Property(l => l.CustomCoverImageUrl)
                    .HasMaxLength(500);
 
             builder.Property(l => l.Stock);

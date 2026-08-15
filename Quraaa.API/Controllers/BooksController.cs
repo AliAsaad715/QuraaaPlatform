@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Books.Common;
 using Quraaa.Application.Features.Books.Queries.GetHomePageCatalog;
 using Quraaa.Application.Features.Books.Queries.GetMostPopularBooks;
 using Quraaa.Application.Features.Books.Queries.GetRecommendedBooks;
+using Quraaa.Application.Features.Listings.Queries.ValidateIsbn;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Domain.Catalog;
 
@@ -107,6 +108,26 @@ namespace Quraaa.API.Controllers
                 request.IncludeUnranked);
 
             var result = await Mediator.Send(query, cancellationToken);
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Checks whether an ISBN corresponds to a real, published book via the Google Books API.
+        /// </summary>
+        /// <remarks>
+        /// Returns <c>true</c> only if Google Books has at least one matching volume for the
+        /// given ISBN. Malformed ISBNs and Google Books API/network failures are treated the
+        /// same as "not found" and also return <c>false</c>.
+        /// </remarks>
+        [AllowAnonymous]
+        [HttpGet("validate-isbn/{isbn}")]
+        [ProducesResponseType(typeof(bool), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> ValidateIsbn(
+            [FromRoute] string isbn,
+            CancellationToken cancellationToken = default)
+        {
+            var result = await Mediator.Send(new ValidateIsbnQuery(isbn), cancellationToken);
             return HandleResult(result);
         }
     }

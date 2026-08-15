@@ -4,6 +4,7 @@ namespace Quraaa.Application.Shared.Files
     {
         LibraryLogo,
         LibraryHeader,
-        BookCover
+        BookCover,
+        ListingCover
     }
 }

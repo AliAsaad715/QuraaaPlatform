@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Quraaa.API.Requests.Files;
 using Quraaa.API.Requests.Listings;
 using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
 using Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook;
@@ -41,13 +42,22 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
+        /// <summary>
+        /// List a physical book the authenticated user owns for sale.
+        /// </summary>
+        /// <remarks>
+        /// A cover/condition photo of the actual item is required — it is shown to buyers
+        /// instead of the book's generic catalog cover, since user-sold physical copies
+        /// vary in condition.
+        /// </remarks>
         [HttpPost("me/physical")]
+        [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(AddPhysicalBookResponse), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> AddPhysicalBook(
-            [FromBody] AddUserPhysicalBookCommand command,
+            [FromForm] AddUserPhysicalBookRequest request,
             CancellationToken cancellationToken = default)
         {
             if (!TryGetCurrentUserId(out var userId))
@@ -55,7 +65,16 @@ namespace Quraaa.API.Controllers
                 return InvalidUserIdResult();
             }
 
-            var result = await Mediator.Send(command with { RequestingUserId = userId }, cancellationToken);
+            var command = new AddUserPhysicalBookCommand
+            {
+                RequestingUserId = userId,
+                Price = request.Price,
+                Condition = request.Condition,
+                Isbn = request.Isbn,
+                CoverImage = new FormFileUploadedFile(request.CoverImage)
+            };
+
+            var result = await Mediator.Send(command, cancellationToken);
             return HandleResult(result);
         }
     }

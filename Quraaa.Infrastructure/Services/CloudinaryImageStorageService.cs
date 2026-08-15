@@ -251,6 +251,7 @@ namespace Quraaa.Infrastructure.Services
                 ImageAssetKind.LibraryLogo => "quraa/libraries/logos",
                 ImageAssetKind.LibraryHeader => "quraa/libraries/headers",
                 ImageAssetKind.BookCover => "quraa/books/covers",
+                ImageAssetKind.ListingCover => "quraa/listings/covers",
                 _ => throw new ArgumentOutOfRangeException(nameof(assetKind), assetKind, null)
             };
     }
