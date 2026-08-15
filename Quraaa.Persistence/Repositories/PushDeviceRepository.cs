@@ -87,10 +87,52 @@ public sealed class PushDeviceRepository : IPushDeviceRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyCollection<string>> GetTokensByUserIdsAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (userIds.Count == 0)
+        {
+            return [];
+        }
+
+        var distinctUserIds = userIds
+            .Where(userId => userId != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        if (distinctUserIds.Length == 0)
+        {
+            return [];
+        }
+
+        return await Devices
+            .AsNoTracking()
+            .Where(device => distinctUserIds.Contains(device.UserId))
+            .Select(device => device.Token)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task RemoveTokensAsync(
         Guid userId,
         IReadOnlyCollection<string> tokens,
         CancellationToken cancellationToken = default)
+    {
+        await RemoveTokensCoreAsync(userId, tokens, cancellationToken);
+    }
+
+    public async Task RemoveTokensAsync(
+        IReadOnlyCollection<string> tokens,
+        CancellationToken cancellationToken = default)
+    {
+        await RemoveTokensCoreAsync(null, tokens, cancellationToken);
+    }
+
+    private async Task RemoveTokensCoreAsync(
+        Guid? userId,
+        IReadOnlyCollection<string> tokens,
+        CancellationToken cancellationToken)
     {
         if (tokens.Count == 0)
         {
@@ -103,12 +145,17 @@ public sealed class PushDeviceRepository : IPushDeviceRepository
         foreach (var token in distinctTokens)
         {
             var tokenHash = PushDevice.ComputeTokenHash(token);
-            await Devices
-                .Where(device =>
-                    device.UserId == userId
-                    && device.TokenHash == tokenHash
-                    && device.Token == token)
-                .ExecuteDeleteAsync(cancellationToken);
+            var matchingDevices = Devices.Where(device =>
+                device.TokenHash == tokenHash
+                && device.Token == token);
+
+            if (userId.HasValue)
+            {
+                matchingDevices = matchingDevices.Where(
+                    device => device.UserId == userId.Value);
+            }
+
+            await matchingDevices.ExecuteDeleteAsync(cancellationToken);
         }
     }
 

@@ -1,6 +1,7 @@
 ﻿using Quraaa.Domain.Shared.Entities;
 using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Domain.Marketplace.Enums;
+using Quraaa.Domain.Marketplace.Events;
 
 namespace Quraaa.Domain.Marketplace
 {
@@ -66,9 +67,13 @@ namespace Quraaa.Domain.Marketplace
                 throw new DomainException("Stock must be greater than zero.");
             }
 
-            return new ListingAggregate(
+            var listing = new ListingAggregate(
                 id, bookId, ListingFormat.Physical, SellerType.Library,
                 libraryId, null, price, condition, null, stock);
+
+            listing.AddDomainEvent(new LibraryListingPublishedDomainEvent(listing.Id, bookId, libraryId));
+
+            return listing;
         }
 
         public static ListingAggregate CreateDigitalForLibrary(
@@ -88,9 +93,13 @@ namespace Quraaa.Domain.Marketplace
                 throw new DomainException("A digital asset reference is required for digital listings.");
             }
 
-            return new ListingAggregate(
+            var listing = new ListingAggregate(
                 id, bookId, ListingFormat.Digital, SellerType.Library,
                 libraryId, null, price, null, customDigitalAssetUrl, 1);
+
+            listing.AddDomainEvent(new LibraryListingPublishedDomainEvent(listing.Id, bookId, libraryId));
+
+            return listing;
         }
 
         // Users can sell either format (per your note). Physical listings need
@@ -257,6 +266,11 @@ namespace Quraaa.Domain.Marketplace
 
             CustomDigitalAssetUrl = newUrl.Trim();
             UpdateAudit(modifiedBy);
+
+            if (SellerType == SellerType.Library)
+            {
+                AddDomainEvent(new ListingDigitalAssetUpdatedDomainEvent(Id, BookId, LibraryId!.Value));
+            }
         }
     }
 }

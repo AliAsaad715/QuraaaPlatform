@@ -16,8 +16,16 @@ public interface IPushDeviceRepository
         Guid userId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyCollection<string>> GetTokensByUserIdsAsync(
+        IReadOnlyCollection<Guid> userIds,
+        CancellationToken cancellationToken = default);
+
     Task RemoveTokensAsync(
         Guid userId,
+        IReadOnlyCollection<string> tokens,
+        CancellationToken cancellationToken = default);
+
+    Task RemoveTokensAsync(
         IReadOnlyCollection<string> tokens,
         CancellationToken cancellationToken = default);
 }

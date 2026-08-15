@@ -51,5 +51,15 @@ namespace Quraaa.Application.Features.Purchases.Interfaces
             int pageSize,
             string? searchTerm = null,
             CancellationToken cancellationToken = default);
+
+        /// <summary>Distinct buyers who previously purchased this specific listing.</summary>
+        Task<HashSet<Guid>> GetDistinctBuyerUserIdsByListingAsync(
+            Guid listingId,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>Distinct buyers who previously purchased any listing sold by this library.</summary>
+        Task<HashSet<Guid>> GetDistinctBuyerUserIdsByLibraryAsync(
+            Guid libraryId,
+            CancellationToken cancellationToken = default);
     }
 }

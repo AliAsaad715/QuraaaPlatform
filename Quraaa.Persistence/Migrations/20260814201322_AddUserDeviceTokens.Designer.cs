@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Quraaa.Persistence.Data;
@@ -11,9 +12,11 @@ using Quraaa.Persistence.Data;
 namespace Quraaa.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814201322_AddUserDeviceTokens")]
+    partial class AddUserDeviceTokens
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -726,202 +729,6 @@ namespace Quraaa.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Quraaa.Domain.Notifications.LibraryApprovalNotification", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ConcurrencyStamp")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeleationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
-
-                    b.PrimitiveCollection<string[]>("DeliveredPushTokenHashes")
-                        .IsRequired()
-                        .HasColumnType("text[]");
-
-                    b.Property<int>("EmailAttemptCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
-                    b.Property<DateTime?>("EmailCompletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("EmailNextAttemptAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("EmailState")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LastModificationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastModifiedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("LeaseUntilUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("LibraryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("LibraryName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<int>("PushAttemptCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
-                    b.Property<DateTime?>("PushCompletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("PushNextAttemptAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("PushState")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
-
-                    b.Property<string>("RecipientEmail")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LeaseUntilUtc");
-
-                    b.HasIndex("LibraryId")
-                        .IsUnique();
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("EmailState", "EmailNextAttemptAtUtc");
-
-                    b.HasIndex("PushState", "PushNextAttemptAtUtc");
-
-                    b.ToTable("LibraryApprovalNotifications", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_LibraryApprovalNotifications_AttemptCounts_NonNegative", "\"EmailAttemptCount\" >= 0 AND \"PushAttemptCount\" >= 0");
-
-                            t.HasCheckConstraint("CK_LibraryApprovalNotifications_EmailState_Valid", "\"EmailState\" BETWEEN 1 AND 4");
-
-                            t.HasCheckConstraint("CK_LibraryApprovalNotifications_PushState_Valid", "\"PushState\" BETWEEN 1 AND 4");
-                        });
-                });
-
-            modelBuilder.Entity("Quraaa.Domain.Notifications.ListingPushNotification", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("AttemptCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
-                    b.Property<Guid?>("BookId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CompletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("ConcurrencyStamp")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeleationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
-
-                    b.PrimitiveCollection<string[]>("DeliveredPushTokenHashes")
-                        .IsRequired()
-                        .HasColumnType("text[]");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("ItemCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("LastModificationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastModifiedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("LeaseUntilUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("LibraryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ListingId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("NextAttemptAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("State")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
-
-                    b.Property<int>("Type")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BookId");
-
-                    b.HasIndex("LeaseUntilUtc");
-
-                    b.HasIndex("LibraryId");
-
-                    b.HasIndex("ListingId");
-
-                    b.HasIndex("State", "NextAttemptAtUtc");
-
-                    b.ToTable("ListingPushNotifications", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_ListingPushNotifications_AttemptCount_NonNegative", "\"AttemptCount\" >= 0");
-
-                            t.HasCheckConstraint("CK_ListingPushNotifications_ItemCount_Positive", "\"ItemCount\" > 0");
-
-                            t.HasCheckConstraint("CK_ListingPushNotifications_Payload_Valid", "(\"Type\" = 1 AND ((\"ItemCount\" = 1 AND \"BookId\" IS NOT NULL AND \"ListingId\" IS NOT NULL) OR (\"ItemCount\" > 1 AND \"BookId\" IS NULL AND \"ListingId\" IS NULL))) OR (\"Type\" = 2 AND \"ItemCount\" = 1 AND \"BookId\" IS NOT NULL AND \"ListingId\" IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_ListingPushNotifications_State_Valid", "\"State\" BETWEEN 1 AND 4");
-
-                            t.HasCheckConstraint("CK_ListingPushNotifications_Type_Valid", "\"Type\" BETWEEN 1 AND 2");
-                        });
-                });
-
             modelBuilder.Entity("Quraaa.Domain.Orders.Entities.OrderItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1353,49 +1160,6 @@ namespace Quraaa.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Quraaa.Domain.User.Entities.PushDevice", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("LastModificationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Token")
-                        .IsRequired()
-                        .HasMaxLength(4096)
-                        .HasColumnType("character varying(4096)");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique()
-                        .HasDatabaseName("IX_PushDevices_TokenHash");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("IX_PushDevices_UserId");
-
-                    b.ToTable("PushDevices", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_PushDevices_TokenHash_Valid", "char_length(\"TokenHash\") = 64 AND \"TokenHash\" ~ '^[0-9A-F]{64}$'");
-
-                            t.HasCheckConstraint("CK_PushDevices_Token_NoWhitespace", "\"Token\" !~ '[[:space:]]'");
-
-                            t.HasCheckConstraint("CK_PushDevices_Token_NotBlank", "btrim(\"Token\") <> ''");
-                        });
-                });
-
             modelBuilder.Entity("Quraaa.Domain.User.Entities.UserLocation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1703,6 +1467,35 @@ namespace Quraaa.Persistence.Migrations
                     b.ToTable("ProcessedPaymentEvents", (string)null);
                 });
 
+            modelBuilder.Entity("Quraaa.Persistence.Data.UserDeviceToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DeviceToken")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
+
+                    b.Property<DateTime>("LastSeenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("RegisteredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceToken")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UserDeviceTokens", (string)null);
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
@@ -1855,40 +1648,6 @@ namespace Quraaa.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
-            modelBuilder.Entity("Quraaa.Domain.Notifications.LibraryApprovalNotification", b =>
-                {
-                    b.HasOne("Quraaa.Domain.Library.LibraryAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("LibraryId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Quraaa.Domain.User.UserAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Quraaa.Domain.Notifications.ListingPushNotification", b =>
-                {
-                    b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("BookId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Quraaa.Domain.Library.LibraryAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("LibraryId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Quraaa.Domain.Marketplace.ListingAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("ListingId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
             modelBuilder.Entity("Quraaa.Domain.Orders.Entities.OrderItem", b =>
                 {
                     b.HasOne("Quraaa.Domain.Orders.OrderAggregate", null)
@@ -1940,15 +1699,6 @@ namespace Quraaa.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Quraaa.Domain.User.Entities.PushDevice", b =>
-                {
-                    b.HasOne("Quraaa.Domain.User.UserAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
@@ -2045,6 +1795,15 @@ namespace Quraaa.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Quraaa.Persistence.Data.ConsumedRefreshToken", b =>
+                {
+                    b.HasOne("Quraaa.Persistence.Data.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Quraaa.Persistence.Data.UserDeviceToken", b =>
                 {
                     b.HasOne("Quraaa.Persistence.Data.ApplicationUser", null)
                         .WithMany()

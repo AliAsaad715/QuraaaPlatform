@@ -27,6 +27,7 @@ namespace Quraaa.Persistence.Data
         public DbSet<UserAggregate> UsersProfiles { get; set; }
         public DbSet<UserLocation> UserLocations { get; set; }
         public DbSet<PushDevice> PushDevices { get; set; }
+        public DbSet<ListingPushNotification> ListingPushNotifications { get; set; }
         public DbSet<LibraryAggregate> Libraries { get; set; }
         public DbSet<LibraryApprovalNotification> LibraryApprovalNotifications { get; set; }
         public DbSet<LibraryRegistrationSession> LibraryRegistrationSessions { get; set; }
@@ -43,7 +44,6 @@ namespace Quraaa.Persistence.Data
         public DbSet<ProcessedPaymentEvent> ProcessedPaymentEvents { get; set; }
         public DbSet<ConsumedRefreshToken> ConsumedRefreshTokens { get; set; }
         public DbSet<OrphanFileCandidate> OrphanFileCandidates { get; set; }
-
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Persistence.Data;
+using Quraaa.Persistence.Interceptors;
 
 namespace Quraaa.API.Extensions
 {
@@ -11,8 +12,9 @@ namespace Quraaa.API.Extensions
         {
             var connectionString = configuration.GetConnectionString("DefaultConnection");
 
-            services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseNpgsql(connectionString));
+            services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
+                options.UseNpgsql(connectionString)
+                    .AddInterceptors(serviceProvider.GetRequiredService<DomainEventOutboxInterceptor>()));
 
             // Register Identity services with custom options
             services.AddIdentityCore<ApplicationUser>(options =>

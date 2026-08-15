@@ -65,6 +65,7 @@ namespace Quraaa.API.Extensions
             services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
             services.AddHostedService<FileRetentionCleanupService>();
             services.AddHostedService<LibraryApprovalNotificationDeliveryService>();
+            services.AddHostedService<ListingPushNotificationDeliveryService>();
             PersistenceDependencyInjectionHandler.AddPersistenceDependencies(services, configuration);
             ApplicationPackagesRegisterExtensions.AddApplicationDependencies(services);
         }

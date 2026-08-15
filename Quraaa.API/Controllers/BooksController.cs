@@ -11,6 +11,28 @@ namespace Quraaa.API.Controllers
 {
     public class BooksController : ApiClientController
     {
+        /// <summary>
+        /// Retrieves the paginated home page catalog with optional filtering and sorting.
+        /// </summary>
+        /// <param name="request">Catalog query parameters including search terms, category, library, seller type, price limits, format, and condition.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <remarks>
+        /// ### Allowed Enum Values
+        ///
+        /// **SellerType (`SellerType`):**
+        /// - `1` or `Library`: Listings published by a library/publisher
+        /// - `2` or `User`: Listings published by an individual user
+        ///
+        /// **Format (`ListingFormat`):**
+        /// - `1` or `Digital`: Digital book asset (e.g., PDF/ePub)
+        /// - `2` or `Physical`: Hard copy physical book
+        ///
+        /// **Condition (`BookCondition`):**
+        /// - `1` or `New`: Brand new, unread condition
+        /// - `2` or `LikeNew`: Minimal to no signs of wear
+        /// - `3` or `Good`: Minor wear, completely intact
+        /// - `4` or `Acceptable`: Noticeable wear, fully readable
+        /// </remarks>
         [AllowAnonymous]
         [HttpGet("home-catalog")]
         [ProducesResponseType(typeof(PagedResult<HomeBookResponse>), StatusCodes.Status200OK)]
@@ -23,6 +45,7 @@ namespace Quraaa.API.Controllers
                 request.SearchTerm,
                 request.CategoryId,
                 request.LibraryId,
+                request.SellerType,
                 request.Format,
                 request.IsFree,
                 request.Condition,

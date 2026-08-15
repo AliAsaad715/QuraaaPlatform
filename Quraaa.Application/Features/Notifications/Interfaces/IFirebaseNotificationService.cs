@@ -17,5 +17,16 @@ namespace Quraaa.Application.Features.Notifications.Interfaces
             string body,
             IReadOnlyDictionary<string, string>? data = null,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Sends notifications to multiple devices in chunks.
+        /// Individual delivery failures are returned in the result.
+        /// </summary>
+        Task<FirebaseMulticastResult> SendMulticastAsync(
+            IReadOnlyCollection<string> deviceTokens,
+            string title,
+            string body,
+            IReadOnlyDictionary<string, string>? data = null,
+            CancellationToken cancellationToken = default);
     }
 }

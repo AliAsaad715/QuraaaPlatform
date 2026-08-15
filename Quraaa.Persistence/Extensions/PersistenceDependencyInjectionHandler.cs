@@ -14,6 +14,7 @@ using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Features.Ratings.Interfaces;
+using Quraaa.Persistence.Interceptors;
 using Quraaa.Persistence.Repositories;
 using Quraaa.Persistence.Services;
 
@@ -30,6 +31,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<ILibraryRegistrationRepository, LibraryRegistrationRepository>();
             services.AddScoped<ILibraryApprovalNotificationRepository, LibraryApprovalNotificationRepository>();
             services.AddScoped<IPushDeviceRepository, PushDeviceRepository>();
+            services.AddScoped<IListingPushNotificationRepository, ListingPushNotificationRepository>();
             services.AddScoped<IIdentityService, IdentityService>();
             services.AddScoped<IAuthenticationUnitOfWork, AuthenticationUnitOfWork>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
@@ -46,6 +48,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IPaymentEventInbox, PaymentEventInboxRepository>();
             services.AddScoped<IOrphanFileCandidateRepository, OrphanFileCandidateRepository>();
             services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();
+            services.AddScoped<DomainEventOutboxInterceptor>();
             return services;
         }
     }

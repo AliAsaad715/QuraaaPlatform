@@ -19,6 +19,12 @@ namespace Quraaa.Persistence.Repositories
                 .AsNoTracking()
                 .FirstOrDefaultAsync(b => b.Isbn == isbn, cancellationToken);
 
+        public async Task<BookAggregate?> GetByIdAsync(
+            Guid id, CancellationToken cancellationToken = default) =>
+            await _context.Books
+                .AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == id, cancellationToken);
+
         public async Task<BookAggregate?> FindByTitleAuthorLanguageAsync(
             string title, string author, string language,
             CancellationToken cancellationToken = default) =>

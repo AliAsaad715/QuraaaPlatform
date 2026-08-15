@@ -26,21 +26,10 @@ namespace Quraaa.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> RegisterDevice(
+        public Task<IActionResult> RegisterDevice(
             [FromBody] RegisterPushDeviceRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            if (!TryGetCurrentUserId(out var userId))
-            {
-                return InvalidUserIdResult();
-            }
-
-            var result = await Mediator.Send(
-                new RegisterPushDeviceCommand(userId, request.DeviceToken),
-                cancellationToken);
-
-            return HandleResult(result);
-        }
+            CancellationToken cancellationToken = default) =>
+            RegisterDeviceAsync(request.DeviceToken, cancellationToken);
 
         [HttpDelete("devices")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -110,6 +99,33 @@ namespace Quraaa.API.Controllers
                 request.Data);
 
             var result = await Mediator.Send(command);
+            return HandleResult(result);
+        }
+
+        [HttpPost("device-token")]
+        [Obsolete("Use PUT /api/notifications/devices.")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public Task<IActionResult> RegisterDeviceToken(
+            [FromBody] RegisterPushDeviceRequest request,
+            CancellationToken cancellationToken = default) =>
+            RegisterDeviceAsync(request.DeviceToken, cancellationToken);
+
+        private async Task<IActionResult> RegisterDeviceAsync(
+            string deviceToken,
+            CancellationToken cancellationToken)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                new RegisterPushDeviceCommand(userId, deviceToken),
+                cancellationToken);
+
             return HandleResult(result);
         }
 

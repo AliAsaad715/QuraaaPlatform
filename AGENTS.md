@@ -2,7 +2,7 @@
 
 This file is written for AI agents, coding assistants, and chatbots that need a fast, accurate working model of this repository. It describes the current codebase as it exists now, not a future intended architecture.
 
-Last audited against the repository: **2026-08-14**.
+Last audited against the repository: **2026-08-15**.
 
 ## Project Overview
 
@@ -33,7 +33,7 @@ Current implemented business capabilities:
 - Interest/category/language-based authenticated recommendations through `GET /api/books/recommended`.
 - Authenticated favorite-book list/add/remove through `/api/favorite-books`.
 - User physical-book listing creation and current-user listing retrieval through `/api/listings`.
-- Library inventory listing create/update/detail operations through `/api/library-admin/listings`.
+- Library inventory listing create/update/detail operations through `/api/library-admin/listings`, including digital-asset replacement with a 110 MB multipart transport allowance for the validated 100 MB PDF limit.
 - User cart retrieval/mutation through `/api/cart`, with one open cart per user, Stripe-compatible line/quantity limits, and cumulative physical-stock validation.
 - Authenticated checkout context through `GET /api/orders/checkout-context`; physical and mixed carts return default-first owned saved-location choices, while empty and digital-only carts require no shipping location.
 - Order-driven Stripe Checkout through `POST /api/orders`: the order, cart lock, physical-stock reservations, and payment attempt are persisted before Stripe is called.
@@ -44,7 +44,8 @@ Current implemented business capabilities:
 - Category management through `GET /api/categories`, `GET /api/categories/{categoryId}`, and `POST /api/categories` (admin-only).
 - Standalone OTP send through `POST /api/otp/send`.
 - Standalone OTP verification through `POST /api/otp/verify`.
-- Authenticated FCM device-token registration/removal through `PUT` and `DELETE /api/notifications/devices`.
+- Authenticated FCM device-token registration/removal through `PUT` and `DELETE /api/notifications/devices`; deprecated `POST /api/notifications/device-token` remains a registration alias backed by the same `PushDevices` store.
+- Library listing publication and digital-asset-update pushes are committed to a durable outbox with the listing change and delivered by a retrying background worker; publications committed together for one library are coalesced into one notification.
 - Authenticated push notification dispatch through `POST /api/notifications/send`.
 - Development/test push notification dispatch through `POST /api/notifications/test`.
 
@@ -557,6 +558,7 @@ DbSets:
 - `UsersProfiles` (`UserAggregate`)
 - `UserLocations` (`UserLocation`; named profile locations with one profile-selected default)
 - `PushDevices` (`PushDevice`; user-owned FCM registrations keyed by a unique SHA-256 token hash)
+- `ListingPushNotifications` (`ListingPushNotification`; leased/retried durable outbox for coalesced listing publication and digital-asset-update pushes)
 - `Libraries` (`LibraryAggregate`)
 - `LibraryApprovalNotifications` (`LibraryApprovalNotification`; per-channel durable approval-delivery outbox)
 - `Books` (`BookAggregate`)
@@ -605,8 +607,11 @@ Located in `Quraaa.Persistence/Migrations/`:
 21. `20260810134114_PreventUserLocationOwnerReassignment`
 22. `20260813192304_AddComments`
 23. `20260814173751_AddPushDevicesAndLibraryApprovalNotifications`
+24. `20260814201322_AddUserDeviceTokens`
+25. `20260815102801_ConsolidateUserDeviceTokensIntoPushDevices`
+26. `20260815115240_AddListingPushNotificationOutbox`
 
-The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, saved-location, comment, push-device, and library-approval-notification storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. `AddPushDevicesAndLibraryApprovalNotifications` stores up to the actively retained device registrations per user using a unique token hash and adds an independently retried email/push outbox created by admin approval. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, saved-location, comment, push-device, library-approval-notification, and listing-push-notification storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. `AddPushDevicesAndLibraryApprovalNotifications` stores up to the actively retained device registrations per user using a unique token hash and adds an independently retried email/push outbox created by admin approval. `AddUserDeviceTokens` is retained as applied migration history; `ConsolidateUserDeviceTokensIntoPushDevices` validates and copies its rows into `PushDevices`, retains the ten most recent devices per user, and drops the duplicate table. `AddListingPushNotificationOutbox` adds the leased/retried push outbox populated atomically from listing domain events; publication events in one save are grouped per library so bulk upload creates one push. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
 `Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
 
@@ -1340,7 +1345,7 @@ Buy history returns the authenticated user's Stripe-created purchases with book/
 
 ### Notifications
 
-`PUT /api/notifications/devices` and `DELETE /api/notifications/devices` request body:
+`PUT /api/notifications/devices`, deprecated `POST /api/notifications/device-token`, and `DELETE /api/notifications/devices` request body:
 
 ```json
 {
@@ -1348,7 +1353,7 @@ Buy history returns the authenticated user's Stripe-created purchases with book/
 }
 ```
 
-Both routes are authenticated and bind the token to the JWT user. `PUT` is idempotent, reassigns a rotated token to the latest authenticated owner, and retains only the ten most recently registered devices for that user. `DELETE` removes the token only when it belongs to the caller. Clients should register after login and after every Firebase token refresh.
+All three routes are authenticated and bind the token to the JWT user. Both registration routes are idempotent, reassign a rotated token to the latest authenticated owner, and retain only the ten most recently registered devices for that user. `POST /api/notifications/device-token` is a compatibility alias; new clients should use `PUT`. `DELETE` removes the token only when it belongs to the caller. Clients should register after login and after every Firebase token refresh.
 
 `POST /api/notifications/send` request body:
 
@@ -2328,6 +2333,7 @@ Routes:
 
 ```text
 PUT /api/notifications/devices
+POST /api/notifications/device-token
 DELETE /api/notifications/devices
 POST /api/notifications/send
 POST /api/notifications/test
@@ -2337,6 +2343,7 @@ Authentication:
 
 ```text
 PUT /api/notifications/devices -> Authorization: Bearer <access-token>
+POST /api/notifications/device-token -> Authorization: Bearer <access-token> (deprecated alias)
 DELETE /api/notifications/devices -> Authorization: Bearer <access-token>
 POST /api/notifications/send -> Authorization: Bearer <access-token>
 POST /api/notifications/test -> AllowAnonymous when enabled
@@ -2372,6 +2379,9 @@ HTTP PUT /api/notifications/devices
   -> NotificationsController extracts UserId from token claims
   -> RegisterPushDeviceCommand(userId, deviceToken)
   -> PushDeviceRepository hashes the token, upserts/reassigns it, and prunes old devices
+
+HTTP POST /api/notifications/device-token (deprecated compatibility alias)
+  -> follows the same RegisterPushDeviceCommand and PushDevices path as PUT /devices
 
 HTTP DELETE /api/notifications/devices
   -> NotificationsController extracts UserId from token claims

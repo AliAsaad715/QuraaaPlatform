@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Quraaa.Persistence.Data;
@@ -11,9 +12,11 @@ using Quraaa.Persistence.Data;
 namespace Quraaa.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260815102801_ConsolidateUserDeviceTokensIntoPushDevices")]
+    partial class ConsolidateUserDeviceTokensIntoPushDevices
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -828,97 +831,6 @@ namespace Quraaa.Persistence.Migrations
                             t.HasCheckConstraint("CK_LibraryApprovalNotifications_EmailState_Valid", "\"EmailState\" BETWEEN 1 AND 4");
 
                             t.HasCheckConstraint("CK_LibraryApprovalNotifications_PushState_Valid", "\"PushState\" BETWEEN 1 AND 4");
-                        });
-                });
-
-            modelBuilder.Entity("Quraaa.Domain.Notifications.ListingPushNotification", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("AttemptCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
-                    b.Property<Guid?>("BookId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CompletedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("ConcurrencyStamp")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeleationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
-
-                    b.PrimitiveCollection<string[]>("DeliveredPushTokenHashes")
-                        .IsRequired()
-                        .HasColumnType("text[]");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("ItemCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("LastModificationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastModifiedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("LeaseUntilUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("LibraryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ListingId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("NextAttemptAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("State")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
-
-                    b.Property<int>("Type")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BookId");
-
-                    b.HasIndex("LeaseUntilUtc");
-
-                    b.HasIndex("LibraryId");
-
-                    b.HasIndex("ListingId");
-
-                    b.HasIndex("State", "NextAttemptAtUtc");
-
-                    b.ToTable("ListingPushNotifications", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_ListingPushNotifications_AttemptCount_NonNegative", "\"AttemptCount\" >= 0");
-
-                            t.HasCheckConstraint("CK_ListingPushNotifications_ItemCount_Positive", "\"ItemCount\" > 0");
-
-                            t.HasCheckConstraint("CK_ListingPushNotifications_Payload_Valid", "(\"Type\" = 1 AND ((\"ItemCount\" = 1 AND \"BookId\" IS NOT NULL AND \"ListingId\" IS NOT NULL) OR (\"ItemCount\" > 1 AND \"BookId\" IS NULL AND \"ListingId\" IS NULL))) OR (\"Type\" = 2 AND \"ItemCount\" = 1 AND \"BookId\" IS NOT NULL AND \"ListingId\" IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_ListingPushNotifications_State_Valid", "\"State\" BETWEEN 1 AND 4");
-
-                            t.HasCheckConstraint("CK_ListingPushNotifications_Type_Valid", "\"Type\" BETWEEN 1 AND 2");
                         });
                 });
 
@@ -1868,25 +1780,6 @@ namespace Quraaa.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("Quraaa.Domain.Notifications.ListingPushNotification", b =>
-                {
-                    b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("BookId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Quraaa.Domain.Library.LibraryAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("LibraryId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Quraaa.Domain.Marketplace.ListingAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("ListingId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Quraaa.Domain.Orders.Entities.OrderItem", b =>
