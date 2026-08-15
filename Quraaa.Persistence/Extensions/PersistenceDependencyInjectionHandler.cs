@@ -10,6 +10,7 @@ using Quraaa.Application.Features.FavoriteBooks.Interfaces;
 using Quraaa.Application.Features.Files.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Features.Ratings.Interfaces;
@@ -27,6 +28,8 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<ILibraryRepository, LibraryRepository>();
             services.AddScoped<ILibraryRegistrationRepository, LibraryRegistrationRepository>();
+            services.AddScoped<ILibraryApprovalNotificationRepository, LibraryApprovalNotificationRepository>();
+            services.AddScoped<IPushDeviceRepository, PushDeviceRepository>();
             services.AddScoped<IIdentityService, IdentityService>();
             services.AddScoped<IAuthenticationUnitOfWork, AuthenticationUnitOfWork>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();

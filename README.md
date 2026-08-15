@@ -318,7 +318,7 @@ The first saved location automatically becomes the default. Setting another defa
 | `GET`    | `/api/libraries/{libraryId}/books`                 | Public         | Browse a library's listings with paging, search, and sorting. |
 | `GET`    | `/api/libraries/my-profile`                        | `LibraryOwner` | Get the approved library owned by the caller.                 |
 | `GET`    | `/api/libraries/requests`                          | `Admin`        | Page and filter library applications.                         |
-| `PATCH`  | `/api/libraries/{id}/approval-status`              | `Admin`        | Approve or reject a library application.                      |
+| `PATCH`  | `/api/libraries/{id}/approval-status`              | `Admin`        | Approve/reject; approval queues owner email and mobile push.  |
 | `POST`   | `/api/library-admin/listings`                      | `LibraryOwner` | Add a physical book by ISBN.                                  |
 | `POST`   | `/api/library-admin/listings/digital`              | `LibraryOwner` | Upload a PDF and add a digital book by ISBN.                  |
 | `PUT`    | `/api/library-admin/listings/{listingId}`          | `LibraryOwner` | Update supplied listing fields.                               |
@@ -329,7 +329,7 @@ The first saved location automatically becomes the default. Setting another defa
 | `GET`    | `/api/listings/me`                                 | `User`         | Get physical listings created by the current user.            |
 | `POST`   | `/api/listings/me/physical`                        | `User`         | Create a user-owned physical listing.                         |
 
-The mobile app calls `POST /api/libraries/register` with its normal bearer token and receives a short-lived dashboard URL. The URL contains a 32-byte opaque credential in the fragment (`#token=...`), while PostgreSQL stores only its SHA-256 hash and the issuing login-family id. The dashboard sends that credential in request bodies, never API query strings. A details submission creates an `AwaitingEmailVerification` library and a durable, HMAC-protected six-digit email challenge. Submission and resend responses include a `verificationId` and an `emailDeliveryStatus` of `Sent`, `NotSent`, or `Unknown`; verification must submit that ID with the six-digit code. Only successful email verification changes the library to `Pending`, makes it visible in the admin request queue, and permits approval or rejection. Approval promotes both the domain profile and ASP.NET Identity role within the same database transaction.
+The mobile app calls `POST /api/libraries/register` with its normal bearer token and receives a short-lived dashboard URL. The URL contains a 32-byte opaque credential in the fragment (`#token=...`), while PostgreSQL stores only its SHA-256 hash and the issuing login-family id. The dashboard sends that credential in request bodies, never API query strings. A details submission creates an `AwaitingEmailVerification` library and a durable, HMAC-protected six-digit email challenge. Submission and resend responses include a `verificationId` and an `emailDeliveryStatus` of `Sent`, `NotSent`, or `Unknown`; verification must submit that ID with the six-digit code. Only successful email verification changes the library to `Pending`, makes it visible in the admin request queue, and permits approval or rejection. Approval promotes both the domain profile and ASP.NET Identity role and enqueues one durable owner-notification record in the same database transaction. A background worker sends the approval email to the verified library address and an FCM push to the owner's registered mobile devices; each channel retries independently, and provider failure never rolls back the approval.
 
 Email OTPs are valid for 10 minutes, can be redelivered after 60 seconds, are limited to five accepted-or-ambiguous send attempts per fixed hour and five verification attempts, and cause a five-minute lockout after the fifth incorrect attempt. Redelivery keeps the same generation and derived code, so overlapping or delayed SMTP deliveries cannot make the newest email stale. A definite SMTP rejection does not consume the send quota; an ambiguous transport outcome remains usable. The submitted application stays resumable through a newly issued link, and committed image paths are not deleted.
 
@@ -368,12 +368,16 @@ For a physical or mixed cart, send the chosen owned ID as `shippingLocationId` t
 
 ### OTP and notifications
 
-| Method | Route                     | Access              | Purpose                                                        |
-| ------ | ------------------------- | ------------------- | -------------------------------------------------------------- |
-| `POST` | `/api/otp/send`           | Public              | Send a standalone OTP through the configured SMS gateway.      |
-| `POST` | `/api/otp/verify`         | Public              | Verify a standalone OTP.                                       |
-| `POST` | `/api/notifications/send` | Authenticated       | Send an FCM notification.                                      |
-| `POST` | `/api/notifications/test` | Public when enabled | Send a development/test notification; otherwise returns `404`. |
+| Method   | Route                        | Access              | Purpose                                                        |
+| -------- | ---------------------------- | ------------------- | -------------------------------------------------------------- |
+| `POST`   | `/api/otp/send`              | Public              | Send a standalone OTP through the configured SMS gateway.      |
+| `POST`   | `/api/otp/verify`            | Public              | Verify a standalone OTP.                                       |
+| `PUT`    | `/api/notifications/devices` | Authenticated       | Register or refresh the caller's current FCM device token.      |
+| `DELETE` | `/api/notifications/devices` | Authenticated       | Remove the caller's current FCM device token.                   |
+| `POST`   | `/api/notifications/send`    | Authenticated       | Send an FCM notification.                                      |
+| `POST`   | `/api/notifications/test`    | Public when enabled | Send a development/test notification; otherwise returns `404`. |
+
+The mobile client should call `PUT /api/notifications/devices` with `{ "deviceToken": "..." }` after login and whenever Firebase rotates the token. It should call the matching `DELETE` route on logout when possible. Approval pushes contain `type=library_registration_approved`, the `libraryId`, `approvalStatus=Approved`, and `requiresReauthentication=true`; role promotion invalidates the old login family, so the app should take the user to a fresh sign-in instead of treating the old access token as authorized for library-owner screens.
 
 ## Important workflows
 

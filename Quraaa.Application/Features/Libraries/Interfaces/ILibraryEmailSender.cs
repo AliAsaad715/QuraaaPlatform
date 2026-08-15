@@ -11,5 +11,10 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
             string otpCode,
             TimeSpan validity,
             CancellationToken cancellationToken = default);
+
+        Task<EmailDeliveryStatus> SendApprovalAsync(
+            string recipientEmail,
+            string libraryName,
+            CancellationToken cancellationToken = default);
     }
 }
