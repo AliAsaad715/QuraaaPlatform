@@ -19,6 +19,11 @@ namespace Quraaa.Domain.Marketplace
         // from BookAggregate's canonical files, since a merchant may need a listing-
         // specific file that differs from the book's catalog-level copy.
         public string? CustomDigitalAssetUrl { get; private set; }
+
+        // A seller-supplied photo of the actual item for sale. Only ever set for
+        // user-sold physical listings, where buyers need to see the real item's
+        // condition rather than the book's generic catalog cover.
+        public string? CustomCoverImageUrl { get; private set; }
         public int? Stock { get; private set; }
         public ListingStatus Status { get; private set; }
 
@@ -38,6 +43,7 @@ namespace Quraaa.Domain.Marketplace
             decimal price,
             BookCondition? condition,
             string? customDigitalAssetUrl,
+            string? customCoverImageUrl,
             int? stock)
         {
             Id = id;
@@ -49,6 +55,7 @@ namespace Quraaa.Domain.Marketplace
             Price = price;
             Condition = condition;
             CustomDigitalAssetUrl = customDigitalAssetUrl;
+            CustomCoverImageUrl = customCoverImageUrl;
             Stock = stock;
             Status = ListingStatus.Active;
         }
@@ -73,7 +80,7 @@ namespace Quraaa.Domain.Marketplace
 
             var listing = new ListingAggregate(
                 id, bookId, ListingFormat.Physical, SellerType.Library,
-                libraryId, null, price, condition, null, stock);
+                libraryId, null, price, condition, null, null, stock);
 
             listing.AddDomainEvent(new LibraryListingPublishedDomainEvent(listing.Id, bookId, libraryId));
 
@@ -99,7 +106,7 @@ namespace Quraaa.Domain.Marketplace
 
             var listing = new ListingAggregate(
                 id, bookId, ListingFormat.Digital, SellerType.Library,
-                libraryId, null, price, null, customDigitalAssetUrl, 1);
+                libraryId, null, price, null, customDigitalAssetUrl, null, 1);
 
             listing.AddDomainEvent(new LibraryListingPublishedDomainEvent(listing.Id, bookId, libraryId));
 
@@ -115,7 +122,8 @@ namespace Quraaa.Domain.Marketplace
             ListingFormat format,
             decimal price,
             BookCondition? condition = null,
-            string? customDigitalAssetUrl = null)
+            string? customDigitalAssetUrl = null,
+            string? customCoverImageUrl = null)
         {
             if (price <= 0)
             {
@@ -128,6 +136,11 @@ namespace Quraaa.Domain.Marketplace
                 {
                     throw new DomainException("Condition is required for physical listings.");
                 }
+
+                if (string.IsNullOrWhiteSpace(customCoverImageUrl))
+                {
+                    throw new DomainException("A cover image is required for physical listings.");
+                }
             }
             else if (string.IsNullOrWhiteSpace(customDigitalAssetUrl))
             {
@@ -136,7 +149,7 @@ namespace Quraaa.Domain.Marketplace
 
             return new ListingAggregate(
                 id, bookId, format, SellerType.User,
-                null, userId, price, condition, customDigitalAssetUrl, 1);
+                null, userId, price, condition, customDigitalAssetUrl, customCoverImageUrl, 1);
         }
 
         public void Remove(Guid modifiedBy)

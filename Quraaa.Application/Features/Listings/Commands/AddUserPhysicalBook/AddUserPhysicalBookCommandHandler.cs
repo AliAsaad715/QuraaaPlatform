@@ -20,12 +20,14 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
         private readonly IAuthorRepository _authorRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IBookMetadataService _bookMetadataService;
+        private readonly IListingImageStorageService _listingImageStorageService;
 
         public AddUserPhysicalBookCommandHandler(
             IBookRepository bookRepository,
             IAuthorRepository authorRepository,
             IListingRepository listingRepository,
             IBookMetadataService bookMetadataService,
+            IListingImageStorageService listingImageStorageService,
             ILogger<AddUserPhysicalBookCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -34,6 +36,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
             _authorRepository = authorRepository;
             _listingRepository = listingRepository;
             _bookMetadataService = bookMetadataService;
+            _listingImageStorageService = listingImageStorageService;
         }
 
         public async Task<AppResult<AddPhysicalBookResponse>> Handle(
@@ -52,18 +55,47 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
                     throw new ConflictException("This book is already listed by you.");
                 }
 
-                var listing = ListingAggregate.CreateForUser(
-                    id: Guid.NewGuid(),
-                    bookId: book.Id,
-                    userId: request.RequestingUserId,
-                    format: ListingFormat.Physical,
-                    price: request.Price,
-                    condition: request.Condition);
+                string? coverImageUrl = null;
+                try
+                {
+                    coverImageUrl = await _listingImageStorageService.SaveCoverImageAsync(
+                        request.CoverImage,
+                        cancellationToken);
 
-                await _listingRepository.AddAsync(listing, cancellationToken);
-                await _listingRepository.SaveChangesAsync(cancellationToken);
+                    var listing = ListingAggregate.CreateForUser(
+                        id: Guid.NewGuid(),
+                        bookId: book.Id,
+                        userId: request.RequestingUserId,
+                        format: ListingFormat.Physical,
+                        price: request.Price,
+                        condition: request.Condition,
+                        customCoverImageUrl: coverImageUrl);
 
-                return new AddPhysicalBookResponse(listing.Id);
+                    await _listingRepository.AddAsync(listing, cancellationToken);
+                    await _listingRepository.SaveChangesAsync(cancellationToken);
+
+                    return new AddPhysicalBookResponse(listing.Id);
+                }
+                catch
+                {
+                    if (coverImageUrl is not null)
+                    {
+                        try
+                        {
+                            await _listingImageStorageService.DeleteAsync(
+                                coverImageUrl,
+                                CancellationToken.None);
+                        }
+                        catch (Exception cleanupException)
+                        {
+                            Logger.LogWarning(
+                                cleanupException,
+                                "Failed to delete an uploaded listing cover image after listing creation failed.");
+                        }
+                    }
+
+                    throw;
+                }
 
             }, "Physical book added successfully.");
         }

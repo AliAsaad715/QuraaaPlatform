@@ -65,6 +65,7 @@ namespace Quraaa.API.Extensions
             services.AddScoped<ILibraryImageStorageService, LibraryImageStorageService>();
             services.AddScoped<ILibraryBookStorageService, LibraryBookStorageService>();
             services.AddScoped<IBulkBookStorageService, BulkBookStorageService>();
+            services.AddScoped<IListingImageStorageService, ListingImageStorageService>();
             services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
             services.AddHostedService<FileRetentionCleanupService>();
             services.AddHostedService<SellerPayoutProcessingService>();
