@@ -1,5 +1,6 @@
 using MediatR;
 using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
+using Quraaa.Application.Shared.Files;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Domain.Marketplace.Enums;
 using System.Text.Json.Serialization;
@@ -14,5 +15,6 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
         public decimal Price { get; init; }
         public BookCondition Condition { get; init; }
         public string Isbn { get; init; } = null!;
+        public IUploadedFile CoverImage { get; init; } = null!;
     }
 }

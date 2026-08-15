@@ -43,6 +43,7 @@ Current implemented business capabilities:
 - Authenticated user buy/sell history through `/api/purchases/me/buy-history` and `/api/purchases/me/sell-history`.
 - Category management through `GET /api/categories`, `GET /api/categories/{categoryId}`, and `POST /api/categories` (admin-only).
 - Author management (admin-only) through `POST /api/admin/authors`, `GET /api/admin/authors`, `GET /api/admin/authors/{id}`, `PUT /api/admin/authors/{id}`, and `DELETE /api/admin/authors/{id}`.
+- Public author profiles and paginated available works through `GET /api/authors/{authorId}` and `GET /api/authors/{authorId}/books`.
 - Standalone OTP send through `POST /api/otp/send`.
 - Standalone OTP verification through `POST /api/otp/verify`.
 - Authenticated FCM device-token registration/removal through `PUT` and `DELETE /api/notifications/devices`; deprecated `POST /api/notifications/device-token` remains a registration alias backed by the same `PushDevices` store.
@@ -1351,7 +1352,18 @@ Buy history returns the authenticated user's Stripe-created purchases with book/
 
 `POST /api/categories` is admin-only (`[Authorize(Roles = "Admin")]`) and creates a new category.
 
-### Authors (Admin)
+### Authors
+
+Public, anonymous author profile routes:
+
+```text
+GET /api/authors/{authorId}
+GET /api/authors/{authorId}/books
+```
+
+The profile response contains `id`, `name`, optional `bio`, optional `photoUrl`, and optional `birthDate`. The books route returns `PagedResult<HomeBookResponse>`, grouped by catalog book and limited to books that have at least one active listing with available stock. It accepts `pageNumber`, `pageSize`, optional `searchTerm`, and the same `sortBy` values as the home catalog. An existing author with no available books returns an empty `200 OK` page; an unknown author returns `404 Not Found` from either route.
+
+Admin author management:
 
 All five routes require the `Admin` role. `AdminAuthorsController` uses the explicit route `api/admin/authors`.
 
@@ -2536,11 +2548,14 @@ Files:
 
 ```text
 Quraaa.API/Controllers/AdminAuthorsController.cs
+Quraaa.API/Controllers/AuthorsController.cs
 Quraaa.Application/Features/Authors/Commands/CreateAuthor/
 Quraaa.Application/Features/Authors/Commands/UpdateAuthor/
 Quraaa.Application/Features/Authors/Commands/DeleteAuthor/
 Quraaa.Application/Features/Authors/Queries/GetAuthorById/
 Quraaa.Application/Features/Authors/Queries/GetAuthorsPaginated/
+Quraaa.Application/Features/Authors/Queries/GetPublicAuthorDetails/
+Quraaa.Application/Features/Authors/Queries/GetAuthorBooks/
 Quraaa.Application/Features/Authors/Common/AuthorResponse.cs
 Quraaa.Application/Features/Authors/Interfaces/IAuthorRepository.cs
 Quraaa.Persistence/Repositories/AuthorRepository.cs
@@ -2551,6 +2566,8 @@ Quraaa.Domain/Author/AuthorAggregate.cs
 Routes:
 
 ```text
+GET    /api/authors/{authorId}
+GET    /api/authors/{authorId}/books
 POST   /api/admin/authors
 GET    /api/admin/authors
 GET    /api/admin/authors/{id}
@@ -2561,7 +2578,8 @@ DELETE /api/admin/authors/{id}
 Authentication:
 
 ```text
-All routes -> Authorization: Bearer <admin-access-token> ([Authorize(Roles = "Admin")] at the controller level)
+GET /api/authors/* -> anonymous
+All /api/admin/authors routes -> Authorization: Bearer <admin-access-token> ([Authorize(Roles = "Admin")] at the controller level)
 ```
 
 The `AuthorAggregate` model includes:
@@ -2597,6 +2615,19 @@ HTTP GET /api/admin/authors/{id}
   -> GetAuthorByIdQueryHandler
   -> IAuthorRepository.GetByIdAsync(id)
   -> AuthorDetailsResponse or NotFound
+
+HTTP GET /api/authors/{authorId}
+  -> AuthorsController.GetAuthorDetails(authorId)
+  -> GetPublicAuthorDetailsQuery
+  -> IAuthorRepository.GetByIdAsync(authorId)
+  -> PublicAuthorDetailsResponse or NotFound
+
+HTTP GET /api/authors/{authorId}/books
+  -> AuthorsController.GetAuthorBooks(authorId, request)
+  -> GetAuthorBooksQuery
+  -> IAuthorRepository.ExistsAsync(authorId)
+  -> IHomeCatalogRepository.GetByAuthorAsync(...)
+  -> PagedResult<HomeBookResponse> or NotFound
 
 HTTP PUT /api/admin/authors/{id}
   -> AdminAuthorsController.UpdateAuthor(id, command)

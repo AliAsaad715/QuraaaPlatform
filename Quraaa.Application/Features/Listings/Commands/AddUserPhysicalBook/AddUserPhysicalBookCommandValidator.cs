@@ -18,6 +18,10 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
             RuleFor(x => x.Isbn)
                 .NotEmpty()
                 .WithMessage("ISBN is required.");
+
+            RuleFor(x => x.CoverImage)
+                .NotNull()
+                .WithMessage("Cover image is required for physical listings.");
         }
     }
 }

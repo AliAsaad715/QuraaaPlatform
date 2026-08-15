@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Quraaa.Persistence.Data;
@@ -11,9 +12,11 @@ using Quraaa.Persistence.Data;
 namespace Quraaa.Persistence.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260815171748_AddCustomCoverImageUrlToListings")]
+    partial class AddCustomCoverImageUrlToListings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -555,10 +558,6 @@ namespace Quraaa.Persistence.Migrations
                         .HasMaxLength(250)
                         .HasColumnType("character varying(250)");
 
-                    b.Property<string>("PasswordHash")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
                     b.Property<decimal>("ProfitSharePercent")
                         .HasColumnType("decimal(7,4)");
 
@@ -652,72 +651,6 @@ namespace Quraaa.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("LibraryEmailVerificationChallenges", (string)null);
-                });
-
-            modelBuilder.Entity("Quraaa.Domain.Library.LibraryPasswordResetChallenge", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("CodeHash")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<Guid>("ConcurrencyStamp")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("ConsumedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeleationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("ExpiresAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("FailedAttemptCount")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("Generation")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LastModificationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastModifiedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("LibraryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("LockedUntilUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("ResendAvailableAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("SendCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("SendWindowStartedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LibraryId")
-                        .IsUnique();
-
-                    b.ToTable("LibraryPasswordResetChallenges", (string)null);
                 });
 
             modelBuilder.Entity("Quraaa.Domain.Library.LibraryRegistrationSession", b =>
@@ -1600,74 +1533,6 @@ namespace Quraaa.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Quraaa.Domain.Reports.BookReportAggregate", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("BookId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeleationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Details")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LastModificationTime")
-                        .IsConcurrencyToken()
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastModifiedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ModeratorNote")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<int>("Reason")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("ReviewedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("ReviewedByAdminId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BookId");
-
-                    b.HasIndex("CreationTime");
-
-                    b.HasIndex("Status", "CreationTime");
-
-                    b.HasIndex("UserId", "BookId")
-                        .IsUnique()
-                        .HasFilter("\"IsDeleted\" = false");
-
-                    b.ToTable("BookReports", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_BookReports_Review_Consistent", "(\"Status\" = 1 AND \"ReviewedByAdminId\" IS NULL AND \"ReviewedAtUtc\" IS NULL) OR (\"Status\" IN (2, 3, 4) AND \"ReviewedByAdminId\" IS NOT NULL AND \"ReviewedAtUtc\" IS NOT NULL)");
-                        });
-                });
-
             modelBuilder.Entity("Quraaa.Domain.User.Entities.PushDevice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2147,15 +2012,6 @@ namespace Quraaa.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Quraaa.Domain.Library.LibraryPasswordResetChallenge", b =>
-                {
-                    b.HasOne("Quraaa.Domain.Library.LibraryAggregate", null)
-                        .WithOne()
-                        .HasForeignKey("Quraaa.Domain.Library.LibraryPasswordResetChallenge", "LibraryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Quraaa.Domain.Library.LibraryRegistrationSession", b =>
                 {
                     b.HasOne("Quraaa.Domain.User.UserAggregate", null)
@@ -2273,21 +2129,6 @@ namespace Quraaa.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Quraaa.Domain.Ratings.BookRatingAggregate", b =>
-                {
-                    b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("BookId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Quraaa.Domain.User.UserAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Quraaa.Domain.Reports.BookReportAggregate", b =>
                 {
                     b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
                         .WithMany()

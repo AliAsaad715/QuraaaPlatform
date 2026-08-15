@@ -34,7 +34,72 @@ namespace Quraaa.Persistence.Repositories
             int pageSize,
             CancellationToken cancellationToken = default)
         {
-            var query = BuildCatalogQuery(libraryId, sellerType, format, condition, minPrice, maxPrice);
+            return await GetCatalogCoreAsync(
+                searchTerm,
+                authorId: null,
+                categoryId,
+                libraryId,
+                sellerType,
+                format,
+                isFree,
+                condition,
+                minPrice,
+                maxPrice,
+                sortBy,
+                pageNumber,
+                pageSize,
+                cancellationToken);
+        }
+
+        public async Task<(IReadOnlyCollection<HomeBookResponse> Items, int TotalCount)> GetByAuthorAsync(
+            Guid authorId,
+            string? searchTerm,
+            string sortBy,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken = default)
+        {
+            return await GetCatalogCoreAsync(
+                searchTerm,
+                authorId,
+                categoryId: null,
+                libraryId: null,
+                sellerType: null,
+                format: null,
+                isFree: null,
+                condition: null,
+                minPrice: null,
+                maxPrice: null,
+                sortBy,
+                pageNumber,
+                pageSize,
+                cancellationToken);
+        }
+
+        private async Task<(IReadOnlyCollection<HomeBookResponse> Items, int TotalCount)> GetCatalogCoreAsync(
+            string? searchTerm,
+            Guid? authorId,
+            Guid? categoryId,
+            Guid? libraryId,
+            SellerType? sellerType,
+            ListingFormat? format,
+            bool? isFree,
+            BookCondition? condition,
+            decimal? minPrice,
+            decimal? maxPrice,
+            string sortBy,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken)
+        {
+            var query = BuildCatalogQuery(
+                authorId,
+                libraryId,
+                sellerType,
+                format,
+                condition,
+                minPrice,
+                maxPrice);
 
             if (categoryId.HasValue)
             {
@@ -64,6 +129,7 @@ namespace Quraaa.Persistence.Repositories
         // of a free-to-read book outside a priced listing, and every listing requires
         // Price > 0, so IsFree filtering is honored but will not match any data today.
         private IQueryable<HomeBookFlatProjection> BuildCatalogQuery(
+            Guid? authorId,
             Guid? libraryId,
             SellerType? sellerType,
             ListingFormat? format,
@@ -138,9 +204,16 @@ namespace Quraaa.Persistence.Repositories
                     PurchaseCount = (long?)purchaseGroup.Sum(purchase => (long)purchase.Quantity)
                 };
 
+            var books = _context.Books.AsNoTracking()
+                .Where(book => !book.IsDeleted);
+
+            if (authorId.HasValue)
+            {
+                books = books.Where(book => book.AuthorId == authorId.Value);
+            }
+
             return
-                from book in _context.Books.AsNoTracking()
-                where !book.IsDeleted
+                from book in books
                 join stats in listingStats
                     on book.Id equals stats.BookId
                 join category in _context.Categories.AsNoTracking()
