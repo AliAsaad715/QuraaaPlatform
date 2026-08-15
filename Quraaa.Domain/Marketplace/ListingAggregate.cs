@@ -22,6 +22,10 @@ namespace Quraaa.Domain.Marketplace
         public int? Stock { get; private set; }
         public ListingStatus Status { get; private set; }
 
+        // Bumped whenever a listing's price, stock, condition, or digital asset
+        // changes, so clients holding a stale copy can detect it changed.
+        public int Version { get; private set; } = 1;
+
         private ListingAggregate() { }
 
         private ListingAggregate(
@@ -160,6 +164,7 @@ namespace Quraaa.Domain.Marketplace
             }
 
             Price = price;
+            Version++;
             UpdateAudit(modifiedBy);
         }
 
@@ -240,6 +245,7 @@ namespace Quraaa.Domain.Marketplace
             else if (Status == ListingStatus.OutOfStock)
                 Status = ListingStatus.Active; // restocked
 
+            Version++;
             UpdateAudit(modifiedBy);
         }
 
@@ -249,6 +255,7 @@ namespace Quraaa.Domain.Marketplace
                 throw new DomainException("Only physical listings have a condition.");
 
             Condition = newCondition;
+            Version++;
             UpdateAudit(modifiedBy);
         }
 
@@ -265,6 +272,7 @@ namespace Quraaa.Domain.Marketplace
                 throw new DomainException("A digital asset URL is required.");
 
             CustomDigitalAssetUrl = newUrl.Trim();
+            Version++;
             UpdateAudit(modifiedBy);
 
             if (SellerType == SellerType.Library)

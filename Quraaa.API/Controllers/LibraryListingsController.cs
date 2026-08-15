@@ -182,6 +182,8 @@ namespace Quraaa.API.Controllers
         /// <remarks>
         /// The response includes <c>Status</c> so frontend clients can render listing state.
         /// Supported values are <c>Active = 1</c>, <c>OutOfStock = 2</c>, and <c>Removed = 4</c>.
+        /// Each item also includes <c>Version</c>, an integer counter incremented every time
+        /// the listing's price, stock, condition, or digital asset changes.
         /// </remarks>
         [HttpGet("me")]
         [ProducesResponseType(typeof(PagedResult<ListingSummaryResponse>), StatusCodes.Status200OK)]
@@ -265,6 +267,11 @@ namespace Quraaa.API.Controllers
         /// <summary>
         /// Get full listing details (listing + book + category) by listing ID.
         /// </summary>
+        /// <remarks>
+        /// The response includes <c>Format</c> (<c>Digital = 1</c>, <c>Physical = 2</c>) and
+        /// <c>Version</c>, an integer counter incremented every time the listing's price,
+        /// stock, condition, or digital asset changes.
+        /// </remarks>
         [HttpGet("{listingId:guid}")]
         [ProducesResponseType(typeof(ListingDetailsResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -310,6 +317,8 @@ namespace Quraaa.API.Controllers
         /// <c>Format</c>. Digital listings reuse the uploaded PDF as their asset;
         /// physical listings default to <c>BookCondition.New</c>.
         /// Allowed values for <c>Format</c>: <c>Digital = 1, Physical = 2</c>.
+        /// Allowed values for <c>Language</c>: <c>Arabic = 1, English = 2, French = 3, Other = 99</c>
+        /// (accepted as either the string name or the integer value).
         ///
         /// **Metadata JSON example**
         /// ```json
@@ -320,7 +329,7 @@ namespace Quraaa.API.Controllers
         ///     "author": "Robert C. Martin",
         ///     "description": "A practical guide …",
         ///     "categoryId": "11111111-1111-1111-1111-111111111103",
-        ///     "language": "en",
+        ///     "language": "English",
         ///     "price": 19.99,
         ///     "quantity": 10,
         ///     "format": 2

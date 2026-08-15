@@ -9,7 +9,7 @@ namespace Quraaa.Application.Features.Purchases.Common
         Guid UserId,
         Guid BookId,
         string Title,
-        string Author,
+        string? Author,
         string Description,
         string? CanonicalPdfUrl,
         string? CanonicalWordDocUrl);

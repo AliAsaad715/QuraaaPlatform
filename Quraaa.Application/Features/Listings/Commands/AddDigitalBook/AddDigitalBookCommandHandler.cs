@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Shared.Results;
@@ -17,6 +18,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
     {
         private readonly ILibraryRepository _libraryRepository;
         private readonly IBookRepository _bookRepository;
+        private readonly IAuthorRepository _authorRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IBookMetadataService _bookMetadataService;
         private readonly ILibraryBookStorageService _libraryBookStorageService;
@@ -24,6 +26,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
         public AddDigitalBookCommandHandler(
             ILibraryRepository libraryRepository,
             IBookRepository bookRepository,
+            IAuthorRepository authorRepository,
             IListingRepository listingRepository,
             IBookMetadataService bookMetadataService,
             ILibraryBookStorageService libraryBookStorageService,
@@ -33,6 +36,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
         {
             _libraryRepository = libraryRepository;
             _bookRepository = bookRepository;
+            _authorRepository = authorRepository;
             _listingRepository = listingRepository;
             _bookMetadataService = bookMetadataService;
             _libraryBookStorageService = libraryBookStorageService;
@@ -124,21 +128,25 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
                 throw new NotFoundException("Book not found.");
             }
 
+            var language = LanguageCodeMapper.Parse(metadata.Language);
+
             book = await _bookRepository.FindByTitleAuthorLanguageAsync(
                 metadata.Title,
                 metadata.Authors,
-                metadata.Language,
+                language,
                 cancellationToken);
 
             if (book is null)
             {
+                var author = await _authorRepository.FindOrCreateByNameAsync(metadata.Authors, cancellationToken);
+
                 book = new BookAggregate(
                     id: Guid.NewGuid(),
                     title: metadata.Title,
-                    author: metadata.Authors,
+                    authorId: author.Id,
                     description: metadata.Description,
                     coverImageUrl: metadata.ThumbnailUrl,
-                    language: metadata.Language,
+                    language: language,
                     isbn: cleanIsbn);
 
                 await _bookRepository.AddAsync(book, cancellationToken);

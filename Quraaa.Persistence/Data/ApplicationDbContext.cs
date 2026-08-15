@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Cart;
 using Quraaa.Domain.Category;
@@ -24,6 +25,7 @@ namespace Quraaa.Persistence.Data
         {
         }
 
+        public DbSet<AuthorAggregate> Authors { get; set; }
         public DbSet<UserAggregate> UsersProfiles { get; set; }
         public DbSet<UserLocation> UserLocations { get; set; }
         public DbSet<PushDevice> PushDevices { get; set; }

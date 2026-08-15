@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Quraaa.Application.Features.Admin.Interfaces;
 using Quraaa.Application.Features.Authentication.Interfaces;
+using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
@@ -27,6 +28,7 @@ namespace Quraaa.Persistence.Extensions
             var assembly = typeof(PersistenceDependencyInjectionHandler).Assembly;
 
             services.AddScoped<IUserRepository, UserRepository>();
+            services.AddScoped<IAuthorRepository, AuthorRepository>();
             services.AddScoped<ILibraryRepository, LibraryRepository>();
             services.AddScoped<ILibraryRegistrationRepository, LibraryRegistrationRepository>();
             services.AddScoped<ILibraryApprovalNotificationRepository, LibraryApprovalNotificationRepository>();

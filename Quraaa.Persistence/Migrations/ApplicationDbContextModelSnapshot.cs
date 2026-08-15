@@ -152,6 +152,52 @@ namespace Quraaa.Persistence.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Quraaa.Domain.Author.AuthorAggregate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Bio")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("BirthDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeleationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("PhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name");
+
+                    b.ToTable("Authors", (string)null);
+                });
+
             modelBuilder.Entity("Quraaa.Domain.Cart.CartAggregate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -241,10 +287,8 @@ namespace Quraaa.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Author")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)");
+                    b.Property<Guid?>("AuthorId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("CanonicalPdfUrl")
                         .HasMaxLength(500)
@@ -283,10 +327,8 @@ namespace Quraaa.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<string>("Language")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
+                    b.Property<int>("Language")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("LastModificationTime")
                         .HasColumnType("timestamp with time zone");
@@ -300,6 +342,8 @@ namespace Quraaa.Persistence.Migrations
                         .HasColumnType("character varying(250)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AuthorId");
 
                     b.HasIndex("CategoryId");
 
@@ -706,6 +750,11 @@ namespace Quraaa.Persistence.Migrations
 
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
 
                     b.HasKey("Id");
 
@@ -1765,6 +1814,11 @@ namespace Quraaa.Persistence.Migrations
 
             modelBuilder.Entity("Quraaa.Domain.Catalog.BookAggregate", b =>
                 {
+                    b.HasOne("Quraaa.Domain.Author.AuthorAggregate", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Quraaa.Domain.Category.CategoryAggregate", null)
                         .WithMany()
                         .HasForeignKey("CategoryId")

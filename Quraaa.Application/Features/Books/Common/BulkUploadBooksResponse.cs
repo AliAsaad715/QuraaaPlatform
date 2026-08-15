@@ -1,3 +1,4 @@
+using Quraaa.Domain.Catalog.Enums;
 using Quraaa.Domain.Marketplace.Enums;
 
 namespace Quraaa.Application.Features.Books.Common
@@ -28,7 +29,7 @@ namespace Quraaa.Application.Features.Books.Common
         string FolderName,
         string Title,
         string Author,
-        string Language,
+        Language Language,
         string Reason
     );
 }
