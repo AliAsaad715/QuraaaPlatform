@@ -12,11 +12,17 @@ using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
+// Aliased instead of a plain `using`: GetListingDetails also declares a "ListingDetailsResponse",
+// which would otherwise collide with the GetListingById one already imported above.
+using MobileListingDetailsResponse = Quraaa.Application.Features.Listings.Queries.GetListingDetails.ListingDetailsResponse;
+using BookReviewDto = Quraaa.Application.Features.Listings.Queries.GetListingDetails.BookReviewDto;
 
 namespace Quraaa.Persistence.Repositories
 {
     public class ListingRepository : IListingRepository
     {
+        private const int RecentReviewsLimit = 5;
+
         private readonly ApplicationDbContext _context;
         private readonly IImageUrlFormatter _imageUrlFormatter;
 
@@ -116,6 +122,122 @@ namespace Quraaa.Persistence.Repositories
                     row.Book.Language,
                     row.Book.Isbn,
                     row.Category == null ? null : new CategoryResponse(row.Category.Id, row.Category.NameEn, row.Category.NameAr)));
+        }
+
+        public async Task<MobileListingDetailsResponse?> GetListingDetailsAsync(
+            Guid listingId, CancellationToken cancellationToken = default)
+        {
+            // Materialize first, then project to the response DTO in memory —
+            // IImageUrlFormatter.Format can't be translated into SQL.
+            var row = await _context.Listings
+                .AsNoTracking()
+                .Where(l => l.Id == listingId)
+                .Join(
+                    _context.Books.AsNoTracking(),
+                    l => l.BookId,
+                    b => b.Id,
+                    (l, b) => new { Listing = l, Book = b })
+                .GroupJoin(
+                    _context.Authors.AsNoTracking(),
+                    x => x.Book.AuthorId,
+                    a => a.Id,
+                    (x, authors) => new { x.Listing, x.Book, Authors = authors })
+                .SelectMany(
+                    x => x.Authors.DefaultIfEmpty(),
+                    (x, a) => new { x.Listing, x.Book, Author = a })
+                .GroupJoin(
+                    _context.Libraries.AsNoTracking(),
+                    x => x.Listing.LibraryId,
+                    lib => lib.Id,
+                    (x, libraries) => new { x.Listing, x.Book, x.Author, Libraries = libraries })
+                .SelectMany(
+                    x => x.Libraries.DefaultIfEmpty(),
+                    (x, lib) => new { x.Listing, x.Book, x.Author, Library = lib })
+                .GroupJoin(
+                    _context.UsersProfiles.AsNoTracking(),
+                    x => x.Listing.UserId,
+                    u => u.Id,
+                    (x, users) => new { x.Listing, x.Book, x.Author, x.Library, Users = users })
+                .SelectMany(
+                    x => x.Users.DefaultIfEmpty(),
+                    (x, u) => new { x.Listing, x.Book, x.Author, x.Library, Seller = u })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (row is null)
+            {
+                return null;
+            }
+
+            var (averageRating, totalReviewsCount) = await GetRatingSummaryAsync(row.Book.Id, cancellationToken);
+            var recentReviews = await GetRecentReviewsAsync(row.Book.Id, cancellationToken);
+
+            // LibraryId/UserId are FK-enforced, so Library/Seller are guaranteed non-null
+            // whenever SellerType points at them.
+            var publisher = row.Listing.SellerType == SellerType.Library
+                ? row.Library!.LibraryName
+                : $"{row.Seller!.FirstName} {row.Seller!.LastName}";
+
+            return new MobileListingDetailsResponse(
+                row.Listing.Id,
+                row.Book.Title,
+                _imageUrlFormatter.Format(row.Book.CoverImageUrl),
+                row.Listing.Format,
+                row.Listing.Condition,
+                row.Book.Language,
+                publisher,
+                row.Author?.Name ?? string.Empty,
+                row.Listing.Version,
+                row.Listing.Price,
+                new List<string>(),
+                averageRating,
+                totalReviewsCount,
+                recentReviews);
+        }
+
+        private async Task<(double AverageRating, int TotalReviewsCount)> GetRatingSummaryAsync(
+            Guid bookId, CancellationToken cancellationToken)
+        {
+            var ratings = _context.BookRatings
+                .AsNoTracking()
+                .Where(r => r.BookId == bookId && !r.IsDeleted);
+
+            var totalCount = await ratings.CountAsync(cancellationToken);
+            if (totalCount == 0)
+            {
+                return (0, 0);
+            }
+
+            var average = await ratings.AverageAsync(r => (double)r.RatingValue, cancellationToken);
+            return (average, totalCount);
+        }
+
+        private async Task<List<BookReviewDto>> GetRecentReviewsAsync(
+            Guid bookId, CancellationToken cancellationToken)
+        {
+            return await _context.Comments
+                .AsNoTracking()
+                .Where(c => c.BookId == bookId && !c.IsDeleted)
+                .Join(
+                    _context.UsersProfiles.AsNoTracking(),
+                    c => c.UserId,
+                    u => u.Id,
+                    (c, u) => new { Comment = c, User = u })
+                .GroupJoin(
+                    _context.BookRatings.AsNoTracking().Where(r => r.BookId == bookId && !r.IsDeleted),
+                    x => x.Comment.UserId,
+                    r => r.UserId,
+                    (x, ratings) => new { x.Comment, x.User, Ratings = ratings })
+                .SelectMany(
+                    x => x.Ratings.DefaultIfEmpty(),
+                    (x, r) => new { x.Comment, x.User, Rating = r })
+                .OrderByDescending(x => x.Comment.CreationTime)
+                .Take(RecentReviewsLimit)
+                .Select(x => new BookReviewDto(
+                    x.Rating == null ? (int?)null : x.Rating.RatingValue,
+                    x.Comment.Content,
+                    x.User.FirstName + " " + x.User.LastName,
+                    x.Comment.CreationTime))
+                .ToListAsync(cancellationToken);
         }
 
         public async Task<bool> ExistsByLibraryAndBookAsync(
