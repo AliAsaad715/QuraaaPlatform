@@ -92,10 +92,10 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
 
                     try
                     {
-                        libraryImagePath = await _libraryImageStorageService.SaveAsync(
+                        libraryImagePath = await _libraryImageStorageService.SaveLibraryImageAsync(
                             request.LibraryImage!,
                             cancellationToken);
-                        headerImagePath = await _libraryImageStorageService.SaveAsync(
+                        headerImagePath = await _libraryImageStorageService.SaveHeaderImageAsync(
                             request.HeaderImage!,
                             cancellationToken);
 

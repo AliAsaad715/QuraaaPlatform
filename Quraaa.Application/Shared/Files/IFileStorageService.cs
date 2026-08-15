@@ -1,32 +1,45 @@
 namespace Quraaa.Application.Shared.Files
 {
     /// <summary>
-    /// Low-level, path-traversal-safe file I/O against the private storage root
-    /// (outside wwwroot — never reachable through static file middleware).
-    /// Relative paths are always forward-slash, root-relative strings such as
-    /// "books/pdf/{guid}.pdf"; callers never pass a physical path.
+    /// Provider-neutral storage for private book files. New uploads are stored in
+    /// durable external storage; legacy root-relative paths remain readable so
+    /// existing seeded and pre-migration records continue to work.
     /// </summary>
     public interface IFileStorageService
     {
-        /// <summary>Saves a file under <paramref name="subFolder"/> and returns its relative path.</summary>
+        /// <summary>
+        /// Saves a file under <paramref name="subFolder"/> and returns an opaque,
+        /// persistable storage reference. The reference is not a public download URL.
+        /// </summary>
         Task<string> SaveAsync(
             IUploadedFile file,
             string subFolder,
             CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Resolves a stored relative path to its physical location, verifying it stays
-        /// within the private root and currently exists on disk. Returns false — never
-        /// throws — for a missing, invalid, or traversal-attempting path.
+        /// Opens a seekable read stream for internal processing. The caller owns the
+        /// returned stream. Returns null for a missing, invalid, or unowned reference.
         /// </summary>
-        bool TryGetPhysicalPath(string relativePath, out string physicalPath);
-
-        /// <summary>Deletes a file by relative path. No-ops if it no longer exists.</summary>
-        Task DeleteAsync(string relativePath, CancellationToken cancellationToken = default);
+        Task<Stream?> OpenReadAsync(
+            string storedReference,
+            CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Streams every file under the private root without loading the tree into memory.
-        /// Used by the retention cleanup worker to discover orphan candidates in bounded batches.
+        /// Resolves a reference into either a legacy physical path or a short-lived
+        /// remote download URI. The caller has already authorized access to the file.
+        /// Returns null for a missing, invalid, or unowned reference.
+        /// </summary>
+        Task<StoredFileDownloadSource?> GetDownloadSourceAsync(
+            string storedReference,
+            string downloadFileName,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>Deletes an owned file reference. No-ops if it no longer exists.</summary>
+        Task DeleteAsync(string storedReference, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Streams owned private files across durable storage and the legacy local
+        /// book root. Used by retention cleanup to discover orphan candidates.
         /// </summary>
         IAsyncEnumerable<StoredFileEntry> EnumerateFilesAsync(
             CancellationToken cancellationToken = default);

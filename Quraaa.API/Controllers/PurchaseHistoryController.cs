@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Net.Http.Headers;
 using Quraaa.API.Requests.Purchases;
+using Quraaa.API.Results;
 using Quraaa.Application.Features.Purchases.Queries.GetBuyHistory;
 using Quraaa.Application.Features.Purchases.Queries.GetPurchaseDigitalAsset;
 using Quraaa.Application.Features.Purchases.Queries.GetSellHistory;
@@ -81,6 +81,7 @@ namespace Quraaa.API.Controllers
         [ProducesResponseType(StatusCodes.Status304NotModified)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status502BadGateway)]
         public async Task<IActionResult> StreamDigitalAsset(
             [FromRoute] Guid purchaseId,
             CancellationToken cancellationToken = default)
@@ -95,29 +96,10 @@ namespace Quraaa.API.Controllers
                 cancellationToken);
 
             return HandleResult(result, descriptor =>
-            {
-                // Sensitive, per-user content: caller may cache it, but shared/proxy
-                // caches must not (hence "private", not "public").
-                Response.Headers[HeaderNames.CacheControl] = "private, no-transform, max-age=3600";
-
-                // Set manually (rather than via PhysicalFile's fileDownloadName) so the
-                // disposition stays "inline" — PhysicalFileResult forces "attachment"
-                // whenever a download name is supplied, which would block in-browser
-                // PDF viewing instead of allowing it.
-                var contentDisposition = new ContentDispositionHeaderValue("inline");
-                contentDisposition.SetHttpFileName(descriptor.DownloadFileName);
-                Response.Headers[HeaderNames.ContentDisposition] = contentDisposition.ToString();
-
-                // Passing lastModified/entityTag makes PhysicalFileResult itself compare
-                // them against If-Modified-Since/If-None-Match and short-circuit with
-                // 304 Not Modified — no manual conditional-request handling needed here.
-                return PhysicalFile(
-                    descriptor.PhysicalPath,
-                    descriptor.ContentType,
-                    lastModified: descriptor.LastModifiedUtc,
-                    entityTag: new EntityTagHeaderValue(descriptor.ETag),
-                    enableRangeProcessing: true);
-            });
+                new PrivateStoredFileResult(
+                    descriptor,
+                    asAttachment: false,
+                    cacheControl: "private, no-transform, max-age=3600"));
         }
     }
 }

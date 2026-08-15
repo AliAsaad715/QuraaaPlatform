@@ -1,14 +1,14 @@
 namespace Quraaa.Application.Shared.Files
 {
     /// <summary>
-    /// Binds to the "Storage" configuration section.
+    /// Binds to the "Storage" configuration section for legacy/seeded local files.
     /// </summary>
     public sealed class FileStorageOptions
     {
         /// <summary>
-        /// Root folder for privately-stored files (digital book assets, etc).
-        /// A relative value is resolved against the host's content root, NOT wwwroot,
-        /// so files placed here are never reachable through static file middleware.
+        /// Compatibility root for seeded and pre-Cloudinary book files. New uploads
+        /// use durable external storage. A relative value is resolved against the
+        /// host content root and is never exposed through static-file middleware.
         /// </summary>
         public string RootPath { get; set; } = "storage";
     }

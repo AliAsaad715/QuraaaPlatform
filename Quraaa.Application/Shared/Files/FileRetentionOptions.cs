@@ -22,12 +22,9 @@ namespace Quraaa.Application.Shared.Files
         public int DeletionBatchSize { get; set; } = 200;
 
         /// <summary>
-        /// Relative sub-folders (forward-slash, root-relative) skipped entirely by the
-        /// scan. Use this for assets that aren't linked to a persisted reference column
-        /// yet — e.g. bulk-uploaded catalog PDFs/Word docs, which today are written to
-        /// disk but never stored on <c>BookAggregate</c>, so this worker cannot tell
-        /// whether they're still in use. Excluding them avoids deleting a whole
-        /// feature's output; remove the exclusion once that linkage exists.
+        /// Storage-reference prefixes skipped entirely by the scan. Normally empty:
+        /// listing, book-canonical, and purchase snapshot references are all checked
+        /// before deletion. Keep this only as an operational escape hatch.
         /// </summary>
         public string[] ExcludedSubFolders { get; set; } = [];
     }

@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Interfaces;
+using Quraaa.Application.Shared.Files;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
@@ -15,14 +16,17 @@ namespace Quraaa.Application.Features.Orders.Queries.GetDigitalOrderItemDownload
           IRequestHandler<GetDigitalOrderItemDownloadQuery, AppResult<DigitalOrderItemDownloadResponse>>
     {
         private readonly IOrderRepository _orderRepository;
+        private readonly IFileAccessService _fileAccessService;
 
         public GetDigitalOrderItemDownloadQueryHandler(
             IOrderRepository orderRepository,
+            IFileAccessService fileAccessService,
             ILogger<GetDigitalOrderItemDownloadQueryHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
         {
             _orderRepository = orderRepository;
+            _fileAccessService = fileAccessService;
         }
 
         public async Task<AppResult<DigitalOrderItemDownloadResponse>> Handle(
@@ -51,10 +55,17 @@ namespace Quraaa.Application.Features.Orders.Queries.GetDigitalOrderItemDownload
                     throw new NotFoundException("Digital asset not found.");
                 }
 
+                var file = await _fileAccessService.PrepareDownloadAsync(
+                    item.DigitalAssetUrlSnapshot,
+                    item.BookTitleSnapshot,
+                    cancellationToken)
+                    ?? throw new NotFoundException(
+                        "The purchased file is no longer available. Please contact support.");
+
                 return new DigitalOrderItemDownloadResponse(
                     order.Id,
                     item.Id,
-                    item.DigitalAssetUrlSnapshot);
+                    file);
             }, "Digital order item download authorized");
         }
     }

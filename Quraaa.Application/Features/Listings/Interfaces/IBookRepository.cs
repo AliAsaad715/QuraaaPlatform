@@ -35,6 +35,15 @@ namespace Quraaa.Application.Features.Listings.Interfaces
         Task BulkInsertAsync(IReadOnlyList<BookAggregate> books,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Returns storage references still owned by a book's canonical PDF or Word
+        /// columns. Retention cleanup must preserve these even when no digital listing
+        /// currently points at the same canonical file.
+        /// </summary>
+        Task<HashSet<string>> FilterReferencedCanonicalAssetPathsAsync(
+            IReadOnlyCollection<string> storedReferences,
+            CancellationToken cancellationToken = default);
+
         Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

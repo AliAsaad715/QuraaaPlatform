@@ -6,6 +6,7 @@ namespace Quraaa.Application.Shared.Files
         string ContentType { get; }
         long Length { get; }
 
+        Stream OpenReadStream();
         Task CopyToAsync(Stream target, CancellationToken cancellationToken = default);
     }
 }

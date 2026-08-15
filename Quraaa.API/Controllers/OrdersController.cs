@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Quraaa.API.Requests.Orders;
+using Quraaa.API.Results;
 using Quraaa.Application.Features.Orders.Commands.ArchiveOrder;
 using Quraaa.Application.Features.Orders.Commands.CancelOrder;
 using Quraaa.Application.Features.Orders.Commands.CreateOrder;
@@ -21,13 +22,6 @@ namespace Quraaa.API.Controllers
     [Route("api/orders")]
     public class OrdersController : ApiClientController
     {
-        private readonly IWebHostEnvironment _webHostEnvironment;
-
-        public OrdersController(IWebHostEnvironment webHostEnvironment)
-        {
-            _webHostEnvironment = webHostEnvironment;
-        }
-
         [HttpGet("checkout-context")]
         [ProducesResponseType(typeof(OrderCheckoutContextResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -202,6 +196,7 @@ namespace Quraaa.API.Controllers
         [HttpGet("{orderId:guid}/items/{orderItemId:guid}/download")]
         [Produces("application/pdf")]
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status502BadGateway)]
         public async Task<IActionResult> GetDigitalItemDownload(
             [FromRoute] Guid orderId,
             [FromRoute] Guid orderItemId,
@@ -221,74 +216,10 @@ namespace Quraaa.API.Controllers
 
         private IActionResult CreateDigitalFileResult(DigitalOrderItemDownloadResponse download)
         {
-            var normalizedAssetPath = download.DigitalAssetPath
-                .Replace('\\', '/')
-                .TrimStart('/');
-
-            // Existing snapshots used the former public URL. Resolve that
-            // logical prefix into the private store without serving wwwroot.
-            if (normalizedAssetPath.StartsWith(
-                    "uploads/books/",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                normalizedAssetPath =
-                    $"books/{normalizedAssetPath["uploads/books/".Length..]}";
-            }
-
-            if (!normalizedAssetPath.StartsWith("books/", StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(
-                    Path.GetExtension(normalizedAssetPath),
-                    ".pdf",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return NotFound();
-            }
-
-            string physicalAssetPath;
-            string booksRootPrefix;
-
-            try
-            {
-                var booksRootPath = Path.GetFullPath(
-                    Path.Combine(
-                        _webHostEnvironment.ContentRootPath,
-                        "storage",
-                        "books"));
-                physicalAssetPath = Path.GetFullPath(
-                    Path.Combine(
-                        _webHostEnvironment.ContentRootPath,
-                        "storage",
-                        normalizedAssetPath.Replace('/', Path.DirectorySeparatorChar)));
-                booksRootPrefix = booksRootPath.TrimEnd(
-                    Path.DirectorySeparatorChar,
-                    Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            }
-            catch (Exception exception) when (
-                exception is ArgumentException
-                    or NotSupportedException
-                    or PathTooLongException)
-            {
-                return NotFound();
-            }
-
-            var pathComparison = OperatingSystem.IsWindows()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
-
-            if (!physicalAssetPath.StartsWith(booksRootPrefix, pathComparison)
-                || !System.IO.File.Exists(physicalAssetPath))
-            {
-                return NotFound();
-            }
-
-            Response.Headers.CacheControl = "private, no-store";
-            Response.Headers["X-Content-Type-Options"] = "nosniff";
-
-            return PhysicalFile(
-                physicalAssetPath,
-                "application/pdf",
-                Path.GetFileName(physicalAssetPath),
-                enableRangeProcessing: true);
+            return new PrivateStoredFileResult(
+                download.File,
+                asAttachment: true,
+                cacheControl: "private, no-store");
         }
     }
 }

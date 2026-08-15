@@ -9,14 +9,13 @@ namespace Quraaa.Application.Shared.Files
     public interface IFileAccessService
     {
         /// <summary>
-        /// Resolves <paramref name="relativePath"/> to an existing physical file and
-        /// derives a download name from <paramref name="downloadFileNameStem"/> plus the
-        /// asset's own extension. Returns false if the path is invalid, escapes the
-        /// private storage root, or no longer exists on disk.
+        /// Resolves <paramref name="storedReference"/> to an approved local or remote
+        /// file source and derives a safe download name. Returns null if the reference
+        /// is invalid, unowned, or no longer exists locally.
         /// </summary>
-        bool TryPrepareDownload(
-            string relativePath,
+        Task<DigitalAssetFileDescriptor?> PrepareDownloadAsync(
+            string storedReference,
             string downloadFileNameStem,
-            out DigitalAssetFileDescriptor descriptor);
+            CancellationToken cancellationToken = default);
     }
 }

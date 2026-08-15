@@ -20,7 +20,7 @@ namespace Quraaa.Persistence.Configurations
             builder.Property(x => x.DetectedAtUtc).IsRequired();
             builder.Property(x => x.Status).IsRequired();
 
-            // One tracking row per physical path — re-detecting an already-pending
+            // One tracking row per storage reference — re-detecting an already-pending
             // file during discovery is a no-op, not a duplicate insert.
             builder.HasIndex(x => x.RelativePath).IsUnique();
 

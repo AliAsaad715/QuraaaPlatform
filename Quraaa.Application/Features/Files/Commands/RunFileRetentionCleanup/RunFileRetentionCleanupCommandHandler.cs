@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Files.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
+using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Files;
 
 namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
@@ -13,6 +14,7 @@ namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
         private readonly IFileStorageService _fileStorageService;
         private readonly IOrphanFileCandidateRepository _candidateRepository;
         private readonly IListingRepository _listingRepository;
+        private readonly IBookRepository _bookRepository;
         private readonly IBookPurchaseRepository _purchaseRepository;
         private readonly ILogger<RunFileRetentionCleanupCommandHandler> _logger;
 
@@ -20,12 +22,14 @@ namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
             IFileStorageService fileStorageService,
             IOrphanFileCandidateRepository candidateRepository,
             IListingRepository listingRepository,
+            IBookRepository bookRepository,
             IBookPurchaseRepository purchaseRepository,
             ILogger<RunFileRetentionCleanupCommandHandler> logger)
         {
             _fileStorageService = fileStorageService;
             _candidateRepository = candidateRepository;
             _listingRepository = listingRepository;
+            _bookRepository = bookRepository;
             _purchaseRepository = purchaseRepository;
             _logger = logger;
         }
@@ -43,9 +47,9 @@ namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
         }
 
         // ── Phase 1: discover new orphan candidates ─────────────────────────────
-        // Streams the private root in bounded batches; each batch does exactly two
+        // Streams owned private storage in bounded batches; each batch does three
         // indexed "is this path referenced" lookups instead of loading every
-        // Listing/BookPurchase row into memory.
+        // Listing/Book/BookPurchase row into memory.
         private async Task<(int FilesScanned, int NewCandidates)> DiscoverAsync(
             RunFileRetentionCleanupCommand request,
             DateTime nowUtc,
@@ -123,6 +127,7 @@ namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
                 // re-referenced one of these paths since it was first detected.
                 var stillUnreferenced = await FilterUnreferencedAsync(
                     due.Select(candidate => candidate.RelativePath).ToList(), cancellationToken);
+                var batchHadDeletionFailures = false;
 
                 foreach (var candidate in due)
                 {
@@ -144,17 +149,23 @@ namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
                         await _candidateRepository.MarkDeletedAsync(candidate.Id, nowUtc, cancellationToken);
                         deleted++;
                     }
-                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    catch (Exception exception) when (
+                        exception is IOException
+                            or UnauthorizedAccessException
+                            or FileStorageException)
                     {
                         _logger.LogWarning(
                             exception,
                             "Failed to delete orphaned file {RelativePath}.",
                             candidate.RelativePath);
                         failures++;
+                        batchHadDeletionFailures = true;
                     }
                 }
 
-                if (due.Count < request.DeletionBatchSize)
+                // Failed candidates remain pending for the next scheduled cleanup
+                // cycle. Stop now so a full failed batch is not fetched in a tight loop.
+                if (batchHadDeletionFailures || due.Count < request.DeletionBatchSize)
                     break;
             }
 
@@ -167,11 +178,16 @@ namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
         {
             var referencedByListings = await _listingRepository.FilterReferencedDigitalAssetPathsAsync(
                 candidatePaths, cancellationToken);
+            var referencedByBooks = await _bookRepository.FilterReferencedCanonicalAssetPathsAsync(
+                candidatePaths, cancellationToken);
             var referencedByPurchases = await _purchaseRepository.FilterReferencedDigitalAssetPathsAsync(
                 candidatePaths, cancellationToken);
 
             return candidatePaths
-                .Where(path => !referencedByListings.Contains(path) && !referencedByPurchases.Contains(path))
+                .Where(path =>
+                    !referencedByListings.Contains(path)
+                    && !referencedByBooks.Contains(path)
+                    && !referencedByPurchases.Contains(path))
                 .ToHashSet(StringComparer.Ordinal);
         }
 

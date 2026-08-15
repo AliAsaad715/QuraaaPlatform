@@ -3,8 +3,8 @@ namespace Quraaa.Application.Shared.Files
     /// <summary>
     /// Extracts plain text from a single page of a stored PDF so its content can be
     /// used as AI prompt context (e.g. translating the page the reader is currently
-    /// on). Takes the same root-relative paths used elsewhere for file storage/access
-    /// (see <see cref="IFileStorageService"/>) — never a physical path.
+    /// on). Takes the same opaque references used elsewhere for file storage/access
+    /// (see <see cref="IFileStorageService"/>) — never a physical path or public URL.
     /// </summary>
     public interface IDocumentTextExtractionService
     {
