@@ -19,5 +19,13 @@ namespace Quraaa.Application.Features.Books.Interfaces
             int pageNumber,
             int pageSize,
             CancellationToken cancellationToken = default);
+
+        Task<(IReadOnlyCollection<HomeBookResponse> Items, int TotalCount)> GetByAuthorAsync(
+            Guid authorId,
+            string? searchTerm,
+            string sortBy,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken = default);
     }
 }
