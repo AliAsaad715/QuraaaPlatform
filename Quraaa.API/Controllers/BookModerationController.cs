@@ -14,7 +14,7 @@ namespace Quraaa.API.Controllers
     /// ability to restore an earlier version, and catalogue visibility.
     /// </summary>
     [Route("api/books/{bookId:guid}")]
-    [Authorize(Roles = nameof(Role.Admin))]
+    [Authorize(Roles = nameof(Role.SuperAdmin))]
     public class BookModerationController : ApiClientController
     {
         // ── GET /api/books/{bookId}/versions ─────────────────────────────────

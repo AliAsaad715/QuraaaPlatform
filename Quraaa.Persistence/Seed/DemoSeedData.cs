@@ -13,7 +13,6 @@ public static class DemoSeedData
     public const string SuperAdminPassword = "Admin@12345";
 
     public const string SuperAdminPhoneNumber = "+963990000001";
-    public const string AdminPhoneNumber = "+963990000002";
     public const string MainBuyerPhoneNumber = "+963912345678";
     public const string SellerPhoneNumber = "+963912345679";
     public const string CheckoutBuyerPhoneNumber = "+963912345680";
@@ -22,7 +21,6 @@ public static class DemoSeedData
     public const string ReporterThreePhoneNumber = "+963912345683";
 
     public static readonly Guid SuperAdminUserId = Guid.Parse("33333333-3333-3333-3333-333333333301");
-    public static readonly Guid AdminUserId = Guid.Parse("33333333-3333-3333-3333-333333333308");
     public static readonly Guid MainBuyerUserId = Guid.Parse("33333333-3333-3333-3333-333333333302");
     public static readonly Guid SellerUserId = Guid.Parse("33333333-3333-3333-3333-333333333303");
     public static readonly Guid CheckoutBuyerUserId = Guid.Parse("33333333-3333-3333-3333-333333333304");
@@ -40,16 +38,7 @@ public static class DemoSeedData
             "Super Admin",
             Gender.Male,
             Role.SuperAdmin,
-            [Role.Admin.ToString(), Role.SuperAdmin.ToString()]),
-        new(
-            AdminUserId,
-            AdminPhoneNumber,
-            SuperAdminPassword,
-            "Maya",
-            "Moderator",
-            Gender.Female,
-            Role.Admin,
-            [Role.Admin.ToString()]),
+            [Role.SuperAdmin.ToString()]),
         new(
             MainBuyerUserId,
             MainBuyerPhoneNumber,

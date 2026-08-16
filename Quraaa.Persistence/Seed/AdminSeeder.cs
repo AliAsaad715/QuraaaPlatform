@@ -34,18 +34,18 @@ namespace Quraaa.Persistence.Seed
                     $"ADMIN_PASSWORD must contain {AuthenticationPasswordPolicy.MinimumLength} through {AuthenticationPasswordPolicy.MaximumLength} characters.");
             }
 
-            // The seeded account is the bootstrap SUPER admin: super admins are
-            // the only ones who can create more administrators, so at least one
-            // has to exist from the start. It holds both identity roles, which
-            // keeps every ordinary [Authorize(Roles = "Admin")] endpoint working.
-            string role = Role.Admin.ToString();
+            // Keep the existing configuration keys for deployment compatibility,
+            // but the bootstrap account has the single privileged platform role.
             string superAdminRole = Role.SuperAdmin.ToString();
 
-            foreach (var requiredRole in new[] { role, superAdminRole })
+            if (!await roleManager.RoleExistsAsync(superAdminRole))
             {
-                if (!await roleManager.RoleExistsAsync(requiredRole))
+                var createRoleResult = await roleManager.CreateAsync(
+                    new IdentityRole<Guid> { Name = superAdminRole });
+                if (!createRoleResult.Succeeded)
                 {
-                    await roleManager.CreateAsync(new IdentityRole<Guid> { Name = requiredRole });
+                    var errors = string.Join("; ", createRoleResult.Errors.Select(e => e.Description));
+                    throw new InvalidOperationException($"Failed to create super admin role: {errors}");
                 }
             }
 
@@ -53,13 +53,13 @@ namespace Quraaa.Persistence.Seed
             if (existingUser is not null)
             {
                 var identityChanged = false;
-                if (await userManager.IsInRoleAsync(existingUser, role) && !existingUser.PhoneNumberConfirmed)
+                if (!existingUser.PhoneNumberConfirmed)
                 {
                     existingUser.PhoneNumberConfirmed = true;
                     identityChanged = true;
                 }
 
-                if (!await userManager.IsInRoleAsync(existingUser, role))
+                if (!await userManager.IsInRoleAsync(existingUser, superAdminRole))
                 {
                     // A privileged role must not be inherited by a refresh-token
                     // family authenticated before the role elevation.
@@ -67,11 +67,15 @@ namespace Quraaa.Persistence.Seed
                     existingUser.RefreshTokenExpiryTime = DateTime.UtcNow;
                     existingUser.RefreshTokenFamilyId = null;
 
-                    var addRoleResult = await userManager.AddToRoleAsync(existingUser, role);
-                    if (!addRoleResult.Succeeded)
+                    var assignExistingRoleResult = await userManager.AddToRoleAsync(
+                        existingUser,
+                        superAdminRole);
+                    if (!assignExistingRoleResult.Succeeded)
                     {
-                        var errors = string.Join("; ", addRoleResult.Errors.Select(e => e.Description));
-                        throw new InvalidOperationException($"Failed to assign admin role: {errors}");
+                        var errors = string.Join(
+                            "; ",
+                            assignExistingRoleResult.Errors.Select(e => e.Description));
+                        throw new InvalidOperationException($"Failed to assign super admin role: {errors}");
                     }
                 }
 
@@ -81,7 +85,7 @@ namespace Quraaa.Persistence.Seed
                     if (!updateResult.Succeeded)
                     {
                         var errors = string.Join("; ", updateResult.Errors.Select(e => e.Description));
-                        throw new InvalidOperationException($"Failed to update admin account: {errors}");
+                        throw new InvalidOperationException($"Failed to update super admin account: {errors}");
                     }
                 }
 
@@ -99,13 +103,13 @@ namespace Quraaa.Persistence.Seed
                     if (!resetResult.Succeeded)
                     {
                         var errors = string.Join("; ", resetResult.Errors.Select(e => e.Description));
-                        throw new InvalidOperationException($"Failed to reset seeded admin password: {errors}");
+                        throw new InvalidOperationException($"Failed to reset seeded super admin password: {errors}");
                     }
 
                     existingUser = await userManager.FindByIdAsync(existingUser.Id.ToString()) ?? existingUser;
                 }
 
-                await EnsureAdminProfileAsync(context, passwordHasher, existingUser, phoneNumber, cancellationToken);
+                await EnsureSuperAdminProfileAsync(context, passwordHasher, existingUser, phoneNumber, cancellationToken);
                 return;
             }
 
@@ -125,76 +129,84 @@ namespace Quraaa.Persistence.Seed
             if (!identityResult.Succeeded)
             {
                 var errors = string.Join("; ", identityResult.Errors.Select(e => e.Description));
-                throw new InvalidOperationException($"Failed to seed admin account: {errors}");
+                throw new InvalidOperationException($"Failed to seed super admin account: {errors}");
             }
 
-            await userManager.AddToRoleAsync(applicationUser, role);
+            var assignNewRoleResult = await userManager.AddToRoleAsync(
+                applicationUser,
+                superAdminRole);
+            if (!assignNewRoleResult.Succeeded)
+            {
+                var errors = string.Join(
+                    "; ",
+                    assignNewRoleResult.Errors.Select(e => e.Description));
+                throw new InvalidOperationException($"Failed to assign super admin role: {errors}");
+            }
 
             var passwordHash = applicationUser.PasswordHash
                 ?? passwordHasher.HashPassword(applicationUser, password);
 
-            var adminProfile = new UserAggregate(
+            var superAdminProfile = new UserAggregate(
                 id,
                 firstName: "Quraaa",
-                lastName: "Admin",
+                lastName: "Super Admin",
                 phoneNumber: phoneNumber,
                 passwordHash: passwordHash,
                 gender: Gender.Male,
                 role: Role.SuperAdmin,
                 dateOfBirth: new DateOnly(2000, 1, 1));
 
-            await context.UsersProfiles.AddAsync(adminProfile, cancellationToken);
+            await context.UsersProfiles.AddAsync(superAdminProfile, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        private static async Task EnsureAdminProfileAsync(
+        private static async Task EnsureSuperAdminProfileAsync(
             ApplicationDbContext context,
             IPasswordHasher<ApplicationUser> passwordHasher,
             ApplicationUser applicationUser,
             string phoneNumber,
             CancellationToken cancellationToken)
         {
-            var adminProfile = await context.UsersProfiles
+            var superAdminProfile = await context.UsersProfiles
                 .FirstOrDefaultAsync(user => user.Id == applicationUser.Id, cancellationToken);
 
-            if (adminProfile is null)
+            if (superAdminProfile is null)
             {
                 var passwordHash = applicationUser.PasswordHash
                     ?? passwordHasher.HashPassword(applicationUser, string.Empty);
 
-                adminProfile = new UserAggregate(
+                superAdminProfile = new UserAggregate(
                     applicationUser.Id,
                     firstName: "Quraaa",
-                    lastName: "Admin",
+                    lastName: "Super Admin",
                     phoneNumber: phoneNumber,
                     passwordHash: passwordHash,
                     gender: Gender.Male,
-                    role: Role.Admin,
+                    role: Role.SuperAdmin,
                     dateOfBirth: new DateOnly(2000, 1, 1));
 
-                await context.UsersProfiles.AddAsync(adminProfile, cancellationToken);
+                await context.UsersProfiles.AddAsync(superAdminProfile, cancellationToken);
                 await context.SaveChangesAsync(cancellationToken);
                 return;
             }
 
             var profileChanged = false;
-            if (adminProfile.PhoneNumber != phoneNumber)
+            if (superAdminProfile.PhoneNumber != phoneNumber)
             {
-                context.Entry(adminProfile).Property(nameof(UserAggregate.PhoneNumber)).CurrentValue = phoneNumber;
+                context.Entry(superAdminProfile).Property(nameof(UserAggregate.PhoneNumber)).CurrentValue = phoneNumber;
                 profileChanged = true;
             }
 
-            // Never demote a super admin back to Admin on re-seed.
-            if (adminProfile.Role is not (Role.Admin or Role.SuperAdmin))
+            if (superAdminProfile.Role != Role.SuperAdmin)
             {
-                context.Entry(adminProfile).Property(nameof(UserAggregate.Role)).CurrentValue = Role.SuperAdmin;
+                superAdminProfile.BecomeSuperAdmin(applicationUser.Id);
                 profileChanged = true;
             }
 
             if (!string.IsNullOrWhiteSpace(applicationUser.PasswordHash)
-                && adminProfile.PasswordHash != applicationUser.PasswordHash)
+                && superAdminProfile.PasswordHash != applicationUser.PasswordHash)
             {
-                adminProfile.UpdatePasswordHash(applicationUser.PasswordHash, applicationUser.Id);
+                superAdminProfile.UpdatePasswordHash(applicationUser.PasswordHash, applicationUser.Id);
                 profileChanged = true;
             }
 

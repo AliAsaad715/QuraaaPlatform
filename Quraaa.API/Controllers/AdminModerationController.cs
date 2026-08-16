@@ -25,7 +25,7 @@ namespace Quraaa.API.Controllers
     /// deleted. Every action works on one record or many.
     /// </summary>
     [Route("api/admin")]
-    [Authorize(Roles = nameof(Role.Admin))]
+    [Authorize(Roles = nameof(Role.SuperAdmin))]
     public class AdminModerationController : ApiClientController
     {
 

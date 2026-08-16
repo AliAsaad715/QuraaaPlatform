@@ -77,10 +77,10 @@ namespace Quraaa.Application.Features.Authentication.Commands.AdminLogin
                 }
 
                 var adminProfile = await _userRepository.GetUserByPhoneNumberAsync(formattedPhone);
-                // Super admins are administrators too: they hold the Admin
-                // identity role alongside SuperAdmin, so they sign in here.
-                var isAdminIdentity = await _identityService.IsInRoleAsync(identity.UserId, Role.Admin.ToString());
-                if (adminProfile?.Role is not (Role.Admin or Role.SuperAdmin) || !isAdminIdentity)
+                var isSuperAdminIdentity = await _identityService.IsInRoleAsync(
+                    identity.UserId,
+                    Role.SuperAdmin.ToString());
+                if (adminProfile?.Role != Role.SuperAdmin || !isSuperAdminIdentity)
                 {
                     await RecordCredentialFailureAndThrowAsync(formattedPhone, clientTargetKey, cancellationToken);
                 }

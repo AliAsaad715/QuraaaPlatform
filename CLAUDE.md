@@ -30,7 +30,7 @@ docker run -p 8080:8080 --env-file Quraaa.API/.env quraaa-api
 
 Running the API requires a reachable PostgreSQL (`ConnectionStrings:DefaultConnection`) and `JWT_SECRET_KEY`; [Program.cs](Quraaa.API/Program.cs) calls `db.Database.Migrate()` and then runs every seeder on **every startup**, so the app will not boot without a working database.
 
-For manual testing via Swagger: the user seeder creates `+963912345678` / `User@12345`, and the admin seeder creates an account from `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`. Registration and regular login **only accept valid Syrian (`+963`) phone numbers** (`RegisterCommandValidator` / `LoginCommandValidator`) — test accounts must use `+963` numbers.
+For manual testing via Swagger: the user seeder creates `+963912345678` / `User@12345`, and the bootstrap seeder creates a `SuperAdmin` account from `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`. Registration and regular login **only accept valid Syrian (`+963`) phone numbers** (`RegisterCommandValidator` / `LoginCommandValidator`) — test accounts must use `+963` numbers.
 
 PR branch names are validated by [.github/workflows/check-branch-name.yml](.github/workflows/check-branch-name.yml) (`feature/123-description`, `fix/...`, `refactor/...`, or lowercase kebab-case). That is the only CI — no build/test workflow exists.
 
@@ -77,7 +77,7 @@ Domain error *codes* that must surface as 409 (e.g. `LibraryErrorCodes.Duplicate
 
 **Aggregates reference each other by scalar id only** (`UserId`, `BookId`, `ListingId`, `LibraryId`) — no cross-aggregate navigation properties in the domain. Existing EF configurations do use navigationless `HasOne<TAggregate>()` to create database foreign keys; treat those purely as DB integrity mappings and follow the same convention rather than introducing navigations.
 
-Enums are stored as `int` in PostgreSQL but serialized as strings in JSON (`JsonStringEnumConverter`). Roles are `User | Admin | LibraryOwner` ([Role.cs](Quraaa.Domain/User/Enums/Role.cs)) — `[Authorize(Roles = ...)]` strings must match these; there is no `LibraryAdmin` role.
+Enums are stored as `int` in PostgreSQL but serialized as strings in JSON (`JsonStringEnumConverter`). Roles are `User | LibraryOwner | SuperAdmin` ([Role.cs](Quraaa.Domain/User/Enums/Role.cs)) — `[Authorize(Roles = ...)]` strings must match these; there is no `Admin` or `LibraryAdmin` role.
 
 ### Uniqueness invariants enforced in the database
 
@@ -105,10 +105,10 @@ Library owners connect a Stripe wallet themselves via Stripe-hosted onboarding (
 
 [Program.cs](Quraaa.API/Program.cs) calls `DotNetEnv.Env.Load()` (repo root) and then `Quraaa.API/.env` if present, before `CreateBuilder`; `AddEnvironmentVariables()` runs again after, so environment variables win over `appsettings.json`. Use `__` for nested keys in deployment.
 
-Keys that gate startup or whole features: `ConnectionStrings:DefaultConnection`, `JWT_SECRET_KEY` (required), `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD` (the admin seeder resets the seeded admin password to this on every boot), `REDIS_URL` / `Otp:AllowInMemoryCacheInProduction`, `OTP_DEVICE_TOKEN` plus Firebase credentials (`FIREBASE_CREDENTIALS_JSON` is materialized to `storage/firebase/quraa.json` at startup), Stripe secret/webhook keys, Cloudinary credentials, `Cors:AllowedOrigins` (empty ⇒ `AllowAnyOrigin`).
+Keys that gate startup or whole features: `ConnectionStrings:DefaultConnection`, `JWT_SECRET_KEY` (required), `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD` (legacy configuration names used to create/synchronize the bootstrap `SuperAdmin` and reset its configured password on boot), `REDIS_URL` / `Otp:AllowInMemoryCacheInProduction`, `OTP_DEVICE_TOKEN` plus Firebase credentials (`FIREBASE_CREDENTIALS_JSON` is materialized to `storage/firebase/quraa.json` at startup), Stripe secret/webhook keys, Cloudinary credentials, `Cors:AllowedOrigins` (empty ⇒ `AllowAnyOrigin`).
 
 Committed defaults that are test-only and must be overridden in production: `Notifications:AllowTestEndpoint=true`, `Otp:AllowInMemoryCacheInProduction=true`, `Stripe:IsTestMode=true`.
 
 ## Reference docs
 
-[AGENTS.md](AGENTS.md) (~2500 lines) is the deep reference: full endpoint list, per-flow step-by-step behavior (registration, login/refresh/logout, OTP, checkout, fulfillment), migration history, and a known-gaps list. [README.md](README.md) covers setup and the endpoint table. Both **lag the code in places** — e.g. the AGENTS.md gap list still claims there are no rating endpoints and that library listing routes require `LibraryAdmin`, but `RatingsController`, `CommentsController`, and `[Authorize(Roles = "LibraryOwner")]` on `LibraryListingsController` all exist. Verify against source before relying on either.
+[AGENTS.md](AGENTS.md) (~2500 lines) is the deep reference: full endpoint list, per-flow step-by-step behavior (registration, login/refresh/logout, OTP, checkout, fulfillment), migration history, and a known-gaps list. [README.md](README.md) covers setup and the endpoint table. Both **lag the code in places** — e.g. the AGENTS.md gap list still claims there are no rating endpoints even though `RatingsController` exists. Verify against source before relying on either.

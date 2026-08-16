@@ -79,8 +79,10 @@ namespace Quraaa.Application.Features.Admin.Interfaces
         void RemoveLibraries(IReadOnlyCollection<LibraryAggregate> libraries);
 
         /// <summary>
-        /// Creates a new super admin: the sign-in identity, both identity roles
-        /// (Admin and SuperAdmin), and the platform profile.
+        /// Creates a new super admin: the sign-in identity, SuperAdmin role,
+        /// and platform profile. The caller must wrap this operation in
+        /// <see cref="Quraaa.Application.Features.Authentication.Interfaces.IAuthenticationUnitOfWork" />
+        /// because Identity writes save immediately.
         /// </summary>
         Task<AdminUserResponse> CreateSuperAdminAsync(
             string phoneNumber,

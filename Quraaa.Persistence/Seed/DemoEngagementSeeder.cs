@@ -282,7 +282,7 @@ public static class DemoEngagementSeeder
                 BookReportStatus.Rejected),
         };
 
-        var adminId = users[DemoSeedData.AdminPhoneNumber];
+        var adminId = users[DemoSeedData.SuperAdminPhoneNumber];
         var addedByBook = new HashSet<Guid>();
 
         foreach (var definition in definitions)

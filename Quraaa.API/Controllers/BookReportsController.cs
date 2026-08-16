@@ -87,7 +87,7 @@ namespace Quraaa.API.Controllers
         /// <response code="200">A paged collection of reports.</response>
         /// <response code="400">The paging or filter values are invalid.</response>
         [HttpGet]
-        [Authorize(Roles = nameof(Role.Admin))]
+        [Authorize(Roles = nameof(Role.SuperAdmin))]
         [ProducesResponseType(typeof(PagedResult<BookReportResponse>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> GetReports(
@@ -117,7 +117,7 @@ namespace Quraaa.API.Controllers
         /// <response code="200">The report.</response>
         /// <response code="404">No such report.</response>
         [HttpGet("{reportId:guid}")]
-        [Authorize(Roles = nameof(Role.Admin))]
+        [Authorize(Roles = nameof(Role.SuperAdmin))]
         [ProducesResponseType(typeof(BookReportResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetReport(
@@ -145,7 +145,7 @@ namespace Quraaa.API.Controllers
         /// <response code="404">No such report.</response>
         /// <response code="409">The report was already closed, or changed concurrently.</response>
         [HttpPatch("{reportId:guid}/status")]
-        [Authorize(Roles = nameof(Role.Admin))]
+        [Authorize(Roles = nameof(Role.SuperAdmin))]
         [ProducesResponseType(typeof(BookReportResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]

@@ -370,11 +370,14 @@ public class AdminModerationRepository : IAdminModerationRepository
                 "Password");
         }
 
-        // Both roles: SuperAdmin carries the extra authority, Admin keeps every
-        // ordinary administrator endpoint working for them.
-        await _userManager.AddToRolesAsync(
+        var addRoleResult = await _userManager.AddToRoleAsync(
             identityUser,
-            [Role.Admin.ToString(), Role.SuperAdmin.ToString()]);
+            Role.SuperAdmin.ToString());
+        if (!addRoleResult.Succeeded)
+        {
+            throw new ApplicationBusinessException(
+                string.Join("; ", addRoleResult.Errors.Select(error => error.Description)));
+        }
 
         var profile = new UserAggregate(
             identityUser.Id,

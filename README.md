@@ -249,7 +249,7 @@ ASP.NET Core configuration is loaded from appsettings files, `.env`, environment
 | `MAIL_ENCRYPTION`                                      | Yes                      | `tls`/`starttls` uses STARTTLS; `ssl`/`smtps` uses implicit TLS.                                                                                         |
 | `MAIL_FROM_ADDRESS` / `MAIL_FROM_NAME`                 | Yes                      | Valid sender mailbox and single-line display name.                                                                                                       |
 | `Swagger__ServerUrl`                                   | No                       | Optional HTTPS absolute or relative OpenAPI server URL. Omit it (recommended) to use the Swagger UI's current origin, which works for local HTTP and production HTTPS. |
-| `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`                | No                       | Creates or synchronizes the seeded administrator when both are set.                                                                                      |
+| `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`                | No                       | Creates or synchronizes the seeded `SuperAdmin` when both are set; the legacy key names are retained for deployment compatibility.                       |
 | `DemoData__Enabled`                                    | Development only         | Explicitly enables the connected interview dataset. It defaults to `false` in every committed appsettings file, and startup rejects `true` outside Development. |
 
 The process also respects normal ASP.NET Core settings such as `ASPNETCORE_ENVIRONMENT`, `ASPNETCORE_URLS`, and command-line `--urls`.
@@ -259,6 +259,7 @@ The process also respects normal ASP.NET Core settings such as `ASPNETCORE_ENVIR
 - Canonical routes are lowercase because `RouteOptions.LowercaseUrls` is enabled.
 - Protected endpoints expect `Authorization: Bearer <access-token>`.
 - JSON enums are serialized as names by `JsonStringEnumConverter`.
+- Supported account roles are `User`, `LibraryOwner`, and `SuperAdmin`.
 - Paged endpoints generally use `pageNumber` and `pageSize`, with feature-specific search, sort, status, or format filters.
 - Validation errors return `400`; missing resources return `404`; invalid or revoked authentication returns `401`; role/ownership failures return `403`; concurrency or state conflicts return `409`.
 - `GET /api/books/recommended` requires an `Accept-Language` header containing exactly `ar` or `en`.
@@ -279,8 +280,8 @@ The current API exposes 74 controller actions.
 | `POST`   | `/api/auth/register/verify`        | Public                         | Verify registration OTP and complete account creation.                      |
 | `POST`   | `/api/auth/login`                  | Public                         | Authenticate a user and issue an access / refresh pair.                     |
 | `POST`   | `/api/auth/library/login`          | Public                         | Authenticate an approved library owner by library email and password.       |
-| `POST`   | `/api/auth/admin/login`            | Public                         | Validate administrator credentials and send a login OTP.                    |
-| `POST`   | `/api/auth/admin/login/verify`     | Public                         | Verify the administrator OTP and issue tokens.                              |
+| `POST`   | `/api/auth/admin/login`            | Public                         | Validate super-administrator credentials and send a login OTP.              |
+| `POST`   | `/api/auth/admin/login/verify`     | Public                         | Verify the super-administrator OTP and issue tokens.                        |
 | `POST`   | `/api/auth/refresh`                | Refresh token                  | Rotate a valid refresh token and issue a new pair.                          |
 | `POST`   | `/api/auth/logout`                 | Refresh token; bearer optional | Revoke the matching refresh-token family and optional current access token. |
 | `POST`   | `/api/auth/reset-password`         | Authenticated                  | Change the current account password and revoke its sessions.                |
@@ -302,7 +303,7 @@ The first saved location automatically becomes the default. Setting another defa
 | -------- | ------------------------------ | ------------- | ---------------------------------------------------- |
 | `GET`    | `/api/categories`              | Public        | List active categories.                              |
 | `GET`    | `/api/categories/{categoryId}` | Public        | Get one active category.                             |
-| `POST`   | `/api/categories`              | `Admin`       | Create a category.                                   |
+| `POST`   | `/api/categories`              | `SuperAdmin`  | Create a category.                                   |
 | `GET`    | `/api/books/most-popular`      | Public        | Browse ranked popular books.                         |
 | `GET`    | `/api/books/recommended`       | Authenticated | Browse interest- and language-based recommendations. |
 | `GET`    | `/api/favorite-books`          | Authenticated | List the current account's favorite books.           |
@@ -321,8 +322,8 @@ The first saved location automatically becomes the default. Setting another defa
 | `GET`    | `/api/libraries`                                   | Public         | Search and page approved libraries.                           |
 | `GET`    | `/api/libraries/{libraryId}/books`                 | Public         | Browse a library's listings with paging, search, and sorting. |
 | `GET`    | `/api/libraries/my-profile`                        | `LibraryOwner` | Get the approved library owned by the caller.                 |
-| `GET`    | `/api/libraries/requests`                          | `Admin`        | Page and filter library applications.                         |
-| `PATCH`  | `/api/libraries/{id}/approval-status`              | `Admin`        | Approve/reject; approval queues owner email and mobile push.  |
+| `GET`    | `/api/libraries/requests`                          | `SuperAdmin`   | Page and filter library applications.                         |
+| `PATCH`  | `/api/libraries/{id}/approval-status`              | `SuperAdmin`   | Approve/reject; approval queues owner email and mobile push.  |
 | `POST`   | `/api/library-admin/listings`                      | `LibraryOwner` | Add a physical book by ISBN.                                  |
 | `POST`   | `/api/library-admin/listings/digital`              | `LibraryOwner` | Upload a PDF and add a digital book by ISBN.                  |
 | `PUT`    | `/api/library-admin/listings/{listingId}`          | `LibraryOwner` | Update supplied listing fields.                               |
@@ -419,7 +420,7 @@ The API generates and caches OTP data, then sends an FCM data message to the con
 ## Database migrations and seed data
 
 Startup applies migrations and reconciles categories plus the optional
-configuration-driven bootstrap administrator. The connected interview dataset
+configuration-driven bootstrap super administrator. The connected interview dataset
 runs only in Development after explicit opt-in with
 `DemoData__Enabled=true`; every committed appsettings file defaults it to
 `false`.
@@ -428,9 +429,16 @@ runs only in Development after explicit opt-in with
 
 `AddMultipleUserLocations` validates each legacy coordinate pair, copies it into a named `UserLocations` row, selects it as the default, and only then removes the old profile columns. `PreventUserLocationOwnerReassignment` installs a database trigger that makes `UserLocations.UserId` immutable after insertion. Deploy `AddMultipleUserLocations` with old API instances stopped because they still expect `UsersProfiles.Latitude`/`Longitude`. Its downgrade can retain only the selected default (or oldest fallback) and discards every additional saved location, so back up the database before rolling it back.
 
+`ConsolidateAdminIntoSuperAdmin` promotes legacy domain role value `2` to
+`SuperAdmin` (`4`), merges Identity memberships and role claims into the
+`SuperAdmin` role, removes the obsolete `Admin` role, and revokes affected
+refresh-token families. The migration is intentionally irreversible because it
+cannot reconstruct which resulting super administrators previously held each
+of the two old roles.
+
 On a fresh development database, demo seed behavior includes:
 
-- Named buyer, seller, admin, moderator, and checkout personas with stable credentials.
+- Named buyer, seller, super-administrator, and checkout personas with stable credentials.
 - Profiles with interests and saved locations, plus 102 library-owner identities and libraries across approval/wallet states.
 - Curated Arabic, English, and French catalog stories plus 60 pagination books.
 - Physical/digital and library/user listings across active, sold, removed, and out-of-stock states.

@@ -3,14 +3,13 @@
     public enum Role
     {
         User = 1,
-        Admin = 2,
+
+        // Value 2 belonged to the retired Admin role. Do not reuse it: roles
+        // are persisted as integers and legacy Admin rows are migrated to 4.
         LibraryOwner = 3,
 
         /// <summary>
-        /// Full platform authority: everything an <see cref="Admin"/> can do,
-        /// plus creating other administrators. Super admins hold BOTH the Admin
-        /// and SuperAdmin identity roles, so ordinary admin endpoints keep
-        /// working for them unchanged.
+        /// Full platform authority for every administrative operation.
         /// </summary>
         SuperAdmin = 4,
     }

@@ -385,7 +385,6 @@ namespace Quraaa.Persistence.Seed
             var namedDaysAgo = new Dictionary<string, int>(StringComparer.Ordinal)
             {
                 [DemoSeedData.SuperAdminPhoneNumber] = 720,
-                [DemoSeedData.AdminPhoneNumber] = 540,
                 [DemoSeedData.MainBuyerPhoneNumber] = 420,
                 [DemoSeedData.SellerPhoneNumber] = 300,
                 [DemoSeedData.CheckoutBuyerPhoneNumber] = 180,

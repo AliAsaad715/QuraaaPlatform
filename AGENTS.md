@@ -13,9 +13,9 @@ Current implemented business capabilities:
 - Pending user registration starts through `POST /api/auth/register`.
 - Registration phone verification completes through `POST /api/auth/register/verify`.
 - User login through `POST /api/auth/login`; valid credentials for an unverified pending registration resend the registration OTP and return the same pending-verification response as `POST /api/auth/register`.
-- Admin login uses a password-plus-OTP flow through `POST /api/auth/admin/login` and `POST /api/auth/admin/login/verify`.
+- Super-admin login uses a password-plus-OTP flow through the compatibility routes `POST /api/auth/admin/login` and `POST /api/auth/admin/login/verify`.
 - Approved library owners can log in with their library email and Identity password through `POST /api/auth/library/login`.
-- Users, admins, and library owners share refresh-token-authenticated logout through `POST /api/auth/logout`; any unexpired token from the active rotation family revokes all descendant refresh and access tokens.
+- Users, super admins, and library owners share refresh-token-authenticated logout through `POST /api/auth/logout`; any unexpired token from the active rotation family revokes all descendant refresh and access tokens.
 - Access/refresh token pairs are rotated through `POST /api/auth/refresh`; consumed-token history detects replay and revokes the active family, while expired, revoked, or invalid tokens return `401 Unauthorized`.
 - Authenticated password reset through `POST /api/auth/reset-password`; successful password changes revoke the account's refresh-token family and its access JWTs.
 - Unauthenticated forgot-password OTP send through `POST /api/auth/forgot-password`.
@@ -42,8 +42,8 @@ Current implemented business capabilities:
 - Stripe webhook processing through `POST /api/payments/stripe/webhook`; paid events and authoritative expired-attempt reconciliation share order/cart/purchase finalization, while confirmed failure/expiry paths release reservations and reopen the cart.
 - Authenticated user buy/sell history through `/api/purchases/me/buy-history` and `/api/purchases/me/sell-history`.
 - Paid ebook reading through authenticated inline streaming at `GET /api/purchases/{purchaseId}/stream`; no order-item attachment-download route is exposed.
-- Category management through `GET /api/categories`, `GET /api/categories/{categoryId}`, and `POST /api/categories` (admin-only).
-- Admin-only author creation/detail/update plus paged moderation, activation/reactivation, and guarded single/bulk permanent deletion through `/api/admin/authors`.
+- Category management through `GET /api/categories`, `GET /api/categories/{categoryId}`, and `POST /api/categories` (`SuperAdmin` only).
+- `SuperAdmin`-only author creation/detail/update plus paged moderation, activation/reactivation, and guarded single/bulk permanent deletion through `/api/admin/authors`.
 - Public author profiles and paginated available works through `GET /api/authors/{authorId}` and `GET /api/authors/{authorId}/books`.
 - Standalone OTP send through `POST /api/otp/send`.
 - Standalone OTP verification through `POST /api/otp/verify`.
@@ -526,7 +526,7 @@ Startup calls `DotNetEnv.Env.Load()` before creating the builder, then also load
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | PostgreSQL    | `ConnectionStrings:DefaultConnection`                                                                                                         |
 | JWT           | `JWT_SECRET_KEY` (required), `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_DURATION_IN_MINUTES`                                                          |
-| Admin seed    | `ADMIN_PHONE_NUMBER`, `ADMIN_PASSWORD`                                                                                                        |
+| Super-admin seed | `ADMIN_PHONE_NUMBER`, `ADMIN_PASSWORD` (legacy deployment key names)                                                                       |
 | Firebase      | `Firebase:CredentialsPath`, `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_CREDENTIALS_JSON`                                                     |
 | OTP cache     | `REDIS_URL`, `REDIS_TLS_URL`, `Redis:ConnectionString`, `ConnectionStrings:Redis`, `Redis:InstanceName`, `Otp:AllowInMemoryCacheInProduction` |
 | OTP gateway   | `OTP_DEVICE_TOKEN`                                                                                                                            |
@@ -644,23 +644,24 @@ Located in `Quraaa.Persistence/Migrations/`:
 24. `20260814201322_AddUserDeviceTokens`
 25. `20260815102801_ConsolidateUserDeviceTokensIntoPushDevices`
 26. `20260815115240_AddListingPushNotificationOutbox`
+37. `20260816185229_ConsolidateAdminIntoSuperAdmin`
 
 The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, and saved-location storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work. `AddComments` adds book comment storage; `AddUserDeviceTokens` adds FCM device-token storage for push notifications. `AddAuthorsTable` creates the standalone `Authors` table (`AuthorAggregate`). `RefactorBookAuthorToForeignKeyAndAddBirthDate` adds `Authors.BirthDate`; adds nullable `Books.AuthorId`; backfills it by creating an `Author` row (via `gen_random_uuid()`, a PostgreSQL 13+ core builtin) for every distinct existing `Books.Author` string and matching books to it by normalized name; adds the `Books`→`Authors` foreign key and an index on `AuthorId`; and only then drops the old free-text `Books.Author` column. Its downgrade re-adds `Author` and best-effort backfills it from the linked `Authors.Name`.
-The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, saved-location, comment, push-device, library-approval-notification, and listing-push-notification storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. `AddPushDevicesAndLibraryApprovalNotifications` stores up to the actively retained device registrations per user using a unique token hash and adds an independently retried email/push outbox created by admin approval. `AddUserDeviceTokens` is retained as applied migration history; `ConsolidateUserDeviceTokensIntoPushDevices` validates and copies its rows into `PushDevices`, retains the ten most recent devices per user, and drops the duplicate table. `AddListingPushNotificationOutbox` adds the leased/retried push outbox populated atomically from listing domain events; publication events in one save are grouped per library so bulk upload creates one push. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, saved-location, comment, push-device, library-approval-notification, and listing-push-notification storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. `AddPushDevicesAndLibraryApprovalNotifications` stores up to the actively retained device registrations per user using a unique token hash and adds an independently retried email/push outbox created by admin approval. `AddUserDeviceTokens` is retained as applied migration history; `ConsolidateUserDeviceTokensIntoPushDevices` validates and copies its rows into `PushDevices`, retains the ten most recent devices per user, and drops the duplicate table. `AddListingPushNotificationOutbox` adds the leased/retried push outbox populated atomically from listing domain events; publication events in one save are grouped per library so bulk upload creates one push. `ConsolidateAdminIntoSuperAdmin` promotes legacy domain role value `2` to `SuperAdmin` (`4`), merges Identity memberships and claims, removes the obsolete `Admin` role, repairs mismatched privileged profiles, and revokes affected refresh-token families; its downgrade is blocked because the original two-role provenance cannot be recovered. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
 `Program.cs` runs `db.Database.MigrateAsync()` on startup, so the database is migrated automatically when the app starts.
 
 ### Seeders
 
 Baseline startup reconciles categories and the optional configuration-driven
-bootstrap administrator. The connected interview dataset is additionally run
+bootstrap super administrator. The connected interview dataset is additionally run
 only when the environment is `Development` and `DemoData:Enabled=true` (base
 and Development appsettings both disable it by default):
 
 - `CategorySeeder.SeedAsync` — adds each missing stable category while including inactive rows in collision checks.
-- `AdminSeeder.SeedAsync` — creates or synchronizes the optional configuration-driven bootstrap administrator.
+- `AdminSeeder.SeedAsync` — creates or synchronizes the optional configuration-driven bootstrap `SuperAdmin`; `ADMIN_*` remains the deployment configuration prefix for compatibility.
 - `DemoDataSeeder.SeedAsync` — serializes replicas with a PostgreSQL advisory lock and writes the demo graph in one transaction.
-- `UserSeeder.SeedAsync` / `DemoProfileSeeder.SeedAsync` — seed named buyer/seller/admin personas, 102 library-owner identities, interests, payment sample, and saved locations.
+- `UserSeeder.SeedAsync` / `DemoProfileSeeder.SeedAsync` — seed named buyer/seller/super-admin personas, 102 library-owner identities, interests, payment sample, and saved locations.
 - `LibrarySeeder.SeedAsync` — reconciles 102 demo libraries with 75 approved, 25 pending, one rejected, one awaiting email verification, and wallet variants.
 - `UserSeeder.EnsureApprovedLibraryOwnerRolesAsync` — promotes profiles behind approved libraries to the `LibraryOwner` domain role and ensures their Identity users retain `User` and gain `LibraryOwner`.
 - `DemoCatalogSeeder`, `EbookSeeder`, and `BookSeeder` — seed curated and pagination catalog/listing data without emitting provider-ready publication notifications; the private logical ebook path is `books/book1.pdf`.
@@ -748,10 +749,11 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 - Phone numbers are used as usernames; emails are synthesized as `{phone}@quraaa.com`.
 - Phone numbers are normalized to E.164 where possible using `libphonenumber-csharp`.
 - New registration and regular user login are limited to valid Syrian (`+963`) phone numbers; forgot-password/admin/standalone OTP validators currently accept any valid international number. Login passwords must contain 6 through 256 characters before credential verification runs.
-- Regular login accepts an ordinary account whose domain/Identity roles match as `User`/`{User}`, or a library-owner account whose roles match as `LibraryOwner`/`{User, LibraryOwner}`. Admin and mismatched/custom-role identities are rejected. A library owner therefore receives both roles from this route and can use role-authorized library functionality with the same token. Failed regular-login credentials are limited by account and trusted client address, and the HTTP endpoint also has a per-client fixed-window limit.
+- The only account roles are `User`, `LibraryOwner`, and `SuperAdmin`; persisted enum value `2` is reserved for the retired `Admin` role and is migrated to `SuperAdmin` value `4`.
+- Regular login accepts an ordinary account whose domain/Identity roles match as `User`/`{User}`, or a library-owner account whose roles match as `LibraryOwner`/`{User, LibraryOwner}`. `SuperAdmin` and mismatched/custom-role identities are rejected. A library owner therefore receives both roles from this route and can use role-authorized library functionality with the same token. Failed regular-login credentials are limited by account and trusted client address, and the HTTP endpoint also has a per-client fixed-window limit.
 - The forgot-password endpoint returns a generic success even if the phone number is not registered, to avoid leaking registration status.
 - OTP send and verify endpoints implement rate limiting and failed-attempt lockouts via `IDistributedCache`.
-- Admin login requires valid admin credentials followed by a six-digit OTP. Credential attempts, OTP sends, and OTP verification are rate-limited by phone and client IP.
+- Super-admin login requires matching domain and Identity `SuperAdmin` roles, valid credentials, and then a six-digit OTP. Credential attempts, OTP sends, and OTP verification are rate-limited by phone and client IP.
 - Library-owner login only resolves approved libraries by normalized library email and locks credential attempts by email/client IP after repeated failures.
 - The Stripe webhook is anonymous by design but authenticates the payload with the `Stripe-Signature` header and configured webhook secret. Do not expose a webhook secret or process unsigned payloads.
 - Ebook storage references are omitted from public ebook responses. `/uploads/books/*.pdf` is blocked, and paid buyers receive ebook bytes only through the authenticated inline purchase-stream route, which proxies short-lived Cloudinary access or serves a validated legacy local file.
@@ -760,7 +762,7 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 - `Notifications:AllowTestEndpoint` is enabled in `appsettings.json` and `appsettings.Development.json`. Disable it in production unless you intend to allow unauthenticated test notification dispatch.
 - `Otp:AllowInMemoryCacheInProduction` is currently `true` in the base settings. Production should configure Redis and override it to `false`, which makes startup fail when Redis is missing.
 - HTTPS redirection and forwarded headers are enabled in the middleware pipeline. Forwarded headers trust loopback proxies by default; configure explicit arrays under `ForwardedHeaders:KnownProxies` and/or `ForwardedHeaders:KnownNetworks` when deploying behind another reverse proxy.
-- `AdminSeeder` creates or synchronizes the configured admin Identity/profile, role, confirmed-phone state, and password on startup. Ensure `ADMIN_PHONE_NUMBER` and `ADMIN_PASSWORD` are strong and kept secret; changing the configured password resets the seeded admin password.
+- `AdminSeeder` creates or synchronizes the configured `SuperAdmin` Identity/profile, confirmed-phone state, and password on startup. Ensure `ADMIN_PHONE_NUMBER` and `ADMIN_PASSWORD` are strong and kept secret; changing the configured password resets the seeded super-admin password.
 
 ## Testing Strategy
 
@@ -870,9 +872,9 @@ GET    /api/favorite-books                        authenticated
 POST   /api/favorite-books/{bookId}               authenticated
 DELETE /api/favorite-books/{bookId}               authenticated
 
-POST   /api/library-admin/listings                LibraryAdmin
-PUT    /api/library-admin/listings/{listingId}    LibraryAdmin
-GET    /api/library-admin/listings/{listingId}    LibraryAdmin
+POST   /api/library-admin/listings                LibraryOwner
+PUT    /api/library-admin/listings/{listingId}    LibraryOwner
+GET    /api/library-admin/listings/{listingId}    LibraryOwner
 
 GET    /api/listings/me                           User
 POST   /api/listings/me/physical                  User
@@ -903,16 +905,16 @@ GET    /api/purchases/{purchaseId}/stream         User; owned digital purchase o
 
 GET    /api/categories                            anonymous by controller configuration
 GET    /api/categories/{categoryId}               anonymous by controller configuration
-POST   /api/categories                            Admin
+POST   /api/categories                            SuperAdmin
 
-POST   /api/admin/authors                         Admin
-GET    /api/admin/authors                         Admin
-GET    /api/admin/authors/{id}                    Admin
-PUT    /api/admin/authors/{id}                    Admin
-POST   /api/admin/authors/{id}/activation         Admin
-POST   /api/admin/authors/activation              Admin
-DELETE /api/admin/authors/{id}                    Admin
-DELETE /api/admin/authors                         Admin
+POST   /api/admin/authors                         SuperAdmin
+GET    /api/admin/authors                         SuperAdmin
+GET    /api/admin/authors/{id}                    SuperAdmin
+PUT    /api/admin/authors/{id}                    SuperAdmin
+POST   /api/admin/authors/{id}/activation         SuperAdmin
+POST   /api/admin/authors/activation              SuperAdmin
+DELETE /api/admin/authors/{id}                    SuperAdmin
+DELETE /api/admin/authors                         SuperAdmin
 
 POST   /api/otp/send                              anonymous
 POST   /api/otp/verify                            anonymous
@@ -975,7 +977,7 @@ Successful registration verification response is `AuthResponse`:
 }
 ```
 
-The login validator requires a valid Syrian (`+963`) phone number and a password from 6 through 256 characters. A matching ordinary user receives the `User` role, while a matching library owner receives both `User` and `LibraryOwner` and can use the same token for role-authorized library functionality. Admin and mismatched/custom-role identities are rejected. Successful login response is also `AuthResponse`. If the credentials are valid but an ordinary pending registration's phone is not confirmed, login resends a `register-otp` code and returns the same `400 ValidationFailure` response used by a repeated registration attempt. The client should then continue through `POST /api/auth/register/verify`. Wrong credentials and unconfirmed library-owner identities never trigger a registration OTP.
+The login validator requires a valid Syrian (`+963`) phone number and a password from 6 through 256 characters. A matching ordinary user receives the `User` role, while a matching library owner receives both `User` and `LibraryOwner` and can use the same token for role-authorized library functionality. `SuperAdmin` and mismatched/custom-role identities are rejected. Successful login response is also `AuthResponse`. If the credentials are valid but an ordinary pending registration's phone is not confirmed, login resends a `register-otp` code and returns the same `400 ValidationFailure` response used by a repeated registration attempt. The client should then continue through `POST /api/auth/register/verify`. Wrong credentials and unconfirmed library-owner identities never trigger a registration OTP.
 
 `POST /api/auth/logout` requires the refresh token issued by any login flow:
 
@@ -1021,7 +1023,7 @@ A successful response is a new `AuthResponse`. Refresh tokens rotate: after succ
 }
 ```
 
-Admin credentials are checked against both the `UserAggregate.Role == Admin` value and the Identity `Admin` role. The credential and OTP stages each lock after five failed attempts in a five-minute window; the lock lasts five minutes, and OTP sends are throttled for 60 seconds.
+Super-admin credentials are checked against both `UserAggregate.Role == Role.SuperAdmin` and the Identity `SuperAdmin` role. The credential and OTP stages each lock after five failed attempts in a five-minute window; the lock lasts five minutes, and OTP sends are throttled for 60 seconds.
 
 `POST /api/auth/library/login` logs in the owner of an approved library by normalized library email:
 
@@ -1032,7 +1034,7 @@ Admin credentials are checked against both the `UserAggregate.Role == Admin` val
 }
 ```
 
-The library must be approved, its owner profile must have `Role.LibraryOwner`, the Identity account must be confirmed with the exact role set `{User, LibraryOwner}`, and the supplied password is still the owner's Identity password. An extra `Admin` or custom role fails closed so this password-only route cannot mint privileged claims. Five failed credential attempts within five minutes trigger a five-minute lock by email and client IP.
+The library must be approved, its owner profile must have `Role.LibraryOwner`, the Identity account must be confirmed with the exact role set `{User, LibraryOwner}`, and the supplied password is still the owner's Identity password. An extra `SuperAdmin` or custom role fails closed so this password-only route cannot mint privileged claims. Five failed credential attempts within five minutes trigger a five-minute lock by email and client IP.
 
 Password reset request body maps to `ResetPasswordRequest`; the controller creates `ResetPasswordCommand` after reading `UserId` from the authenticated JWT:
 
@@ -1268,7 +1270,7 @@ GET /api/library-admin/listings/{listingId}
 
 Add resolves the caller's approved library, then resolves a book by local ISBN or Google Books metadata, rejects duplicate library/book listings, and creates a physical listing in `PendingReview`. Update is partial but requires at least one of price/stock/condition and checks library ownership. For an active listing, stock changes return `409 Conflict` while an unpaid pending order reserves it; price/condition changes remain allowed, and optimistic concurrency closes the check-versus-reservation race. Detail joins listing, book, and optional category.
 
-These controller actions currently require the literal Identity role `LibraryAdmin`, while the domain/seeder/login implementation defines and grants `LibraryOwner`. No seeded/current identity receives `LibraryAdmin`; see Known Gaps.
+These controller actions require the `LibraryOwner` Identity role, matching the domain role granted by library approval and checked at library login.
 
 User listing routes require the `User` role:
 
@@ -1374,7 +1376,7 @@ Buy history returns the authenticated user's Stripe-created purchases with book/
 
 `GET /api/categories/{categoryId}` returns a single category.
 
-`POST /api/categories` is admin-only (`[Authorize(Roles = "Admin")]`) and creates a new category.
+`POST /api/categories` is super-admin-only (`[Authorize(Roles = nameof(Role.SuperAdmin))]`) and creates a new category.
 
 ### Authors
 
@@ -1389,7 +1391,7 @@ The profile response contains `id`, `name`, optional `bio`, optional `photoUrl`,
 
 Admin author management and moderation (re-audited **2026-08-16**):
 
-All routes require the `Admin` role. Route ownership is intentionally split: `AdminAuthorsController` owns create/detail/update, while `AdminModerationController` owns the paged moderation list, activation/reactivation, and guarded permanent deletion. Do not add a parameterless `[HttpGet]` or `[HttpDelete("{id:guid}")]` back to `AdminAuthorsController`; those templates would collide with the moderation actions and cause `AmbiguousMatchException` before authorization or controller execution.
+All routes require the `SuperAdmin` role. Route ownership is intentionally split: `AdminAuthorsController` owns create/detail/update, while `AdminModerationController` owns the paged moderation list, activation/reactivation, and guarded permanent deletion. Do not add a parameterless `[HttpGet]` or `[HttpDelete("{id:guid}")]` back to `AdminAuthorsController`; those templates would collide with the moderation actions and cause `AmbiguousMatchException` before authorization or controller execution.
 
 ```text
 POST   /api/admin/authors
@@ -1705,7 +1707,7 @@ HTTP POST /api/auth/logout
   -> AppResult success
 ```
 
-The route is shared because token revocation is identical for users, admins, and library owners. The refresh-token secret identifies the account; no role or client-supplied user id is trusted. The client must delete its local access and refresh tokens after a successful response.
+The route is shared because token revocation is identical for users, super admins, and library owners. The refresh-token secret identifies the account; no role or client-supplied user id is trusted. The client must delete its local access and refresh tokens after a successful response.
 
 ### Refresh Token Flow
 
@@ -1761,13 +1763,13 @@ Admin flow:
 POST /api/auth/admin/login
   -> validate/normalize phone and password
   -> enforce credential lockout by phone and client IP
-  -> require matching admin profile plus Identity Admin role
+  -> require matching SuperAdmin profile plus Identity SuperAdmin role
   -> generate/store ten-minute OTP in `admin-login-otp`
   -> throttle sends for 60 seconds and dispatch through FirebaseSmsGateway
 
 POST /api/auth/admin/login/verify
   -> fixed-time OTP comparison with five-attempt/five-minute lockout
-  -> re-check profile and Identity Admin roles
+  -> re-check profile and Identity SuperAdmin roles
   -> confirm the phone if necessary
   -> clear OTP/attempt state
   -> return AuthResponse
@@ -2590,7 +2592,7 @@ GET /api/categories/{categoryId} -> anonymous by controller configuration
 POST /api/categories -> Authorization: Bearer <admin-access-token>
 ```
 
-`POST /api/categories` requires the `Admin` role.
+`POST /api/categories` requires the `SuperAdmin` role.
 
 The `CategoryAggregate` model includes:
 
@@ -2619,7 +2621,7 @@ HTTP GET /api/categories/{categoryId}
 
 HTTP POST /api/categories
   -> CategoriesController.CreateCategory(request)
-  -> [Authorize(Roles = "Admin")]
+  -> [Authorize(Roles = nameof(Role.SuperAdmin))]
   -> CreateCategoryCommand(...)
   -> CreateCategoryCommandHandler
   -> ICategoryRepository.AddAsync(category)
@@ -2676,7 +2678,7 @@ Authentication:
 
 ```text
 GET /api/authors/* -> anonymous
-All /api/admin/authors routes -> Authorization: Bearer <admin-access-token> ([Authorize(Roles = "Admin")] at the controller level)
+All /api/admin/authors routes -> Authorization: Bearer <super-admin-access-token> ([Authorize(Roles = nameof(Role.SuperAdmin))] at the controller level)
 ```
 
 The `AuthorAggregate` model includes:
@@ -2693,7 +2695,7 @@ Flow:
 ```text
 HTTP POST /api/admin/authors
   -> AdminAuthorsController.CreateAuthor(command)
-  -> [Authorize(Roles = "Admin")]
+  -> [Authorize(Roles = nameof(Role.SuperAdmin))]
   -> CreateAuthorCommand(...)
   -> CreateAuthorCommandHandler
   -> IAuthorRepository.AddAsync(author)
@@ -2775,7 +2777,6 @@ Based on the current codebase:
 
 - **Admin library review**: `LibraryAggregate` has `Approve`/`Reject` methods, but there is no HTTP endpoint to transition a library from `Pending` to `Approved`/`Rejected`.
 - **Listing review lifecycle**: all non-seeded library/user physical listings start in `PendingReview`, but there is no approval/rejection/removal endpoint. Active-only list/cart queries therefore do not expose newly created listings.
-- **Library inventory authorization mismatch**: `LibraryListingsController` requires `LibraryAdmin`, while `Role`, seeders, and library login use `LibraryOwner`. No current code grants `LibraryAdmin`, so those three routes are not reachable with the roles produced by this repository.
 - **Library add/update edge cases**: `AddPhysicalBookCommand.Isbn` is declared nullable and has no required validator but the handler dereferences it; omission can produce a `500`. `UpdateListingCommandHandler` retrieves only `Active` listings, so a new `PendingReview` listing cannot be updated and an `OutOfStock` listing cannot be restocked through that route.
 - **Single-session authentication model**: each Identity user has one active refresh-token family. A fresh login invalidates the prior family's refresh and access tokens. Multiple per-device concurrent sessions, device-scoped logout, and independent session management are not modeled yet.
 - **OTP coverage**: registration, forgot-password, admin login, and standalone OTP use OTP state. Regular user login resends the registration OTP only for valid credentials on an unverified pending registration; library-owner login does not use OTP, and standalone OTP still does not mark a phone/user verified.

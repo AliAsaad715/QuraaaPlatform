@@ -18,7 +18,7 @@ DemoData__Enabled=true
 Startup fails if that setting is enabled outside Development. Keep it disabled
 when a Development process points at shared, staging, or production-like data.
 
-Migrations, categories, and the configuration-driven bootstrap administrator
+Migrations, categories, and the configuration-driven bootstrap super administrator
 remain separate from demo data. The demo graph is written in one transaction
 under a PostgreSQL advisory lock and can be run repeatedly without duplicating
 its stable scenarios.
@@ -41,14 +41,13 @@ account or deployment.
 | Retry buyer              | `+963912345682`        | `User@12345`    | Declined payment with the cart reopened                           |
 | Cancelled-order buyer    | `+963912345683`        | `User@12345`    | Cancelled checkout with released stock                            |
 | Processing-order buyer   | `+963912345681`        | `User@12345`    | Paid for the user seller's physical book                          |
-| Demo super admin         | `+963990000001`        | `Admin@12345`   | Identity roles `Admin` and `SuperAdmin`                           |
-| Demo moderator           | `+963990000002`        | `Admin@12345`   | Ordinary `Admin` used by moderation records                       |
+| Demo super admin         | `+963990000001`        | `Admin@12345`   | Domain and Identity role `SuperAdmin`                              |
 | First library dashboard  | `info.lib1@quraaa.com` | `Library@12345` | Approved, active demo wallet, 70% share                           |
 | Second library dashboard | `info.lib2@quraaa.com` | `Library@12345` | Approved, wallet onboarding incomplete, 60% share                 |
 | Third library dashboard  | `info.lib3@quraaa.com` | `Library@12345` | Approved, no wallet, 55% share                                    |
 
 User login is `POST /api/auth/login`. Library dashboard login is
-`POST /api/auth/library/login`. Admin login still uses the real password-plus-OTP
+`POST /api/auth/library/login`. Super-admin login still uses the real password-plus-OTP
 flow; the seed does not bypass OTP security or create a fixed OTP.
 
 All 102 library-owner phone identities use `User@12345`. Their phones follow
@@ -112,7 +111,7 @@ sale, pending checkout, failed payment, cancelled, and expired.
    `GET /api/purchases/me/sell-history` to show the paid physical item.
 7. Log in to the first library dashboard and show its inventory, wallet, payout
    history, seller queue, and reports concerning books it lists.
-8. Complete admin OTP login, then show the report queue, the hidden book,
+8. Complete super-admin OTP login, then show the report queue, the hidden book,
    author activation, library approval variants, and book version history.
 
 ## Intentionally not seeded

@@ -2,10 +2,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.Application.Features.Admin.Common;
 using Quraaa.Application.Features.Admin.Queries.GetAdminDashboardStats;
+using Quraaa.Domain.User.Enums;
 
 namespace Quraaa.API.Controllers
 {
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = nameof(Role.SuperAdmin))]
     public class AdminController : ApiClientController
     {
         /// <summary>

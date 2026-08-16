@@ -6,6 +6,7 @@ using Quraaa.Application.Features.Categories.Commands.UpdateCategory;
 using Quraaa.Application.Features.Categories.Common;
 using Quraaa.Application.Features.Categories.Queries.GetAllCategories;
 using Quraaa.Application.Features.Categories.Queries.GetCategoryById;
+using Quraaa.Domain.User.Enums;
 
 namespace Quraaa.API.Controllers
 {
@@ -28,7 +29,7 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = nameof(Role.SuperAdmin))]
         [HttpPost]
         [ProducesResponseType(typeof(CategoryResponse), StatusCodes.Status200OK)]
         public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryCommand request)
@@ -41,7 +42,7 @@ namespace Quraaa.API.Controllers
         /// Updates a category's Arabic/English names. The category code and parent
         /// are immutable after creation.
         /// </summary>
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = nameof(Role.SuperAdmin))]
         [HttpPut("{categoryId:guid}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -68,7 +69,7 @@ namespace Quraaa.API.Controllers
         /// <summary>
         /// Deletes a category. Fails with a conflict if any book still references it.
         /// </summary>
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = nameof(Role.SuperAdmin))]
         [HttpDelete("{categoryId:guid}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]

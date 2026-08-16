@@ -75,8 +75,10 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
 
                 var identity = await _identityService.GetUserIdentityByPhoneNumberAsync(formattedPhone);
                 var adminProfile = await _userRepository.GetUserByPhoneNumberAsync(formattedPhone);
-                var isAdminIdentity = identity is not null
-                    && await _identityService.IsInRoleAsync(identity.UserId, Role.Admin.ToString());
+                var isSuperAdminIdentity = identity is not null
+                    && await _identityService.IsInRoleAsync(
+                        identity.UserId,
+                        Role.SuperAdmin.ToString());
 
                 var consumed = await _otpCacheService.TryConsumeOtpAsync(
                     formattedPhone,
@@ -90,8 +92,8 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
                 }
 
                 if (identity is null ||
-                    adminProfile?.Role is not (Role.Admin or Role.SuperAdmin) ||
-                    !isAdminIdentity)
+                    adminProfile?.Role != Role.SuperAdmin ||
+                    !isSuperAdminIdentity)
                 {
                     await ClearVerificationStateAsync(formattedPhone, clientTargetKey, CancellationToken.None);
                     throw new ApplicationBusinessException(InvalidAdminVerificationMessage);

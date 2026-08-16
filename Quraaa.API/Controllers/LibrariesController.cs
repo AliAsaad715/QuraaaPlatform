@@ -16,6 +16,7 @@ using Quraaa.Application.Features.Libraries.Queries.GetLibraries;
 using Quraaa.Application.Features.Libraries.Queries.SearchLibraries;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraryRegistrationContext;
+using Quraaa.Domain.User.Enums;
 using Quraaa.Application.Features.Libraries.Queries.GetMyProfile;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Features.Payouts.Commands.SetLibraryProfitShare;
@@ -331,7 +332,7 @@ namespace Quraaa.API.Controllers
         /// </remarks>
         /// <response code="200">A paged collection of library requests was returned successfully.</response>
         [HttpGet("requests")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = nameof(Role.SuperAdmin))]
         [ProducesResponseType(typeof(PagedResult<LibraryRequestResponse>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetRequests(
             [FromQuery] GetLibraryRequestsQuery request,
@@ -354,7 +355,7 @@ namespace Quraaa.API.Controllers
         /// <response code="403">Forbidden.</response>
         /// <response code="404">Library not found.</response>
         [HttpPatch("{id:guid}/approval-status")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = nameof(Role.SuperAdmin))]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -385,7 +386,7 @@ namespace Quraaa.API.Controllers
         /// <response code="200">The library's current profit share.</response>
         /// <response code="404">Library not found.</response>
         [HttpGet("{id:guid}/profit-share")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = nameof(Role.SuperAdmin))]
         [ProducesResponseType(typeof(LibraryProfitShareResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetProfitShare(
@@ -414,7 +415,7 @@ namespace Quraaa.API.Controllers
         /// <response code="404">Library not found.</response>
         /// <response code="409">The library changed concurrently; retry.</response>
         [HttpPut("{id:guid}/profit-share")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = nameof(Role.SuperAdmin))]
         [ProducesResponseType(typeof(LibraryProfitShareResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]

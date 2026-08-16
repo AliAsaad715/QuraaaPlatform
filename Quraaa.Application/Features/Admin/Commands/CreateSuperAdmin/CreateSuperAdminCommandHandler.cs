@@ -16,15 +16,18 @@ namespace Quraaa.Application.Features.Admin.Commands.CreateSuperAdmin
     {
         private readonly IAdminModerationRepository _moderationRepository;
         private readonly IUserRepository _userRepository;
+        private readonly IAuthenticationUnitOfWork _authenticationUnitOfWork;
 
         public CreateSuperAdminCommandHandler(
             IAdminModerationRepository moderationRepository,
             IUserRepository userRepository,
+            IAuthenticationUnitOfWork authenticationUnitOfWork,
             ILogger<CreateSuperAdminCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _moderationRepository = moderationRepository;
             _userRepository = userRepository;
+            _authenticationUnitOfWork = authenticationUnitOfWork;
         }
 
         public async Task<AppResult<AdminUserResponse>> Handle(
@@ -43,13 +46,28 @@ namespace Quraaa.Application.Features.Admin.Commands.CreateSuperAdmin
                     throw new UnauthorizedAccessException();
                 }
 
-                var created = await _moderationRepository.CreateSuperAdminAsync(
-                    request.PhoneNumber.Trim(),
-                    request.Password,
-                    request.FirstName.Trim(),
-                    request.LastName.Trim(),
-                    request.CreatedByUserId,
+                AdminUserResponse? created = null;
+                await _authenticationUnitOfWork.ExecuteInTransactionAsync(
+                    async transactionCancellationToken =>
+                    {
+                        // Identity's CreateAsync/AddToRoleAsync each save immediately.
+                        // The shared DbContext transaction keeps those writes atomic
+                        // with the matching platform profile save.
+                        created = await _moderationRepository.CreateSuperAdminAsync(
+                            request.PhoneNumber.Trim(),
+                            request.Password,
+                            request.FirstName.Trim(),
+                            request.LastName.Trim(),
+                            request.CreatedByUserId,
+                            transactionCancellationToken);
+                    },
                     cancellationToken);
+
+                if (created is null)
+                {
+                    throw new InvalidOperationException(
+                        "The super-admin creation transaction completed without a result.");
+                }
 
                 Logger.LogWarning(
                     "Super admin {CreatorId} created a new super admin {NewSuperAdminId}.",

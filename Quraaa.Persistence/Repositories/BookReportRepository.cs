@@ -105,7 +105,7 @@ namespace Quraaa.Persistence.Repositories
         {
             return await _context.UsersProfiles
                 .AsNoTracking()
-                .Where(user => user.Role == Role.Admin && !user.IsDeleted)
+                .Where(user => user.Role == Role.SuperAdmin && !user.IsDeleted)
                 .Select(user => user.Id)
                 .ToListAsync(cancellationToken);
         }

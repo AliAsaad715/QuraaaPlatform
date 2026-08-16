@@ -43,7 +43,7 @@ public static class DemoCatalogSeeder
     {
         var moderatorId = await GetUserIdAsync(
             context,
-            DemoSeedData.AdminPhoneNumber,
+            DemoSeedData.SuperAdminPhoneNumber,
             cancellationToken);
 
         var authorIdMap = await EnsureAuthorsAsync(

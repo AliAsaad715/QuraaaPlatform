@@ -4,13 +4,14 @@ using Quraaa.Application.Features.Authors.Commands.CreateAuthor;
 using Quraaa.Application.Features.Authors.Commands.UpdateAuthor;
 using Quraaa.Application.Features.Authors.Common;
 using Quraaa.Application.Features.Authors.Queries.GetAuthorById;
+using Quraaa.Domain.User.Enums;
 
 namespace Quraaa.API.Controllers
 {
     /// <summary>
-    /// Admin-only management of catalog authors.
+    /// Super-admin-only management of catalog authors.
     /// </summary>
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = nameof(Role.SuperAdmin))]
     [Route("api/admin/authors")]
     public class AdminAuthorsController : ApiClientController
     {
