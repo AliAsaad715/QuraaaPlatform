@@ -7,6 +7,7 @@
         string ThumbnailUrl,
         string Publisher,
         string PublishedDate,
-        string Language
+        string Language,
+        int? PageCount = null
     );
 }
