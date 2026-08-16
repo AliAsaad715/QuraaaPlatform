@@ -179,6 +179,7 @@ namespace Quraaa.Persistence.Repositories
 
             return new MobileListingDetailsResponse(
                 row.Listing.Id,
+                row.Book.Id,
                 row.Book.Title,
                 _imageUrlFormatter.Format(row.Book.CoverImageUrl),
                 row.Listing.Format,
@@ -197,46 +198,38 @@ namespace Quraaa.Persistence.Repositories
         private async Task<(double AverageRating, int TotalReviewsCount)> GetRatingSummaryAsync(
             Guid bookId, CancellationToken cancellationToken)
         {
-            var ratings = _context.BookRatings
+            var reviews = _context.BookReviews
                 .AsNoTracking()
                 .Where(r => r.BookId == bookId && !r.IsDeleted);
 
-            var totalCount = await ratings.CountAsync(cancellationToken);
+            var totalCount = await reviews.CountAsync(cancellationToken);
             if (totalCount == 0)
             {
                 return (0, 0);
             }
 
-            var average = await ratings.AverageAsync(r => (double)r.RatingValue, cancellationToken);
+            var average = await reviews.AverageAsync(r => (double)r.Score, cancellationToken);
             return (average, totalCount);
         }
 
         private async Task<List<BookReviewDto>> GetRecentReviewsAsync(
             Guid bookId, CancellationToken cancellationToken)
         {
-            return await _context.Comments
+            return await _context.BookReviews
                 .AsNoTracking()
-                .Where(c => c.BookId == bookId && !c.IsDeleted)
+                .Where(r => r.BookId == bookId && !r.IsDeleted)
                 .Join(
                     _context.UsersProfiles.AsNoTracking(),
-                    c => c.UserId,
-                    u => u.Id,
-                    (c, u) => new { Comment = c, User = u })
-                .GroupJoin(
-                    _context.BookRatings.AsNoTracking().Where(r => r.BookId == bookId && !r.IsDeleted),
-                    x => x.Comment.UserId,
                     r => r.UserId,
-                    (x, ratings) => new { x.Comment, x.User, Ratings = ratings })
-                .SelectMany(
-                    x => x.Ratings.DefaultIfEmpty(),
-                    (x, r) => new { x.Comment, x.User, Rating = r })
-                .OrderByDescending(x => x.Comment.CreationTime)
+                    u => u.Id,
+                    (r, u) => new { Review = r, User = u })
+                .OrderByDescending(x => x.Review.CreationTime)
                 .Take(RecentReviewsLimit)
                 .Select(x => new BookReviewDto(
-                    x.Rating == null ? (int?)null : x.Rating.RatingValue,
-                    x.Comment.Content,
+                    x.Review.Score,
+                    x.Review.Content,
                     x.User.FirstName + " " + x.User.LastName,
-                    x.Comment.CreationTime))
+                    x.Review.CreationTime))
                 .ToListAsync(cancellationToken);
         }
 

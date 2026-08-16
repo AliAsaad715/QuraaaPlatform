@@ -206,10 +206,7 @@ public class AdminModerationRepository : IAdminModerationRepository
             ("Purchases", _context.BookPurchases.IgnoreQueryFilters()
                 .Where(x => ids.Contains(x.UserId) && !x.IsDeleted)
                 .Select(x => x.UserId)),
-            ("Ratings", _context.BookRatings.IgnoreQueryFilters()
-                .Where(x => ids.Contains(x.UserId) && !x.IsDeleted)
-                .Select(x => x.UserId)),
-            ("Comments", _context.Comments.IgnoreQueryFilters()
+            ("Reviews", _context.BookReviews.IgnoreQueryFilters()
                 .Where(x => ids.Contains(x.UserId) && !x.IsDeleted)
                 .Select(x => x.UserId)),
             ("Reports", _context.BookReports.IgnoreQueryFilters()
