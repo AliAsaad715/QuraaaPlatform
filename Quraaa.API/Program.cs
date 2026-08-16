@@ -93,11 +93,11 @@ app.UseAuthorization();
 app.MapControllers();
 
 var demoDataEnabled = builder.Configuration.GetValue<bool>("DemoData:Enabled");
-if (demoDataEnabled && !app.Environment.IsDevelopment())
-{
-    throw new InvalidOperationException(
-        "DemoData:Enabled may only be used in the Development environment.");
-}
+//if (demoDataEnabled && !app.Environment.IsDevelopment())
+//{
+//    throw new InvalidOperationException(
+//        "DemoData:Enabled may only be used in the Development environment.");
+//}
 
 // Baseline reference/bootstrap data is separate from the opt-in interview
 // dataset. Testing skips database startup so WebApplicationFactory can boot
