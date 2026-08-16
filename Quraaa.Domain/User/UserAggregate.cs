@@ -72,6 +72,21 @@ namespace Quraaa.Domain.User
             UpdateAudit(modifiedBy);
         }
 
+        /// <summary>
+        /// Raises this profile to full platform authority. Only another super
+        /// admin may trigger it.
+        /// </summary>
+        public void BecomeSuperAdmin(Guid modifiedBy)
+        {
+            if (Role == Role.SuperAdmin)
+            {
+                return;
+            }
+
+            Role = Role.SuperAdmin;
+            UpdateAudit(modifiedBy);
+        }
+
         public void BecomeLibraryOwner(Guid modifiedBy)
         {
             if (Role == Role.LibraryOwner)

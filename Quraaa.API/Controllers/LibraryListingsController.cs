@@ -14,6 +14,11 @@ using Quraaa.Application.Features.Listings.Commands.UpdateListingDigitalAsset;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Application.Features.Listings.Queries.GetListingById;
 using Quraaa.Application.Features.Listings.Queries.GetMyLibraryListings;
+using Quraaa.API.Requests.Admin;
+using Quraaa.Application.Features.Admin.Common;
+using Quraaa.Application.Features.Libraries.Commands.DeleteOwnLibrary;
+using Quraaa.Application.Features.Listings.Commands.DeleteListings;
+using Quraaa.Application.Features.Listings.Commands.SetListingsActivation;
 using Quraaa.Application.Shared.Results;
 using System.Text.Json;
 
@@ -459,5 +464,133 @@ namespace Quraaa.API.Controllers
             var ext = Path.GetExtension(f.FileName).ToLowerInvariant();
             return ext is ".doc" or ".docx";
         }
+
+        // ── POST /api/library-admin/listings/activation ──────────────────────
+        /// <summary>
+        /// Removes many listings from sale at once, or puts them back with
+        /// <c>deactivate: false</c>. Listings that are not yours are reported as
+        /// not found; the rest still go through.
+        /// </summary>
+        /// <response code="200">Per-listing outcomes.</response>
+        /// <response code="404">The caller has no approved library.</response>
+        [HttpPost("activation")]
+        [ProducesResponseType(typeof(BulkModerationResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> SetListingsActivation(
+            [FromBody] BulkActivationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                new SetListingsActivationCommand
+                {
+                    RequestingUserId = userId,
+                    Ids = request.Ids,
+                    Deactivate = request.Deactivate,
+                },
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
+        // ── DELETE /api/library-admin/listings/{listingId}/permanent ─────────
+        /// <summary>
+        /// Permanently deletes one of your listings. Allowed only once the
+        /// listing has been removed from sale and never sold, ordered, or added
+        /// to a cart; the response names whatever still blocks it.
+        /// </summary>
+        /// <response code="200">The outcome, including any blocking references.</response>
+        /// <response code="404">The caller has no approved library.</response>
+        [HttpDelete("{listingId:guid}/permanent")]
+        [ProducesResponseType(typeof(BulkModerationResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DeleteListingPermanently(
+            [FromRoute] Guid listingId,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                new DeleteListingsCommand { RequestingUserId = userId, Ids = [listingId] },
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
+        // ── DELETE /api/library-admin/listings/permanent ─────────────────────
+        /// <summary>
+        /// Permanently deletes many of your listings. Each is checked on its
+        /// own; the ones that cannot go are reported and left untouched.
+        /// </summary>
+        /// <response code="200">Per-listing outcomes.</response>
+        /// <response code="404">The caller has no approved library.</response>
+        [HttpDelete("permanent")]
+        [ProducesResponseType(typeof(BulkModerationResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DeleteListingsPermanently(
+            [FromBody] BulkIdsRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                new DeleteListingsCommand { RequestingUserId = userId, Ids = request.Ids },
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
+        // ── DELETE /api/library-admin/listings/library ───────────────────────
+        /// <summary>
+        /// Permanently deletes the caller's whole library. Requires the library
+        /// dashboard password and the exact phrase "DELETE MY ACCOUNT", and is
+        /// refused while any listing, payout, or sold order item still refers to
+        /// it. This cannot be undone.
+        /// </summary>
+        /// <response code="200">The library was deleted.</response>
+        /// <response code="400">The password or confirmation phrase is wrong.</response>
+        /// <response code="404">The caller has no approved library.</response>
+        /// <response code="409">Something still references the library.</response>
+        [HttpDelete("library")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> DeleteOwnLibrary(
+            [FromBody] DeleteOwnAccountRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            SetNoStoreHeaders();
+
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                new DeleteOwnLibraryCommand
+                {
+                    UserId = userId,
+                    Password = request.Password,
+                    ConfirmationPhrase = request.ConfirmationPhrase,
+                },
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
     }
 }

@@ -34,10 +34,19 @@ namespace Quraaa.Persistence.Seed
                     $"ADMIN_PASSWORD must contain {AuthenticationPasswordPolicy.MinimumLength} through {AuthenticationPasswordPolicy.MaximumLength} characters.");
             }
 
+            // The seeded account is the bootstrap SUPER admin: super admins are
+            // the only ones who can create more administrators, so at least one
+            // has to exist from the start. It holds both identity roles, which
+            // keeps every ordinary [Authorize(Roles = "Admin")] endpoint working.
             string role = Role.Admin.ToString();
-            if (!await roleManager.RoleExistsAsync(role))
+            string superAdminRole = Role.SuperAdmin.ToString();
+
+            foreach (var requiredRole in new[] { role, superAdminRole })
             {
-                await roleManager.CreateAsync(new IdentityRole<Guid> { Name = role });
+                if (!await roleManager.RoleExistsAsync(requiredRole))
+                {
+                    await roleManager.CreateAsync(new IdentityRole<Guid> { Name = requiredRole });
+                }
             }
 
             var existingUser = await userManager.FindByNameAsync(phoneNumber);
@@ -131,7 +140,7 @@ namespace Quraaa.Persistence.Seed
                 phoneNumber: phoneNumber,
                 passwordHash: passwordHash,
                 gender: Gender.Male,
-                role: Role.Admin,
+                role: Role.SuperAdmin,
                 dateOfBirth: new DateOnly(2000, 1, 1));
 
             await context.UsersProfiles.AddAsync(adminProfile, cancellationToken);
@@ -175,9 +184,10 @@ namespace Quraaa.Persistence.Seed
                 profileChanged = true;
             }
 
-            if (adminProfile.Role != Role.Admin)
+            // Never demote a super admin back to Admin on re-seed.
+            if (adminProfile.Role is not (Role.Admin or Role.SuperAdmin))
             {
-                context.Entry(adminProfile).Property(nameof(UserAggregate.Role)).CurrentValue = Role.Admin;
+                context.Entry(adminProfile).Property(nameof(UserAggregate.Role)).CurrentValue = Role.SuperAdmin;
                 profileChanged = true;
             }
 

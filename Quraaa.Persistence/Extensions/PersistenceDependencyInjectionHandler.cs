@@ -61,6 +61,8 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IPaymentEventInbox, PaymentEventInboxRepository>();
             services.AddScoped<IOrphanFileCandidateRepository, OrphanFileCandidateRepository>();
             services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();
+            services.AddScoped<IAdminModerationRepository, AdminModerationRepository>();
+            services.AddScoped<IListingModerationRepository, ListingModerationRepository>();
             services.AddScoped<DomainEventOutboxInterceptor>();
             services.AddScoped<BookVersionInterceptor>();
             return services;

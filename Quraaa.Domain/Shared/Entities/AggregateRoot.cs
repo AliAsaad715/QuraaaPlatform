@@ -26,6 +26,24 @@
             DeletedBy = deletedBy;
         }
 
+        /// <summary>
+        /// Undoes <see cref="Delete"/>. Soft deletion is how the platform
+        /// deactivates a record, so it has to be reversible; permanent removal
+        /// is a separate, guarded operation.
+        /// </summary>
+        public void Restore(Guid restoredBy)
+        {
+            if (!IsDeleted)
+            {
+                return;
+            }
+
+            IsDeleted = false;
+            DeleationTime = null;
+            DeletedBy = null;
+            UpdateAudit(restoredBy);
+        }
+
         public void UpdateAudit(Guid modifiedBy)
         {
             LastModifiedBy = modifiedBy;
