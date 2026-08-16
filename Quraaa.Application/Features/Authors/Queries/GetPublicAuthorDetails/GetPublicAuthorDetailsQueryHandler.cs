@@ -32,9 +32,12 @@ namespace Quraaa.Application.Features.Authors.Queries.GetPublicAuthorDetails
                 {
                     var author = await _authorRepository.GetByIdAsync(
                         request.AuthorId,
-                        cancellationToken)
-                        ?? throw new NotFoundException(
+                        cancellationToken);
+                    if (author is null || author.IsDeleted)
+                    {
+                        throw new NotFoundException(
                             $"Author with ID {request.AuthorId} was not found.");
+                    }
 
                     return new PublicAuthorDetailsResponse(
                         author.Id,

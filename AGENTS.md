@@ -509,7 +509,11 @@ The Dockerfile uses:
 
 ### Testing
 
-There are currently **no test projects** in the repository. No MSTest, NUnit, or xUnit references exist. Testing is manual via Swagger/UI or an HTTP client. Adding unit and integration tests is a high-value TODO.
+`Quraaa.API.IntegrationTests` is an xUnit API-host project, currently omitted
+from `QuraaaPlatform.slnx`; run its `.csproj` explicitly. The `Testing`
+environment skips startup migration/seeding so those host tests do not require
+a real PostgreSQL instance. The current project does not cover the PostgreSQL
+demo seed pipeline, payment providers, SMTP, or Firebase end to end.
 
 ## Configuration & Secrets
 
@@ -643,19 +647,26 @@ Located in `Quraaa.Persistence/Migrations/`:
 The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, and saved-location storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work. `AddComments` adds book comment storage; `AddUserDeviceTokens` adds FCM device-token storage for push notifications. `AddAuthorsTable` creates the standalone `Authors` table (`AuthorAggregate`). `RefactorBookAuthorToForeignKeyAndAddBirthDate` adds `Authors.BirthDate`; adds nullable `Books.AuthorId`; backfills it by creating an `Author` row (via `gen_random_uuid()`, a PostgreSQL 13+ core builtin) for every distinct existing `Books.Author` string and matching books to it by normalized name; adds the `Books`→`Authors` foreign key and an index on `AuthorId`; and only then drops the old free-text `Books.Author` column. Its downgrade re-adds `Author` and best-effort backfills it from the linked `Authors.Name`.
 The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, saved-location, comment, push-device, library-approval-notification, and listing-push-notification storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. `AddPushDevicesAndLibraryApprovalNotifications` stores up to the actively retained device registrations per user using a unique token hash and adds an independently retried email/push outbox created by admin approval. `AddUserDeviceTokens` is retained as applied migration history; `ConsolidateUserDeviceTokensIntoPushDevices` validates and copies its rows into `PushDevices`, retains the ten most recent devices per user, and drops the duplicate table. `AddListingPushNotificationOutbox` adds the leased/retried push outbox populated atomically from listing domain events; publication events in one save are grouped per library so bulk upload creates one push. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
-`Program.cs` runs `db.Database.Migrate()` on startup, so the database is migrated automatically when the app starts.
+`Program.cs` runs `db.Database.MigrateAsync()` on startup, so the database is migrated automatically when the app starts.
 
 ### Seeders
 
-`Program.cs` runs the following seeders after migrating:
+Baseline startup reconciles categories and the optional configuration-driven
+bootstrap administrator. The connected interview dataset is additionally run
+only when the environment is `Development` and `DemoData:Enabled=true` (base
+and Development appsettings both disable it by default):
 
-- `CategorySeeder.SeedAsync` — seeds categories if none exist.
-- `AdminSeeder.SeedAsync` — creates or synchronizes the admin Identity/profile, role, confirmed-phone state, and password from `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`.
-- `UserSeeder.SeedAsync` — seeds the default user (`+963912345678`, password `User@12345`) plus up to 100 deterministic library-owner identities when libraries do not already exist.
-- `LibrarySeeder.SeedAsync` — seeds up to 100 libraries linked one-to-one with those owners; three out of every four are approved.
+- `CategorySeeder.SeedAsync` — adds each missing stable category while including inactive rows in collision checks.
+- `AdminSeeder.SeedAsync` — creates or synchronizes the optional configuration-driven bootstrap administrator.
+- `DemoDataSeeder.SeedAsync` — serializes replicas with a PostgreSQL advisory lock and writes the demo graph in one transaction.
+- `UserSeeder.SeedAsync` / `DemoProfileSeeder.SeedAsync` — seed named buyer/seller/admin personas, 102 library-owner identities, interests, payment sample, and saved locations.
+- `LibrarySeeder.SeedAsync` — reconciles 102 demo libraries with 75 approved, 25 pending, one rejected, one awaiting email verification, and wallet variants.
 - `UserSeeder.EnsureApprovedLibraryOwnerRolesAsync` — promotes profiles behind approved libraries to the `LibraryOwner` domain role and ensures their Identity users retain `User` and gain `LibraryOwner`.
-- `EbookSeeder.SeedAsync` — seeds one catalog ebook and one active digital listing. The listing stores the private logical path `books/book1.pdf`; place the PDF at `Quraaa.API/storage/books/book1.pdf`.
-- `BookSeeder.SeedAsync` — seeds 60 Arabic/English catalog books and approved physical listings in one seeded library.
+- `DemoCatalogSeeder`, `EbookSeeder`, and `BookSeeder` — seed curated and pagination catalog/listing data without emitting provider-ready publication notifications; the private logical ebook path is `books/book1.pdf`.
+- `DemoCommerceSeeder` — seeds carts, seven order/payment/fulfillment states, order-linked purchases, and terminal payout history.
+- `DemoEngagementSeeder` — seeds popularity purchases, favorites, ratings, comments, reports, and moderation states.
+
+Exact development credentials, stable showcase IDs, and the interview flow are in `docs/INTERVIEW_DEMO_DATA.md`. Never enable or copy these fixed credentials into Production. OTPs, refresh tokens, devices, active delivery outboxes, and due payouts are intentionally not seeded.
 
 ## Code Style & Conventions
 
@@ -752,7 +763,9 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 
 ## Testing Strategy
 
-There is no automated test suite in the repository. Manual testing workflow:
+Automated coverage is currently limited to the xUnit API-host project. Run it
+with `dotnet test Quraaa.API.IntegrationTests/Quraaa.API.IntegrationTests.csproj`.
+For database and provider flows, use this manual workflow:
 
 1. Ensure PostgreSQL is running and `ConnectionStrings:DefaultConnection` is correct.
 2. Ensure `JWT_SECRET_KEY` is set.
@@ -766,7 +779,7 @@ There is no automated test suite in the repository. Manual testing workflow:
 Recommended additions (TODO):
 
 - Unit tests for validators and domain aggregates.
-- Integration tests for command/query handlers using `WebApplicationFactory`.
+- Broader integration tests for command/query handlers using `WebApplicationFactory`.
 - Repository tests against an in-memory or test-container PostgreSQL database.
 
 ## Deployment

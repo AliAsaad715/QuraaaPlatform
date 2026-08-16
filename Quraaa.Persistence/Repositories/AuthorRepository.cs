@@ -28,7 +28,9 @@ namespace Quraaa.Persistence.Repositories
         public Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default) =>
             _context.Authors
                 .AsNoTracking()
-                .AnyAsync(author => author.Id == id, cancellationToken);
+                .AnyAsync(
+                    author => author.Id == id && !author.IsDeleted,
+                    cancellationToken);
 
         public async Task<(IReadOnlyCollection<AuthorAggregate> Items, int TotalCount)> GetPagedAsync(
             int pageNumber,

@@ -23,13 +23,16 @@ namespace Quraaa.Persistence.Seed
 
             var targetLibraryId = await librarySet
                 .AsNoTracking()
-                .Where(l => l.ApprovalStatus == LibraryApprovalStatus.Approved)
+                .Where(l =>
+                    !l.IsDeleted &&
+                    l.ApprovalStatus == LibraryApprovalStatus.Approved)
                 .OrderBy(l => l.LibraryName)
                 .Select(l => (Guid?)l.Id)
                 .FirstOrDefaultAsync();
 
             targetLibraryId ??= await librarySet
                 .AsNoTracking()
+                .Where(library => !library.IsDeleted)
                 .OrderBy(l => l.LibraryName)
                 .Select(l => (Guid?)l.Id)
                 .FirstOrDefaultAsync();
@@ -49,9 +52,17 @@ namespace Quraaa.Persistence.Seed
             var englishTitles = new[] { "Clean Code", "The Pragmatic Programmer", "To Kill a Mockingbird", "180°C Knowledge", "Atomic Habits", "Dune", "The Hobbit", "Zero to One" };
             var authors = new[] { "Ahmed Khaled", "Robert C. Martin", "Radwa Ashour", "James Clear", "Naguib Mahfouz", "Dan Brown" };
 
-            var authorIdByName = await authorSet
-                .Where(a => authors.Contains(a.Name))
-                .ToDictionaryAsync(a => a.Name, a => a.Id);
+            var matchingAuthors = await authorSet
+                .Where(a => !a.IsDeleted && authors.Contains(a.Name))
+                .OrderBy(a => a.CreationTime)
+                .ToListAsync();
+
+            var authorIdByName = matchingAuthors
+                .GroupBy(author => author.Name, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First().Id,
+                    StringComparer.Ordinal);
 
             var newAuthors = authors
                 .Where(name => !authorIdByName.ContainsKey(name))
@@ -74,6 +85,7 @@ namespace Quraaa.Persistence.Seed
                 .ToArray();
 
             var seedBookIdsByIsbn = await bookSet
+                .IgnoreQueryFilters()
                 .Where(b => b.Isbn != null && seedIsbns.Contains(b.Isbn))
                 .ToDictionaryAsync(b => b.Isbn!, b => b.Id);
 
@@ -142,7 +154,9 @@ namespace Quraaa.Persistence.Seed
             {
                 var bookId = seedBookIdsByIsbn[seedIsbns[i]];
                 var price = random.Next(10, 50) + 0.99m;
-                var condition = (BookCondition)random.Next(0, 3);
+                var condition = (BookCondition)random.Next(
+                    (int)BookCondition.New,
+                    (int)BookCondition.Acceptable + 1);
                 var stock = random.Next(2, 15);
 
                 if (listedBookIds.Contains(bookId))
@@ -159,6 +173,7 @@ namespace Quraaa.Persistence.Seed
                     condition,
                     stock
                 );
+                listing.ClearDomainEvents();
 
                 listings.Add(listing);
             }

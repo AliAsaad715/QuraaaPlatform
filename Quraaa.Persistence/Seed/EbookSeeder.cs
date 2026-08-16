@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Catalog.Enums;
+using Quraaa.Domain.Library.Enums;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Persistence.Data;
@@ -11,7 +12,9 @@ namespace Quraaa.Persistence.Seed
     public static class EbookSeeder
     {
         private static readonly Guid EbookBookId = Guid.Parse("22222222-2222-2222-2222-222222222201");
-        private static readonly Guid EbookListingId = Guid.Parse("22222222-2222-2222-2222-222222222202");
+        // 202 was historically seeded with an unstable user seller. Keep it
+        // untouched in existing databases and use a new stable library-owned id.
+        private static readonly Guid EbookListingId = Guid.Parse("22222222-2222-2222-2222-222222222203");
 
         private const string Title = "Ebook One";
         private const string Author = "Quraaa Seed Data";
@@ -21,7 +24,8 @@ namespace Quraaa.Persistence.Seed
         public static async Task SeedAsync(ApplicationDbContext context, CancellationToken cancellationToken = default)
         {
             var authorId = await context.Authors
-                .Where(a => a.Name == Author)
+                .Where(a => !a.IsDeleted && a.Name == Author)
+                .OrderBy(a => a.CreationTime)
                 .Select(a => (Guid?)a.Id)
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -33,12 +37,37 @@ namespace Quraaa.Persistence.Seed
                 authorId = newAuthor.Id;
             }
 
-            var bookId = await context.Books
+            var matchingBooks = await context.Books
+                .IgnoreQueryFilters()
                 .Where(book =>
                     book.Id == EbookBookId ||
                     (book.Title == Title && book.AuthorId == authorId && book.Language == BookLanguage))
-                .Select(book => book.Id)
-                .FirstOrDefaultAsync(cancellationToken);
+                .ToListAsync(cancellationToken);
+
+            var byId = matchingBooks.FirstOrDefault(book => book.Id == EbookBookId);
+            var byNaturalKey = matchingBooks.FirstOrDefault(book =>
+                book.Title == Title &&
+                book.AuthorId == authorId &&
+                book.Language == BookLanguage);
+
+            if (byId is not null &&
+                (byId.Title != Title ||
+                 byId.AuthorId != authorId ||
+                 byId.Language != BookLanguage))
+            {
+                throw new InvalidOperationException(
+                    $"Demo ebook id {EbookBookId} belongs to another catalog record.");
+            }
+
+            if (byId is not null &&
+                byNaturalKey is not null &&
+                byId.Id != byNaturalKey.Id)
+            {
+                throw new InvalidOperationException(
+                    $"Demo ebook '{Title}' matches multiple catalog records.");
+            }
+
+            var bookId = (byId ?? byNaturalKey)?.Id ?? Guid.Empty;
 
             if (bookId == Guid.Empty)
             {
@@ -63,45 +92,56 @@ namespace Quraaa.Persistence.Seed
                 bookId = ebook.Id;
             }
 
-            var existingListing = await context.Listings
-                .Where(listing => listing.Id == EbookListingId || listing.CustomDigitalAssetUrl == DigitalAssetUrl)
-                .Select(listing => new { listing.Id, listing.CustomDigitalAssetUrl })
+            var sellerLibraryId = await context.Libraries
+                .Where(library =>
+                    !library.IsDeleted &&
+                    library.ApprovalStatus == LibraryApprovalStatus.Approved)
+                .OrderBy(library => library.Email == "info.lib1@quraaa.com" ? 0 : 1)
+                .ThenBy(library => library.Email)
+                .Select(library => (Guid?)library.Id)
                 .FirstOrDefaultAsync(cancellationToken);
+
+            if (sellerLibraryId is null)
+            {
+                return;
+            }
+
+            var existingListing = await context.Listings
+                .FirstOrDefaultAsync(
+                    listing => listing.Id == EbookListingId,
+                    cancellationToken);
 
             if (existingListing is not null)
             {
-                if (existingListing.Id == EbookListingId &&
-                    existingListing.CustomDigitalAssetUrl != DigitalAssetUrl)
+                if (existingListing.BookId != bookId ||
+                    existingListing.SellerType != SellerType.Library ||
+                    existingListing.Format != ListingFormat.Digital ||
+                    existingListing.LibraryId != sellerLibraryId ||
+                    existingListing.UserId is not null)
                 {
-                    await context.Listings
-                        .Where(listing => listing.Id == EbookListingId)
-                        .ExecuteUpdateAsync(
-                            setters => setters.SetProperty(
-                                listing => listing.CustomDigitalAssetUrl,
-                                DigitalAssetUrl),
-                            cancellationToken);
+                    throw new InvalidOperationException(
+                        $"Demo ebook listing id {EbookListingId} belongs to another record.");
+                }
+
+                if (existingListing.CustomDigitalAssetUrl != DigitalAssetUrl)
+                {
+                    existingListing.UpdateCustomDigitalAsset(
+                        DigitalAssetUrl,
+                        existingListing.LibraryId.Value);
+                    existingListing.ClearDomainEvents();
+                    await context.SaveChangesAsync(cancellationToken);
                 }
 
                 return;
             }
 
-            var sellerUserId = await context.UsersProfiles
-                .OrderBy(user => user.CreationTime)
-                .Select(user => user.Id)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (sellerUserId == Guid.Empty)
-            {
-                return;
-            }
-
-            var ebookListing = ListingAggregate.CreateForUser(
+            var ebookListing = ListingAggregate.CreateDigitalForLibrary(
                 EbookListingId,
                 bookId,
-                sellerUserId,
-                ListingFormat.Digital,
+                sellerLibraryId.Value,
                 price: 1.00m,
                 customDigitalAssetUrl: DigitalAssetUrl);
+            ebookListing.ClearDomainEvents();
 
             await context.Listings.AddAsync(ebookListing, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);

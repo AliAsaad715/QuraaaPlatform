@@ -160,6 +160,9 @@ Generated `bin/` and `obj/` directories are not source and should not be edited.
    JWT_AUDIENCE=Quraaa.Clients
    JWT_DURATION_IN_MINUTES=60
 
+   # Opt in only for a dedicated local interview database.
+   DemoData__Enabled=true
+
     CLOUDINARY_CLOUD_NAME=replace-with-your-cloud-name
     CLOUDINARY_API_KEY=replace-with-your-api-key
     CLOUDINARY_API_SECRET=replace-with-your-api-secret
@@ -247,6 +250,7 @@ ASP.NET Core configuration is loaded from appsettings files, `.env`, environment
 | `MAIL_FROM_ADDRESS` / `MAIL_FROM_NAME`                 | Yes                      | Valid sender mailbox and single-line display name.                                                                                                       |
 | `Swagger__ServerUrl`                                   | No                       | Optional HTTPS absolute or relative OpenAPI server URL. Omit it (recommended) to use the Swagger UI's current origin, which works for local HTTP and production HTTPS. |
 | `ADMIN_PHONE_NUMBER` / `ADMIN_PASSWORD`                | No                       | Creates or synchronizes the seeded administrator when both are set.                                                                                      |
+| `DemoData__Enabled`                                    | Development only         | Explicitly enables the connected interview dataset. It defaults to `false` in every committed appsettings file, and startup rejects `true` outside Development. |
 
 The process also respects normal ASP.NET Core settings such as `ASPNETCORE_ENVIRONMENT`, `ASPNETCORE_URLS`, and command-line `--urls`.
 
@@ -414,22 +418,31 @@ The API generates and caches OTP data, then sends an FCM data message to the con
 
 ## Database migrations and seed data
 
-Startup calls `Database.Migrate()`, then runs category, admin, user, library, ebook, and book seeders.
+Startup applies migrations and reconciles categories plus the optional
+configuration-driven bootstrap administrator. The connected interview dataset
+runs only in Development after explicit opt-in with
+`DemoData__Enabled=true`; every committed appsettings file defaults it to
+`false`.
 
 `AddLibraryMagicLinkEmailVerification` migrates every legacy `Pending` library to `AwaitingEmailVerification`, so it must complete email verification before entering admin review. Existing `Approved` and `Rejected` records are explicitly grandfathered by setting `EmailVerifiedAtUtc` to the migration execution timestamp. A database check constraint then rejects any `Pending`, `Approved`, or `Rejected` row without a verification timestamp, including writes from an older API instance during a rolling deployment. On downgrade, status `AwaitingEmailVerification` is mapped back to legacy `Pending` before the verification columns are removed.
 
 `AddMultipleUserLocations` validates each legacy coordinate pair, copies it into a named `UserLocations` row, selects it as the default, and only then removes the old profile columns. `PreventUserLocationOwnerReassignment` installs a database trigger that makes `UserLocations.UserId` immutable after insertion. Deploy `AddMultipleUserLocations` with old API instances stopped because they still expect `UsersProfiles.Latitude`/`Longitude`. Its downgrade can retain only the selected default (or oldest fallback) and discards every additional saved location, so back up the database before rolling it back.
 
-Seed behavior includes:
+On a fresh development database, demo seed behavior includes:
 
-- A deterministic development user and the `User` / `LibraryOwner` roles.
-- Up to 100 library-owner identities and libraries when libraries do not already exist; three out of every four seeded libraries are approved.
-- An administrator only when both `ADMIN_PHONE_NUMBER` and `ADMIN_PASSWORD` are configured.
-- Initial categories.
-- One digital listing backed by `Quraaa.API/storage/books/book1.pdf`.
-- Sixty Arabic / English catalog books with physical listings.
+- Named buyer, seller, admin, moderator, and checkout personas with stable credentials.
+- Profiles with interests and saved locations, plus 102 library-owner identities and libraries across approval/wallet states.
+- Curated Arabic, English, and French catalog stories plus 60 pagination books.
+- Physical/digital and library/user listings across active, sold, removed, and out-of-stock states.
+- Favorites, ratings, Arabic/English comments, reports, and visible/hidden moderation examples.
+- Active/pending/paid carts; pending, failed, cancelled, expired, processing, and completed orders; purchases and terminal payout history.
+- A paid digital purchase backed by `Quraaa.API/storage/books/book1.pdf` for download and AI authorization demos.
 
-Development credentials are source-controlled seed data and must never be reused in a deployed environment. See the seeders and Swagger descriptions for the current local-only values.
+The full credentials, stable IDs, state matrix, and interview walkthrough are in
+[`docs/INTERVIEW_DEMO_DATA.md`](docs/INTERVIEW_DEMO_DATA.md). Development
+credentials are source-controlled demo data and must never be reused for a real
+account or deployment. The seed intentionally excludes OTPs, refresh tokens,
+device tokens, provider-ready notification outboxes, and due payouts.
 
 Run EF Core commands from the repository root:
 
@@ -455,7 +468,11 @@ dotnet restore QuraaaPlatform.slnx
 dotnet build Quraaa.API/Quraaa.API.csproj -c Release --no-restore
 ```
 
-There are currently no MSTest, NUnit, or xUnit projects, so `dotnet build` is the only repository-provided automated verification. Add unit tests for domain and handler logic plus integration tests for authentication, PostgreSQL constraints, Stripe webhooks, concurrency, and private file delivery before treating the service as production-complete.
+`Quraaa.API.IntegrationTests` is an xUnit project for API-host tests, but it is
+not currently included in `QuraaaPlatform.slnx`. Run it explicitly with
+`dotnet test Quraaa.API.IntegrationTests/Quraaa.API.IntegrationTests.csproj`.
+It does not yet provide PostgreSQL seed-pipeline coverage; fresh seed, rerun,
+partial-repair, and collision tests remain valuable follow-up work.
 
 ## Docker and deployment
 

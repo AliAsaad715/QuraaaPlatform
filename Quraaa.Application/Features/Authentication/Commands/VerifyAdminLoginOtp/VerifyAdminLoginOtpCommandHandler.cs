@@ -89,7 +89,9 @@ namespace Quraaa.Application.Features.Authentication.Commands.VerifyAdminLoginOt
                     throw new ApplicationBusinessException(InvalidAdminVerificationMessage);
                 }
 
-                if (identity is null || adminProfile?.Role != Role.Admin || !isAdminIdentity)
+                if (identity is null ||
+                    adminProfile?.Role is not (Role.Admin or Role.SuperAdmin) ||
+                    !isAdminIdentity)
                 {
                     await ClearVerificationStateAsync(formattedPhone, clientTargetKey, CancellationToken.None);
                     throw new ApplicationBusinessException(InvalidAdminVerificationMessage);

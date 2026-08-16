@@ -92,24 +92,36 @@ app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 
-// Seed the database with categories. Skipped in the "Testing" environment so
-// WebApplicationFactory-based integration tests can boot the app without a
-// real Postgres instance — see Quraaa.API.IntegrationTests.
+var demoDataEnabled = builder.Configuration.GetValue<bool>("DemoData:Enabled");
+if (demoDataEnabled && !app.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException(
+        "DemoData:Enabled may only be used in the Development environment.");
+}
+
+// Baseline reference/bootstrap data is separate from the opt-in interview
+// dataset. Testing skips database startup so WebApplicationFactory can boot
+// without a real PostgreSQL instance.
 if (!app.Environment.IsEnvironment("Testing"))
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    db.Database.Migrate();
+    await db.Database.MigrateAsync();
     await CategorySeeder.SeedAsync(db);
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
     var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<ApplicationUser>>();
     await AdminSeeder.SeedAsync(db, userManager, roleManager, passwordHasher, builder.Configuration);
-    await UserSeeder.SeedAsync(db, userManager, roleManager, passwordHasher, builder.Configuration);
-    await LibrarySeeder.SeedAsync(db);
-    await UserSeeder.EnsureApprovedLibraryOwnerRolesAsync(db, userManager, roleManager, CancellationToken.None);
-    await EbookSeeder.SeedAsync(db);
-    await BookSeeder.SeedAsync(db);
+
+    if (demoDataEnabled)
+    {
+        app.Logger.LogInformation("Seeding the Quraaa interview demo dataset.");
+        await DemoDataSeeder.SeedAsync(
+            db,
+            userManager,
+            roleManager,
+            passwordHasher);
+    }
 }
 
 app.Run();
