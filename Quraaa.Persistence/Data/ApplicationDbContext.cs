@@ -6,7 +6,6 @@ using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Catalog.Enums;
 using Quraaa.Domain.Cart;
 using Quraaa.Domain.Category;
-using Quraaa.Domain.Comments;
 using Quraaa.Domain.Favorites;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.Marketplace;
@@ -15,7 +14,7 @@ using Quraaa.Domain.Orders;
 using Quraaa.Domain.Payouts;
 using Quraaa.Domain.Purchases;
 using Quraaa.Domain.Reports;
-using Quraaa.Domain.Ratings;
+using Quraaa.Domain.Reviews;
 using Quraaa.Domain.User;
 using Quraaa.Domain.User.Entities;
 using System.Reflection;
@@ -41,13 +40,12 @@ namespace Quraaa.Persistence.Data
         public DbSet<BookAggregate> Books { get; set; }
         public DbSet<ListingAggregate> Listings { get; set; }
         public DbSet<CategoryAggregate> Categories { get; set; }
-        public DbSet<CommentAggregate> Comments { get; set; }
         public DbSet<BookReportAggregate> BookReports { get; set; }
         public DbSet<BookVersion> BookVersions { get; set; }
         public DbSet<BookModerationNotification> BookModerationNotifications { get; set; }
         public DbSet<FavoriteBookAggregate> FavoriteBooks { get; set; }
         public DbSet<BookPurchaseAggregate> BookPurchases { get; set; }
-        public DbSet<BookRatingAggregate> BookRatings { get; set; }
+        public DbSet<BookReviewAggregate> BookReviews { get; set; }
         public DbSet<CartAggregate> Carts { get; set; }
         public DbSet<OrderAggregate> Orders { get; set; }
         public DbSet<SellerPayoutAggregate> SellerPayouts { get; set; }

@@ -5,6 +5,7 @@ namespace Quraaa.Application.Features.Listings.Queries.GetListingDetails
 {
     public record ListingDetailsResponse(
         Guid Id,
+        Guid BookId,
         string Title,
         string CoverImageUrl,
         ListingFormat Format,
