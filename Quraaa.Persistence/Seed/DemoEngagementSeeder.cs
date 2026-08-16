@@ -1,12 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Quraaa.Domain.Catalog;
-using Quraaa.Domain.Comments;
 using Quraaa.Domain.Favorites;
 using Quraaa.Domain.Marketplace;
-using Quraaa.Domain.Ratings;
 using Quraaa.Domain.Reports;
 using Quraaa.Domain.Reports.Enums;
 using Quraaa.Domain.Purchases;
+using Quraaa.Domain.Reviews;
 using Quraaa.Domain.Shared.Entities;
 using Quraaa.Persistence.Data;
 
@@ -14,8 +13,8 @@ namespace Quraaa.Persistence.Seed;
 
 public static class DemoEngagementSeeder
 {
-    private sealed record UserBookSeed(string PhoneNumber, Guid BookId, int? Rating = null);
-    private sealed record CommentSeed(string PhoneNumber, Guid BookId, string Content, int DaysAgo);
+    private sealed record UserBookSeed(string PhoneNumber, Guid BookId);
+    private sealed record ReviewSeed(string PhoneNumber, Guid BookId, int Score, string Content, int DaysAgo);
     private sealed record ReportSeed(
         string PhoneNumber,
         Guid BookId,
@@ -57,8 +56,7 @@ public static class DemoEngagementSeeder
             listings,
             cancellationToken);
         await EnsureFavoritesAsync(context, users, books, cancellationToken);
-        await EnsureRatingsAsync(context, users, books, cancellationToken);
-        await EnsureCommentsAsync(context, users, books, cancellationToken);
+        await EnsureReviewsAsync(context, users, books, cancellationToken);
         await EnsureReportsAsync(context, users, books, cancellationToken);
     }
 
@@ -71,11 +69,15 @@ public static class DemoEngagementSeeder
     {
         var definitions = new[]
         {
+            new UserBookSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.Dune),
+            new UserBookSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.CleanCode),
+            new UserBookSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.Granada),
             new UserBookSeed(DemoSeedData.SellerPhoneNumber, DemoSeedData.Books.CleanCode),
             new UserBookSeed(DemoSeedData.SellerPhoneNumber, DemoSeedData.Books.Dune),
             new UserBookSeed(DemoSeedData.CheckoutBuyerPhoneNumber, DemoSeedData.Books.Dune),
             new UserBookSeed(DemoSeedData.CheckoutBuyerPhoneNumber, DemoSeedData.Books.AtomicHabits),
             new UserBookSeed(DemoSeedData.ReporterOnePhoneNumber, DemoSeedData.Books.CleanCode),
+            new UserBookSeed(DemoSeedData.ReporterOnePhoneNumber, DemoSeedData.Books.PragmaticProgrammer),
             new UserBookSeed(DemoSeedData.ReporterTwoPhoneNumber, DemoSeedData.Books.Granada),
             new UserBookSeed(DemoSeedData.ReporterTwoPhoneNumber, DemoSeedData.Books.Dune),
             new UserBookSeed(DemoSeedData.ReporterThreePhoneNumber, DemoSeedData.Books.CleanCode),
@@ -88,6 +90,7 @@ public static class DemoEngagementSeeder
             [DemoSeedData.Books.CleanCode] = DemoSeedData.Listings.CleanCodeLibraryOne,
             [DemoSeedData.Books.Dune] = DemoSeedData.Listings.DuneDigital,
             [DemoSeedData.Books.AtomicHabits] = DemoSeedData.Listings.AtomicHabitsOutOfStock,
+            [DemoSeedData.Books.PragmaticProgrammer] = DemoSeedData.Listings.PragmaticProgrammerUser,
         };
 
         var userIds = definitions.Select(definition => users[definition.PhoneNumber]).Distinct().ToArray();
@@ -170,7 +173,7 @@ public static class DemoEngagementSeeder
         await context.SaveChangesAsync(cancellationToken);
     }
 
-    private static async Task EnsureRatingsAsync(
+    private static async Task EnsureReviewsAsync(
         ApplicationDbContext context,
         IReadOnlyDictionary<string, Guid> users,
         IReadOnlyDictionary<Guid, Guid> books,
@@ -178,71 +181,32 @@ public static class DemoEngagementSeeder
     {
         var definitions = new[]
         {
-            new UserBookSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.Dune, 5),
-            new UserBookSeed(DemoSeedData.SellerPhoneNumber, DemoSeedData.Books.Dune, 4),
-            new UserBookSeed(DemoSeedData.CheckoutBuyerPhoneNumber, DemoSeedData.Books.Dune, 5),
-            new UserBookSeed(DemoSeedData.ReporterTwoPhoneNumber, DemoSeedData.Books.Dune, 4),
-            new UserBookSeed(DemoSeedData.ReporterThreePhoneNumber, DemoSeedData.Books.Dune, 5),
-            new UserBookSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.CleanCode, 5),
-            new UserBookSeed(DemoSeedData.SellerPhoneNumber, DemoSeedData.Books.CleanCode, 5),
-            new UserBookSeed(DemoSeedData.ReporterOnePhoneNumber, DemoSeedData.Books.CleanCode, 4),
-            new UserBookSeed(DemoSeedData.ReporterThreePhoneNumber, DemoSeedData.Books.CleanCode, 4),
-            new UserBookSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.Granada, 4),
-            new UserBookSeed(DemoSeedData.ReporterTwoPhoneNumber, DemoSeedData.Books.Granada, 5),
-            new UserBookSeed(DemoSeedData.ReporterOnePhoneNumber, DemoSeedData.Books.PragmaticProgrammer, 5),
-        };
-
-        var existing = await context.BookRatings
-            .Select(rating => new { rating.UserId, rating.BookId })
-            .ToListAsync(cancellationToken);
-        var pairSet = existing.Select(pair => (pair.UserId, pair.BookId)).ToHashSet();
-
-        foreach (var definition in definitions)
-        {
-            var pair = (users[definition.PhoneNumber], books[definition.BookId]);
-            if (pairSet.Add(pair))
-            {
-                await context.BookRatings.AddAsync(
-                    BookRatingAggregate.Create(pair.Item1, pair.Item2, definition.Rating!.Value),
-                    cancellationToken);
-            }
-        }
-
-        await context.SaveChangesAsync(cancellationToken);
-    }
-
-    private static async Task EnsureCommentsAsync(
-        ApplicationDbContext context,
-        IReadOnlyDictionary<string, Guid> users,
-        IReadOnlyDictionary<Guid, Guid> books,
-        CancellationToken cancellationToken)
-    {
-        var definitions = new[]
-        {
-            new CommentSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.Dune,
+            new ReviewSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.Dune, 5,
                 "The world-building is rich, but the ecological ideas are what stayed with me.", 28),
-            new CommentSeed(DemoSeedData.SellerPhoneNumber, DemoSeedData.Books.Dune,
+            new ReviewSeed(DemoSeedData.SellerPhoneNumber, DemoSeedData.Books.Dune, 4,
                 "A slow opening that rewards patience with an unforgettable political story.", 24),
-            new CommentSeed(DemoSeedData.CheckoutBuyerPhoneNumber, DemoSeedData.Books.Dune,
+            new ReviewSeed(DemoSeedData.CheckoutBuyerPhoneNumber, DemoSeedData.Books.Dune, 5,
                 "Excellent digital edition and a great discussion book.", 18),
-            new CommentSeed(DemoSeedData.ReporterTwoPhoneNumber, DemoSeedData.Books.Dune,
+            new ReviewSeed(DemoSeedData.ReporterTwoPhoneNumber, DemoSeedData.Books.Dune, 4,
                 "The characters and competing loyalties made this a five-star reading experience.", 12),
-            new CommentSeed(DemoSeedData.ReporterThreePhoneNumber, DemoSeedData.Books.Dune,
+            new ReviewSeed(DemoSeedData.ReporterThreePhoneNumber, DemoSeedData.Books.Dune, 5,
                 "I finally understand why this novel influenced so much modern science fiction.", 6),
-            new CommentSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.CleanCode,
+            new ReviewSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.CleanCode, 5,
                 "Concrete examples that made our team discuss naming and function boundaries.", 13),
-            new CommentSeed(DemoSeedData.SellerPhoneNumber, DemoSeedData.Books.CleanCode,
+            new ReviewSeed(DemoSeedData.SellerPhoneNumber, DemoSeedData.Books.CleanCode, 5,
                 "Useful as a conversation starter even when you disagree with a rule.", 11),
-            new CommentSeed(DemoSeedData.ReporterOnePhoneNumber, DemoSeedData.Books.CleanCode,
+            new ReviewSeed(DemoSeedData.ReporterOnePhoneNumber, DemoSeedData.Books.CleanCode, 4,
                 "The refactoring examples are practical and easy to demonstrate in a review.", 8),
-            new CommentSeed(DemoSeedData.ReporterThreePhoneNumber, DemoSeedData.Books.CleanCode,
+            new ReviewSeed(DemoSeedData.ReporterThreePhoneNumber, DemoSeedData.Books.CleanCode, 4,
                 "A solid reference for junior developers learning maintainable code.", 4),
-            new CommentSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.Granada,
+            new ReviewSeed(DemoSeedData.MainBuyerPhoneNumber, DemoSeedData.Books.Granada, 4,
                 "سرد مؤثر يجعل التاريخ قريباً من القارئ ويمنح الشخصيات ذاكرة حقيقية.", 10),
-            new CommentSeed(DemoSeedData.ReporterTwoPhoneNumber, DemoSeedData.Books.Granada,
+            new ReviewSeed(DemoSeedData.ReporterTwoPhoneNumber, DemoSeedData.Books.Granada, 5,
                 "من أجمل الروايات التاريخية التي قرأتها، والجزء الأخير شديد التأثير.", 3),
-            new CommentSeed(DemoSeedData.CheckoutBuyerPhoneNumber, DemoSeedData.Books.AtomicHabits,
+            new ReviewSeed(DemoSeedData.CheckoutBuyerPhoneNumber, DemoSeedData.Books.AtomicHabits, 5,
                 "The focus on systems over goals is simple and immediately actionable.", 9),
+            new ReviewSeed(DemoSeedData.ReporterOnePhoneNumber, DemoSeedData.Books.PragmaticProgrammer, 5,
+                "Still one of the clearest, most practical books on day-to-day software craftsmanship.", 7),
         };
 
         var userIds = definitions
@@ -253,11 +217,11 @@ public static class DemoEngagementSeeder
             .Select(definition => books[definition.BookId])
             .Distinct()
             .ToArray();
-        var existingPairs = await context.Comments
-            .Where(comment =>
-                userIds.Contains(comment.UserId) &&
-                bookIds.Contains(comment.BookId))
-            .Select(comment => new { comment.UserId, comment.BookId })
+        var existingPairs = await context.BookReviews
+            .Where(review =>
+                userIds.Contains(review.UserId) &&
+                bookIds.Contains(review.BookId))
+            .Select(review => new { review.UserId, review.BookId })
             .ToListAsync(cancellationToken);
         var pairSet = existingPairs
             .Select(pair => (pair.UserId, pair.BookId))
@@ -272,9 +236,9 @@ public static class DemoEngagementSeeder
                 continue;
             }
 
-            var comment = CommentAggregate.Create(userId, bookId, definition.Content);
-            await context.Comments.AddAsync(comment, cancellationToken);
-            SetCreationTime(context, comment, DateTime.UtcNow.AddDays(-definition.DaysAgo));
+            var review = BookReviewAggregate.Create(userId, bookId, definition.Score, definition.Content);
+            await context.BookReviews.AddAsync(review, cancellationToken);
+            SetCreationTime(context, review, DateTime.UtcNow.AddDays(-definition.DaysAgo));
         }
 
         await context.SaveChangesAsync(cancellationToken);
@@ -415,6 +379,7 @@ public static class DemoEngagementSeeder
             DemoSeedData.Listings.CleanCodeLibraryOne,
             DemoSeedData.Listings.DuneDigital,
             DemoSeedData.Listings.AtomicHabitsOutOfStock,
+            DemoSeedData.Listings.PragmaticProgrammerUser,
         };
 
         var listings = await context.Listings
