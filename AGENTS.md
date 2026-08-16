@@ -42,7 +42,7 @@ Current implemented business capabilities:
 - Stripe webhook processing through `POST /api/payments/stripe/webhook`; paid events and authoritative expired-attempt reconciliation share order/cart/purchase finalization, while confirmed failure/expiry paths release reservations and reopen the cart.
 - Authenticated user buy/sell history through `/api/purchases/me/buy-history` and `/api/purchases/me/sell-history`.
 - Category management through `GET /api/categories`, `GET /api/categories/{categoryId}`, and `POST /api/categories` (admin-only).
-- Author management (admin-only) through `POST /api/admin/authors`, `GET /api/admin/authors`, `GET /api/admin/authors/{id}`, `PUT /api/admin/authors/{id}`, and `DELETE /api/admin/authors/{id}`.
+- Admin-only author creation/detail/update plus paged moderation, activation/reactivation, and guarded single/bulk permanent deletion through `/api/admin/authors`.
 - Public author profiles and paginated available works through `GET /api/authors/{authorId}` and `GET /api/authors/{authorId}/books`.
 - Standalone OTP send through `POST /api/otp/send`.
 - Standalone OTP verification through `POST /api/otp/verify`.
@@ -102,6 +102,7 @@ Quraaa.API/
   Properties/launchSettings.json
   Controllers/
     AdminAuthorsController.cs
+    AdminModerationController.cs
     ApiClientController.cs
     AuthController.cs
     BooksController.cs
@@ -126,6 +127,7 @@ Quraaa.API/
     ServiceCollectionExtensions.cs
     SwaggerExtensions.cs
   Requests/
+    Admin/
     Authentication/
     Books/
     FavoriteBooks/
@@ -149,6 +151,12 @@ Quraaa.Application/
   Extensions/
     ApplicationPackagesRegisterExtensions.cs
   Features/
+    Admin/
+      Commands/DeleteAuthors/
+      Commands/SetAuthorActivation/
+      Queries/GetAuthors/
+      Common/
+      Interfaces/
     Authentication/
       Commands/AdminLogin/
       Commands/LibraryOwnerLogin/
@@ -318,6 +326,7 @@ Quraaa.Persistence/
     PersistenceDependencyInjectionHandler.cs
   Migrations/
   Repositories/
+    AdminModerationRepository.cs
     AuthorRepository.cs
     OrderRepository.cs
     PaymentEventInboxRepository.cs
@@ -887,7 +896,10 @@ POST   /api/admin/authors                         Admin
 GET    /api/admin/authors                         Admin
 GET    /api/admin/authors/{id}                    Admin
 PUT    /api/admin/authors/{id}                    Admin
+POST   /api/admin/authors/{id}/activation         Admin
+POST   /api/admin/authors/activation              Admin
 DELETE /api/admin/authors/{id}                    Admin
+DELETE /api/admin/authors                         Admin
 
 POST   /api/otp/send                              anonymous
 POST   /api/otp/verify                            anonymous
@@ -895,7 +907,7 @@ POST   /api/notifications/send                    authenticated
 POST   /api/notifications/test                    anonymous when enabled
 ```
 
-`Program.cs` sets `RouteOptions.LowercaseUrls = true`; incoming ASP.NET Core routes are case-insensitive, but use the lowercase forms above in examples and generated links. `AdminAuthorsController`, `LibraryListingsController`, `OrdersController`, `PurchaseHistoryController`, `SellerOrdersController`, and `UserListingsController` have explicit route templates; the other controllers normally inherit `api/[controller]`.
+`Program.cs` sets `RouteOptions.LowercaseUrls = true`; incoming ASP.NET Core routes are case-insensitive, but use the lowercase forms above in examples and generated links. `AdminAuthorsController`, `AdminModerationController`, `LibraryListingsController`, `OrdersController`, `PurchaseHistoryController`, `SellerOrdersController`, and `UserListingsController` have explicit route templates; the other controllers normally inherit `api/[controller]`.
 
 ### Authentication
 
@@ -1363,16 +1375,19 @@ GET /api/authors/{authorId}/books
 
 The profile response contains `id`, `name`, optional `bio`, optional `photoUrl`, and optional `birthDate`. The books route returns `PagedResult<HomeBookResponse>`, grouped by catalog book and limited to books that have at least one active listing with available stock. It accepts `pageNumber`, `pageSize`, optional `searchTerm`, and the same `sortBy` values as the home catalog. An existing author with no available books returns an empty `200 OK` page; an unknown author returns `404 Not Found` from either route.
 
-Admin author management:
+Admin author management and moderation (re-audited **2026-08-16**):
 
-All five routes require the `Admin` role. `AdminAuthorsController` uses the explicit route `api/admin/authors`.
+All routes require the `Admin` role. Route ownership is intentionally split: `AdminAuthorsController` owns create/detail/update, while `AdminModerationController` owns the paged moderation list, activation/reactivation, and guarded permanent deletion. Do not add a parameterless `[HttpGet]` or `[HttpDelete("{id:guid}")]` back to `AdminAuthorsController`; those templates would collide with the moderation actions and cause `AmbiguousMatchException` before authorization or controller execution.
 
 ```text
 POST   /api/admin/authors
 GET    /api/admin/authors
 GET    /api/admin/authors/{id}
 PUT    /api/admin/authors/{id}
+POST   /api/admin/authors/{id}/activation
+POST   /api/admin/authors/activation
 DELETE /api/admin/authors/{id}
+DELETE /api/admin/authors
 ```
 
 `POST`/`PUT` request body:
@@ -1386,7 +1401,64 @@ DELETE /api/admin/authors/{id}
 }
 ```
 
-`bio`, `photoUrl`, and `birthDate` are optional; when present, `photoUrl` must be an absolute `http`/`https` URL and `birthDate` must be in the past. `GET /api/admin/authors` supports `pageNumber`, `pageSize`, and a `searchTerm` filter on `name` (case-insensitive). `BookAggregate.AuthorId` is a nullable scalar FK to `AuthorAggregate` (no navigation property, per the cross-aggregate convention above); deleting an author still referenced by a book returns `409 Conflict` — `AuthorRepository.RemoveAsync` catches the foreign-key violation, mirroring `CategoryRepository.RemoveAsync`.
+`bio`, `photoUrl`, and `birthDate` are optional; when present, `photoUrl` must be an absolute `http`/`https` URL and `birthDate` must be in the past.
+
+`GET /api/admin/authors` accepts `pageNumber` (default `1`, minimum `1`), `pageSize` (default `20`, range `1`–`100`), optional `searchTerm` (maximum `200` characters), and `includeDeactivated` (default `false`). `includeDeactivated=true` returns active and deactivated authors together; it is not a deactivated-only filter. The response is `PagedResult<AdminAuthorResponse>`:
+
+```json
+{
+  "items": [
+    {
+      "authorId": "11111111-1111-1111-1111-111111111111",
+      "name": "J.K. Rowling",
+      "bio": "British author, best known for the Harry Potter series.",
+      "photoUrl": "https://example.com/authors/jk-rowling.jpg",
+      "birthDate": "1965-07-31T00:00:00",
+      "bookCount": 7,
+      "isDeactivated": false,
+      "deactivatedAtUtc": null,
+      "createdAt": "2026-08-15T09:00:00Z"
+    }
+  ],
+  "pageNumber": 1,
+  "pageSize": 20,
+  "totalCount": 1,
+  "totalPages": 1,
+  "hasNextPage": false,
+  "hasPreviousPage": false
+}
+```
+
+The list DTO deliberately differs from the existing create/update/detail DTOs. List items use `authorId` and `createdAt`; `POST` and `PUT` still return `AuthorResponse` with `id` and `creationTime`, and `GET /api/admin/authors/{id}` returns `AuthorDetailsResponse` with `id`, `creationTime`, and `lastModificationTime`. Frontends must use route-specific DTOs or normalize them in an API adapter rather than globally renaming every author field.
+
+Single activation uses `POST /api/admin/authors/{id}/activation?deactivate=true|false` and has no request body. Bulk activation uses `POST /api/admin/authors/activation` with `{ "ids": ["..."], "deactivate": true|false }`; at most `200` ids are accepted. `true` soft-deletes/deactivates and `false` restores.
+
+Single permanent deletion uses `DELETE /api/admin/authors/{id}` with no body. Bulk permanent deletion uses `DELETE /api/admin/authors` with `{ "ids": ["..."] }`; at most `100` ids are accepted. An author must already be deactivated and must have no non-deleted books. Both single and bulk moderation calls return `BulkModerationResult`, and HTTP `200` can contain per-record skips:
+
+```json
+{
+  "succeededCount": 1,
+  "skippedCount": 1,
+  "results": [
+    {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "succeeded": true,
+      "reason": null,
+      "blockers": null
+    },
+    {
+      "id": "22222222-2222-2222-2222-222222222222",
+      "succeeded": false,
+      "reason": "This record cannot be deleted while other records still reference it.",
+      "blockers": [
+        { "reference": "Books", "count": 3 }
+      ]
+    }
+  ]
+}
+```
+
+Other per-record skip reasons are `Not found.` and `Deactivate this record before deleting it permanently.`. The frontend must inspect every `results[]` entry instead of treating HTTP `200` as proof that all requested records changed. `BookAggregate.AuthorId` remains a nullable scalar FK to `AuthorAggregate`; the moderation handler checks book blockers before physical deletion. The older `DeleteAuthorCommand` and `GetAuthorsPaginatedQuery` application features remain in source but no longer have HTTP actions under `/api/admin/authors`.
 
 ### OTP
 
@@ -2548,7 +2620,16 @@ Files:
 
 ```text
 Quraaa.API/Controllers/AdminAuthorsController.cs
+Quraaa.API/Controllers/AdminModerationController.cs
 Quraaa.API/Controllers/AuthorsController.cs
+Quraaa.API/Requests/Admin/BulkIdsRequest.cs
+Quraaa.API/Requests/Admin/GetAdminUsersRequest.cs
+Quraaa.Application/Features/Admin/Commands/SetAuthorActivation/
+Quraaa.Application/Features/Admin/Commands/DeleteAuthors/
+Quraaa.Application/Features/Admin/Queries/GetAuthors/
+Quraaa.Application/Features/Admin/Common/AdminAuthorResponse.cs
+Quraaa.Application/Features/Admin/Common/BulkModerationResult.cs
+Quraaa.Application/Features/Admin/Interfaces/IAdminModerationRepository.cs
 Quraaa.Application/Features/Authors/Commands/CreateAuthor/
 Quraaa.Application/Features/Authors/Commands/UpdateAuthor/
 Quraaa.Application/Features/Authors/Commands/DeleteAuthor/
@@ -2558,6 +2639,7 @@ Quraaa.Application/Features/Authors/Queries/GetPublicAuthorDetails/
 Quraaa.Application/Features/Authors/Queries/GetAuthorBooks/
 Quraaa.Application/Features/Authors/Common/AuthorResponse.cs
 Quraaa.Application/Features/Authors/Interfaces/IAuthorRepository.cs
+Quraaa.Persistence/Repositories/AdminModerationRepository.cs
 Quraaa.Persistence/Repositories/AuthorRepository.cs
 Quraaa.Persistence/Configurations/AuthorConfiguration.cs
 Quraaa.Domain/Author/AuthorAggregate.cs
@@ -2572,7 +2654,10 @@ POST   /api/admin/authors
 GET    /api/admin/authors
 GET    /api/admin/authors/{id}
 PUT    /api/admin/authors/{id}
+POST   /api/admin/authors/{id}/activation
+POST   /api/admin/authors/activation
 DELETE /api/admin/authors/{id}
+DELETE /api/admin/authors
 ```
 
 Authentication:
@@ -2589,7 +2674,7 @@ The `AuthorAggregate` model includes:
 - `PhotoUrl` — optional, max 500 characters; must be an absolute `http`/`https` URL when present.
 - `BirthDate` — optional; must be in the past when present.
 
-Unlike `CategoryAggregate`, `AuthorAggregate` has no `IsActive`/soft-delete flag. `DeleteAuthorCommandHandler` performs a real row delete; since the migration `RefactorBookAuthorToForeignKeyAndAddBirthDate` added `Books.AuthorId` as a `Restrict`-on-delete foreign key to this table, `AuthorRepository.RemoveAsync` catches the resulting foreign-key violation and raises `ConflictException` (→ `409`), exactly like `CategoryRepository.RemoveAsync` does for books referencing a category.
+`AuthorAggregate` inherits the shared `AggregateRoot` soft-delete state. Moderation deactivation calls `Delete(adminId)` and restoration calls `Restore(adminId)`. Permanent deletion is a separate operation: `DeleteAuthorsCommandHandler` only removes an already-deactivated author after `AdminModerationRepository` confirms that no non-deleted books reference it. The older direct `DeleteAuthorCommandHandler` remains compiled but is no longer exposed by an HTTP action.
 
 Flow:
 
@@ -2603,11 +2688,11 @@ HTTP POST /api/admin/authors
   -> AuthorResponse
 
 HTTP GET /api/admin/authors
-  -> AdminAuthorsController.GetAuthors(query)
-  -> GetAuthorsPaginatedQuery
-  -> GetAuthorsPaginatedQueryHandler
-  -> IAuthorRepository.GetPagedAsync(pageNumber, pageSize, searchTerm)
-  -> PagedResult<AuthorResponse>
+  -> AdminModerationController.GetAuthors(request)
+  -> GetAuthorsQuery(pageNumber, pageSize, searchTerm, includeDeactivated)
+  -> GetAuthorsQueryHandler
+  -> IAdminModerationRepository.GetAuthorsAsync(...)
+  -> PagedResult<AdminAuthorResponse>
 
 HTTP GET /api/admin/authors/{id}
   -> AdminAuthorsController.GetAuthorById(id)
@@ -2636,12 +2721,29 @@ HTTP PUT /api/admin/authors/{id}
   -> IAuthorRepository.GetByIdAsync(id) -> AuthorAggregate.UpdateDetails(...) -> IAuthorRepository.SaveChangesAsync()
   -> AuthorResponse or NotFound
 
+HTTP POST /api/admin/authors/{id}/activation?deactivate=true|false
+  -> AdminModerationController.SetAuthorActivation(id, deactivate)
+  -> SetAuthorActivationCommand { AdminId, Ids = [id], Deactivate }
+  -> AuthorAggregate.Delete(adminId) or Restore(adminId)
+  -> BulkModerationResult with one per-record outcome
+
+HTTP POST /api/admin/authors/activation
+  -> AdminModerationController.SetAuthorsActivation({ ids, deactivate })
+  -> SetAuthorActivationCommand (maximum 200 ids)
+  -> partial per-record processing
+  -> BulkModerationResult
+
 HTTP DELETE /api/admin/authors/{id}
-  -> AdminAuthorsController.DeleteAuthor(id)
-  -> DeleteAuthorCommand(id)
-  -> DeleteAuthorCommandHandler
-  -> IAuthorRepository.GetByIdAsync(id) -> IAuthorRepository.RemoveAsync(author)
-  -> Success or NotFound
+  -> AdminModerationController.DeleteAuthor(id)
+  -> DeleteAuthorsCommand { AdminId, Ids = [id] }
+  -> require IsDeleted and no active Books blocker
+  -> BulkModerationResult with one per-record outcome
+
+HTTP DELETE /api/admin/authors
+  -> AdminModerationController.DeleteAuthors({ ids })
+  -> DeleteAuthorsCommand (maximum 100 ids)
+  -> partial per-record processing; remove only eligible authors
+  -> BulkModerationResult
 ```
 
 ## Development Tips & Common Patterns

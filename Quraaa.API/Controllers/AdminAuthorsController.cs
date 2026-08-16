@@ -1,12 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Quraaa.Application.Features.Authors.Commands.CreateAuthor;
-using Quraaa.Application.Features.Authors.Commands.DeleteAuthor;
 using Quraaa.Application.Features.Authors.Commands.UpdateAuthor;
 using Quraaa.Application.Features.Authors.Common;
 using Quraaa.Application.Features.Authors.Queries.GetAuthorById;
-using Quraaa.Application.Features.Authors.Queries.GetAuthorsPaginated;
-using Quraaa.Application.Shared.Results;
 
 namespace Quraaa.API.Controllers
 {
@@ -29,22 +26,6 @@ namespace Quraaa.API.Controllers
             CancellationToken cancellationToken = default)
         {
             var result = await Mediator.Send(command, cancellationToken);
-            return HandleResult(result);
-        }
-
-        /// <summary>
-        /// Retrieves a paged, searchable list of authors.
-        /// </summary>
-        /// <param name="query">Pagination and search parameters. SearchTerm filters by author name.</param>
-        /// <param name="cancellationToken"></param>
-        /// <response code="200">A paged collection of authors was returned successfully.</response>
-        [HttpGet]
-        [ProducesResponseType(typeof(PagedResult<AuthorResponse>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetAuthors(
-            [FromQuery] GetAuthorsPaginatedQuery query,
-            CancellationToken cancellationToken = default)
-        {
-            var result = await Mediator.Send(query, cancellationToken);
             return HandleResult(result);
         }
 
@@ -91,20 +72,5 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
-        /// <summary>
-        /// Deletes an author.
-        /// </summary>
-        /// <response code="200">The author was deleted successfully.</response>
-        /// <response code="404">No author exists with the given id.</response>
-        [HttpDelete("{id:guid}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> DeleteAuthor(
-            [FromRoute] Guid id,
-            CancellationToken cancellationToken = default)
-        {
-            var result = await Mediator.Send(new DeleteAuthorCommand(id), cancellationToken);
-            return HandleResult(result);
-        }
     }
 }
