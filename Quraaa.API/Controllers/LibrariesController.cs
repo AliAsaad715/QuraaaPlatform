@@ -13,6 +13,7 @@ using Quraaa.Application.Features.Libraries.Commands.UpdateLibraryApprovalStatus
 using Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraries;
+using Quraaa.Application.Features.Libraries.Queries.SearchLibraries;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraryRegistrationContext;
 using Quraaa.Application.Features.Libraries.Queries.GetMyProfile;
@@ -165,6 +166,24 @@ namespace Quraaa.API.Controllers
         public async Task<IActionResult> GetLibraries([FromQuery] GetLibrariesQuery query)
         {
             var result = await Mediator.Send(query);
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Searches for approved libraries by name, returning each match's active listing count.
+        /// </summary>
+        /// <response code="200">A paged collection of matching libraries was returned.</response>
+        /// <response code="400">The pagination or search input is invalid.</response>
+        [AllowAnonymous]
+        [HttpGet("search")]
+        [ProducesResponseType(typeof(PagedResult<LibrarySearchResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> SearchLibraries(
+            [FromQuery] SearchLibrariesRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var query = new SearchLibrariesQuery(request.SearchTerm, request.PageNumber, request.PageSize);
+            var result = await Mediator.Send(query, cancellationToken);
             return HandleResult(result);
         }
 
