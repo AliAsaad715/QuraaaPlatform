@@ -112,17 +112,17 @@ namespace Quraaa.API.Controllers
         }
 
         /// <summary>
-        /// Checks whether an ISBN corresponds to a real, published book via the Google Books API.
+        /// Fetches external book metadata by ISBN via the Google Books API.
         /// </summary>
         /// <remarks>
-        /// Returns <c>true</c> only if Google Books has at least one matching volume for the
-        /// given ISBN. Malformed ISBNs and Google Books API/network failures are treated the
-        /// same as "not found" and also return <c>false</c>.
+        /// Returns book details if found on Google Books. Returns 404 if no matching volume exists
+        /// or if the ISBN is malformed/unreachable.
         /// </remarks>
         [AllowAnonymous]
         [HttpGet("validate-isbn/{isbn}")]
-        [ProducesResponseType(typeof(bool), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(IsbnLookupResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> ValidateIsbn(
             [FromRoute] string isbn,
             CancellationToken cancellationToken = default)

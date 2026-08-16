@@ -1,3 +1,4 @@
+using Quraaa.Application.Features.Authors.Common;
 using Quraaa.Domain.Author;
 
 namespace Quraaa.Application.Features.Authors.Interfaces
@@ -12,6 +13,16 @@ namespace Quraaa.Application.Features.Authors.Interfaces
             int pageNumber,
             int pageSize,
             string? searchTerm,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Searches for distinct authors by name among books currently visible in the
+        /// catalog, reporting how many such books each author has.
+        /// </summary>
+        Task<(IReadOnlyCollection<AuthorSearchResponse> Items, int TotalCount)> SearchAsync(
+            string? searchTerm,
+            int pageNumber,
+            int pageSize,
             CancellationToken cancellationToken = default);
 
         /// <summary>

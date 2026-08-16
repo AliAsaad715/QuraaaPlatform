@@ -184,14 +184,14 @@ namespace Quraaa.Persistence.Repositories
                 };
 
             var ratingStats =
-                from rating in _context.BookRatings.AsNoTracking()
-                where !rating.IsDeleted
-                group rating by rating.BookId into ratingGroup
+                from review in _context.BookReviews.AsNoTracking()
+                where !review.IsDeleted
+                group review by review.BookId into ratingGroup
                 select new
                 {
                     BookId = ratingGroup.Key,
                     RatingCount = (int?)ratingGroup.Count(),
-                    AverageRating = ratingGroup.Average(rating => (double?)rating.RatingValue)
+                    AverageRating = ratingGroup.Average(review => (double?)review.Score)
                 };
 
             var purchaseStats =

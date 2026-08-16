@@ -1,3 +1,4 @@
+using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
 using Quraaa.Domain.Library;
@@ -26,6 +27,16 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
             int pageNumber,
             int pageSize,
             string? searchTerm,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Lightweight, name-only search over approved libraries for mobile
+        /// search/auto-complete, including each library's active listing count.
+        /// </summary>
+        Task<(IReadOnlyCollection<LibrarySearchResponse> Items, int TotalCount)> SearchAsync(
+            string? searchTerm,
+            int pageNumber,
+            int pageSize,
             CancellationToken cancellationToken = default);
         Task<(IReadOnlyCollection<ListingSummaryResponse> Items, int TotalCount)> GetLibraryBooksAsync(
             Guid libraryId,

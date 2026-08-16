@@ -507,51 +507,6 @@ namespace Quraaa.Persistence.Migrations
                     b.ToTable("Categories", (string)null);
                 });
 
-            modelBuilder.Entity("Quraaa.Domain.Comments.CommentAggregate", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("BookId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<DateTime>("CreationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeleationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LastModificationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastModifiedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BookId");
-
-                    b.HasIndex("CreationTime");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("Comments", (string)null);
-                });
-
             modelBuilder.Entity("Quraaa.Domain.Favorites.FavoriteBookAggregate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1723,57 +1678,6 @@ namespace Quraaa.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Quraaa.Domain.Ratings.BookRatingAggregate", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("BookId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeleationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LastModificationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LastModifiedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("RatingValue")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BookId");
-
-                    b.HasIndex("CreationTime");
-
-                    b.HasIndex("RatingValue");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("UserId", "BookId")
-                        .IsUnique();
-
-                    b.ToTable("BookRatings", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_BookRatings_RatingValue_Range", "\"RatingValue\" >= 1 AND \"RatingValue\" <= 5");
-                        });
-                });
-
             modelBuilder.Entity("Quraaa.Domain.Reports.BookReportAggregate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1839,6 +1743,62 @@ namespace Quraaa.Persistence.Migrations
                     b.ToTable("BookReports", null, t =>
                         {
                             t.HasCheckConstraint("CK_BookReports_Review_Consistent", "(\"Status\" = 1 AND \"ReviewedByAdminId\" IS NULL AND \"ReviewedAtUtc\" IS NULL) OR (\"Status\" IN (2, 3, 4) AND \"ReviewedByAdminId\" IS NOT NULL AND \"ReviewedAtUtc\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Quraaa.Domain.Reviews.BookReviewAggregate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeleationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookId");
+
+                    b.HasIndex("CreationTime");
+
+                    b.HasIndex("Score");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "BookId")
+                        .IsUnique();
+
+                    b.ToTable("BookReviews", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_BookReviews_Score_Range", "\"Score\" >= 1 AND \"Score\" <= 5");
                         });
                 });
 
@@ -2282,21 +2242,6 @@ namespace Quraaa.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
-            modelBuilder.Entity("Quraaa.Domain.Comments.CommentAggregate", b =>
-                {
-                    b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("BookId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Quraaa.Domain.User.UserAggregate", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Quraaa.Domain.Favorites.FavoriteBookAggregate", b =>
                 {
                     b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
@@ -2470,7 +2415,7 @@ namespace Quraaa.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Quraaa.Domain.Ratings.BookRatingAggregate", b =>
+            modelBuilder.Entity("Quraaa.Domain.Reports.BookReportAggregate", b =>
                 {
                     b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
                         .WithMany()
@@ -2485,7 +2430,7 @@ namespace Quraaa.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Quraaa.Domain.Reports.BookReportAggregate", b =>
+            modelBuilder.Entity("Quraaa.Domain.Reviews.BookReviewAggregate", b =>
                 {
                     b.HasOne("Quraaa.Domain.Catalog.BookAggregate", null)
                         .WithMany()

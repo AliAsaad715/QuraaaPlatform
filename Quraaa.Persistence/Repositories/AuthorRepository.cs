@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Quraaa.Application.Features.Authors.Common;
 using Quraaa.Application.Features.Authors.Interfaces;
+using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Shared.Exceptions;
@@ -11,10 +13,12 @@ namespace Quraaa.Persistence.Repositories
     public class AuthorRepository : IAuthorRepository
     {
         private readonly ApplicationDbContext _context;
+        private readonly IImageUrlFormatter _imageUrlFormatter;
 
-        public AuthorRepository(ApplicationDbContext context)
+        public AuthorRepository(ApplicationDbContext context, IImageUrlFormatter imageUrlFormatter)
         {
             _context = context;
+            _imageUrlFormatter = imageUrlFormatter;
         }
 
         public async Task<AuthorAggregate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -52,6 +56,41 @@ namespace Quraaa.Persistence.Repositories
                 .OrderBy(a => a.Name)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            return (items, totalCount);
+        }
+
+        public async Task<(IReadOnlyCollection<AuthorSearchResponse> Items, int TotalCount)> SearchAsync(
+            string? searchTerm,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken = default)
+        {
+            var joined =
+                from book in _context.Books.AsNoTracking()
+                where !book.IsDeleted && book.AuthorId != null
+                join author in _context.Authors.AsNoTracking()
+                    on book.AuthorId equals author.Id
+                select author;
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                var normalized = searchTerm.Trim();
+                joined = joined.Where(author => EF.Functions.ILike(author.Name, $"%{normalized}%"));
+            }
+
+            var grouped = joined
+                .GroupBy(author => new { author.Id, author.Name, author.PhotoUrl })
+                .Select(g => new { g.Key.Id, g.Key.Name, g.Key.PhotoUrl, TotalBooksCount = g.Count() });
+
+            var totalCount = await grouped.CountAsync(cancellationToken);
+
+            var items = await grouped
+                .OrderBy(a => a.Name)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(a => new AuthorSearchResponse(a.Id, a.Name, _imageUrlFormatter.Format(a.PhotoUrl), a.TotalBooksCount))
                 .ToListAsync(cancellationToken);
 
             return (items, totalCount);

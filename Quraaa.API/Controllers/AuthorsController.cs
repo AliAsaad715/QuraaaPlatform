@@ -4,6 +4,7 @@ using Quraaa.API.Requests.Authors;
 using Quraaa.Application.Features.Authors.Common;
 using Quraaa.Application.Features.Authors.Queries.GetAuthorBooks;
 using Quraaa.Application.Features.Authors.Queries.GetPublicAuthorDetails;
+using Quraaa.Application.Features.Authors.Queries.SearchAuthors;
 using Quraaa.Application.Features.Books.Common;
 using Quraaa.Application.Shared.Results;
 
@@ -64,6 +65,24 @@ namespace Quraaa.API.Controllers
                 request.SearchTerm,
                 request.SortBy);
 
+            var result = await Mediator.Send(query, cancellationToken);
+            return HandleResult(result);
+        }
+
+        /// <summary>
+        /// Searches for distinct authors by name, returning each match's total book count.
+        /// </summary>
+        /// <response code="200">A paged collection of matching authors was returned.</response>
+        /// <response code="400">The pagination or search input is invalid.</response>
+        [AllowAnonymous]
+        [HttpGet("search")]
+        [ProducesResponseType(typeof(PagedResult<AuthorSearchResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> SearchAuthors(
+            [FromQuery] SearchAuthorsRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var query = new SearchAuthorsQuery(request.SearchTerm, request.PageNumber, request.PageSize);
             var result = await Mediator.Send(query, cancellationToken);
             return HandleResult(result);
         }

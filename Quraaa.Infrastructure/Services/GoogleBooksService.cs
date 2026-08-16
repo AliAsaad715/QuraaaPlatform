@@ -40,7 +40,8 @@ namespace Quraaa.Infrastructure.Services
                     ThumbnailUrl: volumeInfo.ImageLinks?.Thumbnail?.Replace("http://", "https://") ?? string.Empty,
                     Publisher: volumeInfo.Publisher ?? string.Empty,
                     PublishedDate: volumeInfo.PublishedDate ?? string.Empty,
-                    Language: volumeInfo.Language ?? string.Empty
+                    Language: volumeInfo.Language ?? string.Empty,
+                    PageCount: volumeInfo.PageCount
                 );
             }
             catch (Exception)

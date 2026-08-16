@@ -17,7 +17,8 @@ namespace Quraaa.Infrastructure.Models
         [property: JsonPropertyName("publishedDate")] string? PublishedDate,
         [property: JsonPropertyName("description")] string? Description,
         [property: JsonPropertyName("imageLinks")] ImageLinks? ImageLinks,
-        [property: JsonPropertyName("language")] string? Language
+        [property: JsonPropertyName("language")] string? Language,
+        [property: JsonPropertyName("pageCount")] int? PageCount
     );
 
     public record ImageLinks(

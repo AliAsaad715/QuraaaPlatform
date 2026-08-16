@@ -116,6 +116,55 @@ namespace Quraaa.Persistence.Repositories
             return (items, totalCount);
         }
 
+        public async Task<(IReadOnlyCollection<LibrarySearchResponse> Items, int TotalCount)> SearchAsync(
+            string? searchTerm,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken = default)
+        {
+            var query = _context.Libraries
+                .AsNoTracking()
+                .Where(l => l.ApprovalStatus == LibraryApprovalStatus.Approved);
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                var normalized = searchTerm.Trim();
+                query = query.Where(l => EF.Functions.ILike(l.LibraryName, $"%{normalized}%"));
+            }
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            // Materialize first, then project to the response DTO in memory —
+            // IImageUrlFormatter.Format can't be translated into SQL.
+            var rows = await query
+                .OrderBy(l => l.LibraryName)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(l => new
+                {
+                    l.Id,
+                    l.LibraryName,
+                    l.LibraryImage,
+                    l.Location,
+                    ActiveListingsCount = _context.Listings.Count(listing =>
+                        listing.LibraryId == l.Id
+                        && listing.Status == ListingStatus.Active
+                        && !listing.IsDeleted)
+                })
+                .ToListAsync(cancellationToken);
+
+            var items = rows
+                .Select(r => new LibrarySearchResponse(
+                    r.Id,
+                    r.LibraryName,
+                    _imageUrlFormatter.Format(r.LibraryImage),
+                    r.Location,
+                    r.ActiveListingsCount))
+                .ToList();
+
+            return (items, totalCount);
+        }
+
         public async Task<(IReadOnlyCollection<ListingSummaryResponse> Items, int TotalCount)> GetLibraryBooksAsync(
             Guid libraryId,
             int pageNumber,
