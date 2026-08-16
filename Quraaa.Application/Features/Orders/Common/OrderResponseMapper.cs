@@ -1,8 +1,6 @@
 using Quraaa.Application.Shared.Services;
-using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Domain.Orders;
 using Quraaa.Domain.Orders.Entities;
-using Quraaa.Domain.Orders.Enums;
 
 namespace Quraaa.Application.Features.Orders.Common
 {
@@ -29,10 +27,7 @@ namespace Quraaa.Application.Features.Orders.Common
                     item.Quantity,
                     ToMajorUnits(item.UnitPriceMinor),
                     ToMajorUnits(item.TotalPriceMinor),
-                    item.FulfillmentStatus,
-                    order.PaymentStatus == PaymentStatus.Paid
-                        && item.Format == ListingFormat.Digital
-                        && !string.IsNullOrWhiteSpace(item.DigitalAssetUrlSnapshot)))
+                    item.FulfillmentStatus))
                 .ToList();
 
             var shippingLocation =

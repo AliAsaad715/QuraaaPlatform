@@ -95,7 +95,7 @@ JWT access token + opaque 64-byte refresh token stored only as a SHA-256 hash. E
 
 ### Files and storage
 
-`IUploadedFile` ([Quraaa.Application/Shared/Files/](Quraaa.Application/Shared/Files/)) keeps `IFormFile` out of the Application layer; the API adapter is `FormFileUploadedFile`. Images go through `IImageStorageService` → `CloudinaryImageStorageService`; PDFs/Word through `IFileStorageService` → `CloudinaryFileStorageService`. **Never write durable uploads to `wwwroot` or the local filesystem** — the deploy target has an ephemeral disk. Ebook storage paths are omitted from public responses; paid buyers download only via authenticated routes that proxy short-lived Cloudinary URLs.
+`IUploadedFile` ([Quraaa.Application/Shared/Files/](Quraaa.Application/Shared/Files/)) keeps `IFormFile` out of the Application layer; the API adapter is `FormFileUploadedFile`. Images go through `IImageStorageService` → `CloudinaryImageStorageService`; PDFs/Word through `IFileStorageService` → `CloudinaryFileStorageService`. **Never write durable uploads to `wwwroot` or the local filesystem** — the deploy target has an ephemeral disk. Ebook storage paths are omitted from public responses; paid buyers read through the authenticated inline purchase-stream route, and no attachment-download route is exposed.
 
 ### Seller payouts (Stripe Connect)
 

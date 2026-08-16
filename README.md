@@ -52,7 +52,7 @@ The solution uses a Clean Architecture / vertical-slice structure with ASP.NET C
 - Order-first checkout: the order, cart lock, stock reservations, and payment attempt are persisted before Stripe is called.
 - Stripe Checkout session creation, signed webhook processing, event idempotency, and expired-payment reconciliation.
 - Buyer order listing, detail, shipping-location update, checkout recovery, cancellation, and archive operations.
-- Paid ebook authorization and download.
+- Paid ebook authorization and in-app streaming, without an attachment-download endpoint.
 - Seller queues and physical-item processing / fulfillment transitions.
 - Buy and sell history.
 
@@ -359,13 +359,13 @@ Cloudinary folders are `quraa/libraries/logos`, `quraa/libraries/headers`, `qura
 | `POST`   | `/api/orders/{orderId}/checkout-session`                      | `User`                   | Recover or create a checkout session for an eligible order.            |
 | `POST`   | `/api/orders/{orderId}/cancel`                                | `User`                   | Cancel an eligible order, optionally with a reason.                    |
 | `DELETE` | `/api/orders/{orderId}`                                       | `User`                   | Archive an eligible order from buyer history.                          |
-| `GET`    | `/api/orders/{orderId}/items/{orderItemId}/download`          | `User`                   | Stream a purchased PDF after buyer and paid-order checks.              |
 | `POST`   | `/api/payments/stripe/webhook`                                | Signed Stripe event      | Process supported Checkout Session events idempotently.                |
 | `GET`    | `/api/seller/orders`                                          | `User` or `LibraryOwner` | Page paid physical order items sold by the caller.                     |
 | `POST`   | `/api/seller/orders/{orderId}/items/{orderItemId}/processing` | `User` or `LibraryOwner` | Move an owned physical item to processing.                             |
 | `POST`   | `/api/seller/orders/{orderId}/items/{orderItemId}/fulfilled`  | `User` or `LibraryOwner` | Mark an owned physical item fulfilled.                                 |
 | `GET`    | `/api/purchases/me/buy-history`                               | `User`                   | Page the current user's purchase history.                              |
 | `GET`    | `/api/purchases/me/sell-history`                              | `User`                   | Page the current user's sale history.                                  |
+| `GET`    | `/api/purchases/{purchaseId}/stream`                          | `User`                   | Stream an owned digital purchase inline for the in-app reader.         |
 
 `GET /api/orders/checkout-context` inspects the current open cart before order creation. Physical-only and mixed carts return `requiresShippingLocation: true`, the user's saved locations with the default first, and `selectedShippingLocationId` set to that default. Each option contains `id`, `name`, optional `address`, `latitude`, `longitude`, and `isDefault`. When no default exists the selected ID is `null`, so the client must ask the user to add or choose a saved location before checkout. A missing/empty cart or a digital-only cart returns `requiresShippingLocation: false`, `selectedShippingLocationId: null`, and an empty location list. A cart already locked by a pending order returns `409 Conflict` instead of starting another checkout flow.
 
@@ -406,11 +406,11 @@ Clients must replace both stored tokens after every successful refresh. Do not r
 
 Treat the verified Stripe webhook and authoritative Stripe reconciliation result as payment truth; a browser success redirect is not proof of payment.
 
-### Ebook storage and download
+### Ebook storage and in-app streaming
 
 The seeded ebook uses the legacy logical path `books/book1.pdf` and packaged file `Quraaa.API/storage/books/book1.pdf`; it is not a runtime upload. Existing pre-migration local paths remain readable as a compatibility fallback.
 
-Newly uploaded PDFs and Word documents are durable authenticated Cloudinary raw assets and therefore survive Heroku dyno replacement. Paid-download and purchase-stream routes first verify the user/order/purchase, generate a five-minute signed provider URL internally, and proxy the bytes with range and conditional-request support. Clients never receive a permanent public book URL. Existing local files are not uploaded automatically, and a file already lost from an old Heroku dyno cannot be recovered by this change.
+Newly uploaded PDFs and Word documents are durable authenticated Cloudinary raw assets and therefore survive Heroku dyno replacement. `GET /api/purchases/{purchaseId}/stream` first verifies purchase ownership, generates a five-minute signed provider URL internally, and proxies the bytes inline with range and conditional-request support. The API exposes no order-item attachment-download route, and clients never receive a permanent public book URL. Existing local files are not uploaded automatically, and a file already lost from an old Heroku dyno cannot be recovered by this change.
 
 ### OTP delivery
 
@@ -436,7 +436,7 @@ On a fresh development database, demo seed behavior includes:
 - Physical/digital and library/user listings across active, sold, removed, and out-of-stock states.
 - Favorites, ratings, Arabic/English comments, reports, and visible/hidden moderation examples.
 - Active/pending/paid carts; pending, failed, cancelled, expired, processing, and completed orders; purchases and terminal payout history.
-- A paid digital purchase backed by `Quraaa.API/storage/books/book1.pdf` for download and AI authorization demos.
+- A paid digital purchase backed by `Quraaa.API/storage/books/book1.pdf` for in-app streaming and AI authorization demos.
 
 The full credentials, stable IDs, state matrix, and interview walkthrough are in
 [`docs/INTERVIEW_DEMO_DATA.md`](docs/INTERVIEW_DEMO_DATA.md). Development
@@ -503,7 +503,7 @@ Before deploying publicly:
 
 - Store PostgreSQL, JWT, Cloudinary, Stripe, Firebase, Redis, admin, and Google API credentials in the platform's secret store; never commit `.env` or service-account JSON files.
 - Add and verify a `.dockerignore` before building with secrets in the working tree. The current repository has no `.dockerignore`, and `COPY . .` sends the full build context to Docker.
-- Keep Cloudinary document uploads as authenticated raw assets and enable PDF delivery in the Cloudinary Security settings. The API proxies short-lived signed downloads only after purchase authorization.
+- Keep Cloudinary document uploads as authenticated raw assets and enable PDF delivery in the Cloudinary Security settings. The API proxies a short-lived signed source inline only after purchase authorization.
 - Configure Redis for durable, shared OTP and revocation state, and override `Otp__AllowInMemoryCacheInProduction=false`. The committed base appsettings currently set it to `true`, so production otherwise falls back to process-local memory when Redis is unavailable.
 - Set `Notifications__AllowTestEndpoint=false`. The committed appsettings currently enable it.
 - Decide whether Swagger UI and OpenAPI should remain public; they are currently mapped in every environment.

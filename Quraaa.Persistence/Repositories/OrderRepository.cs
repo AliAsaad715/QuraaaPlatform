@@ -53,18 +53,6 @@ namespace Quraaa.Persistence.Repositories
                     cancellationToken);
         }
 
-        public Task<OrderAggregate?> GetByIdForBuyerIncludingArchivedAsync(
-            Guid orderId,
-            Guid buyerUserId,
-            CancellationToken cancellationToken = default)
-        {
-            return AggregateQuery()
-                .FirstOrDefaultAsync(
-                    order => order.Id == orderId
-                        && order.BuyerUserId == buyerUserId,
-                    cancellationToken);
-        }
-
         public Task<OrderAggregate?> GetByIdForSellerAsync(
             Guid orderId,
             Guid orderItemId,

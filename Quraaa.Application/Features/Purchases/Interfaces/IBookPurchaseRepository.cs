@@ -17,7 +17,7 @@ namespace Quraaa.Application.Features.Purchases.Interfaces
         /// </summary>
         Task<bool> HasUserPurchasedBookAsync(Guid userId, Guid bookId, CancellationToken cancellationToken = default);
 
-        /// <summary>Owner and digital-asset snapshot for a single purchase, used to authorize downloads.</summary>
+        /// <summary>Owner and digital-asset snapshot for a single purchase, used to authorize inline streaming.</summary>
         Task<PurchaseDigitalAssetInfo?> GetDigitalAssetInfoAsync(
             Guid purchaseId,
             CancellationToken cancellationToken = default);

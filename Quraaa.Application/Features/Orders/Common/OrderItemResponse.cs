@@ -18,6 +18,5 @@ namespace Quraaa.Application.Features.Orders.Common
         int Quantity,
         decimal UnitPrice,
         decimal LineTotal,
-        OrderItemFulfillmentStatus FulfillmentStatus,
-        bool IsDownloadAvailable);
+        OrderItemFulfillmentStatus FulfillmentStatus);
 }

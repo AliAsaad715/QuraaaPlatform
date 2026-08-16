@@ -19,11 +19,6 @@ namespace Quraaa.Application.Features.Orders.Interfaces
             Guid buyerUserId,
             CancellationToken cancellationToken = default);
 
-        Task<OrderAggregate?> GetByIdForBuyerIncludingArchivedAsync(
-            Guid orderId,
-            Guid buyerUserId,
-            CancellationToken cancellationToken = default);
-
         Task<OrderAggregate?> GetByIdForSellerAsync(
             Guid orderId,
             Guid orderItemId,

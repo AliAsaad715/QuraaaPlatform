@@ -66,7 +66,7 @@ All 102 library-owner phone identities use `User@12345`. Their phones follow
 | Engagement | 10 favorites, 12 ratings, 12 Arabic/English comments, and enough purchase facts for recommendations and popularity ranking                                          |
 | Moderation | `Pending`, `InReview`, `Resolved`, and `Rejected` reports; one flagged-visible book and one hidden-for-review book listed by two libraries                          |
 | Commerce   | Seven orders covering pending checkout, failed payment, buyer cancellation, expiry, paid processing, completed digital, and completed mixed orders                  |
-| History    | Order-linked purchase snapshots plus historical purchases for buy history, rating eligibility, popular books, private ebook download, and AI purchase authorization |
+| History    | Order-linked purchase snapshots plus historical purchases for buy history, rating eligibility, popular books, private ebook streaming, and AI purchase authorization |
 | Payouts    | Safe terminal examples: one `Paid`, one `Failed`, and one `NoAmountDue` payout                                                                                      |
 
 The exact totals can be higher on a previously populated database because the
@@ -80,12 +80,12 @@ the demo listing and order identifiers remain deterministic.
 
 | Record               | ID                                     | What it demonstrates                                                |
 | -------------------- | -------------------------------------- | ------------------------------------------------------------------- |
-| `Dune`               | `77777777-7777-7777-7777-777777777705` | Popular digital/physical book, comments, ratings, purchase/download |
+| `Dune`               | `77777777-7777-7777-7777-777777777705` | Popular digital/physical book, comments, ratings, purchase/streaming |
 | `Clean Code`         | `77777777-7777-7777-7777-777777777704` | Two competing libraries and version history                         |
 | `ثلاثية غرناطة`      | `77777777-7777-7777-7777-777777777701` | Arabic discovery, reviews, and completed physical fulfillment       |
 | Flagged book         | `77777777-7777-7777-7777-777777777708` | Visible book with a pending report                                  |
 | Hidden book          | `77777777-7777-7777-7777-777777777709` | Global catalog filtering and the admin/library moderation queues    |
-| Dune digital listing | `88888888-8888-8888-8888-888888888804` | Packaged `books/book1.pdf` purchase and download                    |
+| Dune digital listing | `88888888-8888-8888-8888-888888888804` | Packaged `books/book1.pdf` purchase and in-app streaming            |
 | User-sold listing    | `88888888-8888-8888-8888-888888888809` | Sold stock and a paid item in the seller processing queue           |
 
 The seven order stories use the visible order numbers `DEMO-1001` through
@@ -105,9 +105,9 @@ sale, pending checkout, failed payment, cancelled, and expired.
 4. Show the main buyer's active cart with `GET /api/cart/me`, then buyer order
    states through `GET /api/orders/me` and purchase history through
    `GET /api/purchases/me/buy-history`.
-5. Use the completed digital order's download route to explain why a Stripe
-   redirect is not payment proof and why the purchase stores an immutable file
-   snapshot.
+5. Use the completed digital purchase's `GET /api/purchases/{purchaseId}/stream`
+   route to explain why a Stripe redirect is not payment proof and why the
+   purchase stores an immutable file snapshot.
 6. Log in as the user seller and call `GET /api/seller/orders` plus
    `GET /api/purchases/me/sell-history` to show the paid physical item.
 7. Log in to the first library dashboard and show its inventory, wallet, payout
@@ -127,4 +127,4 @@ route. Every seeded payout is terminal, and all listing-publication domain
 events are cleared before persistence.
 
 The private demo file is `Quraaa.API/storage/books/book1.pdf`. Keep it in place
-to demonstrate authorized streaming/download routes.
+to demonstrate the authorized in-app streaming route.

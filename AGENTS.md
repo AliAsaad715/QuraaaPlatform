@@ -37,10 +37,11 @@ Current implemented business capabilities:
 - User cart retrieval/mutation through `/api/cart`, with one open cart per user, Stripe-compatible line/quantity limits, and cumulative physical-stock validation.
 - Authenticated checkout context through `GET /api/orders/checkout-context`; physical and mixed carts return default-first owned saved-location choices, while empty and digital-only carts require no shipping location.
 - Order-driven Stripe Checkout through `POST /api/orders`: the order, cart lock, physical-stock reservations, and payment attempt are persisted before Stripe is called.
-- Buyer order listing/detail, shipping update, checkout recovery, cancellation, archive, and paid-ebook download through `/api/orders`.
+- Buyer order listing/detail, shipping update, checkout recovery, cancellation, and archive through `/api/orders`.
 - Seller paid-physical-item queues and processing/fulfillment transitions through `/api/seller/orders`.
 - Stripe webhook processing through `POST /api/payments/stripe/webhook`; paid events and authoritative expired-attempt reconciliation share order/cart/purchase finalization, while confirmed failure/expiry paths release reservations and reopen the cart.
 - Authenticated user buy/sell history through `/api/purchases/me/buy-history` and `/api/purchases/me/sell-history`.
+- Paid ebook reading through authenticated inline streaming at `GET /api/purchases/{purchaseId}/stream`; no order-item attachment-download route is exposed.
 - Category management through `GET /api/categories`, `GET /api/categories/{categoryId}`, and `POST /api/categories` (admin-only).
 - Admin-only author creation/detail/update plus paged moderation, activation/reactivation, and guarded single/bulk permanent deletion through `/api/admin/authors`.
 - Public author profiles and paginated available works through `GET /api/authors/{authorId}` and `GET /api/authors/{authorId}/books`.
@@ -559,7 +560,7 @@ OTP cache configuration:
 
 `OTP_DEVICE_TOKEN` is the FCM registration token for the secondary Android SMS gateway app that has SMS permission. It is server-side configuration and is not accepted in the `POST /api/otp/send` request body.
 
-Cloudinary configuration is validated at startup. Library logos, library headers, and bulk-uploaded book covers are public image assets under `quraa/libraries/logos`, `quraa/libraries/headers`, and `quraa/books/covers`; the existing database columns store their absolute HTTPS delivery URLs. Newly uploaded PDFs and Word documents are authenticated `raw` assets under `quraa/books/files/pdf` and `quraa/books/files/docs`. Document columns store opaque `cloudinary://raw/authenticated/...` references, never public/signed URLs. Authorized download routes generate short-lived signed URLs internally and proxy the bytes, including range requests. `CLOUDINARY_PRIVATE_DOWNLOAD_TTL_SECONDS` defaults to `300` and must be 60–900. Existing `books/...` and legacy `uploads/books/...` records remain readable from the packaged private root, but new document writes never use the dyno filesystem.
+Cloudinary configuration is validated at startup. Library logos, library headers, and bulk-uploaded book covers are public image assets under `quraa/libraries/logos`, `quraa/libraries/headers`, and `quraa/books/covers`; the existing database columns store their absolute HTTPS delivery URLs. Newly uploaded PDFs and Word documents are authenticated `raw` assets under `quraa/books/files/pdf` and `quraa/books/files/docs`. Document columns store opaque `cloudinary://raw/authenticated/...` references, never public/signed URLs. The authenticated purchase-stream route generates a short-lived signed URL internally and proxies the bytes inline, including range requests. `CLOUDINARY_PRIVATE_DOWNLOAD_TTL_SECONDS` defaults to `300` and must be 60–900. Existing `books/...` and legacy `uploads/books/...` records remain readable from the packaged private root, but new document writes never use the dyno filesystem.
 
 Stripe/Google Books notes:
 
@@ -753,7 +754,7 @@ The JWT `NameClaimType` is set to `ClaimTypes.NameIdentifier` during authenticat
 - Admin login requires valid admin credentials followed by a six-digit OTP. Credential attempts, OTP sends, and OTP verification are rate-limited by phone and client IP.
 - Library-owner login only resolves approved libraries by normalized library email and locks credential attempts by email/client IP after repeated failures.
 - The Stripe webhook is anonymous by design but authenticates the payload with the `Stripe-Signature` header and configured webhook secret. Do not expose a webhook secret or process unsigned payloads.
-- Ebook storage references are omitted from public ebook responses. `/uploads/books/*.pdf` is blocked, and paid buyers receive files only through authenticated download/stream routes that proxy short-lived Cloudinary access or serve a validated legacy local file.
+- Ebook storage references are omitted from public ebook responses. `/uploads/books/*.pdf` is blocked, and paid buyers receive ebook bytes only through the authenticated inline purchase-stream route, which proxies short-lived Cloudinary access or serves a validated legacy local file.
 - Firebase service-account credentials and `.env` secrets must never be committed.
 - Cloudinary API credentials and signed private-download URLs remain server-side. New images use `IImageStorageService`; new PDFs/Word files use `IFileStorageService`; neither may write durable uploads to `wwwroot` or the dyno filesystem.
 - `Notifications:AllowTestEndpoint` is enabled in `appsettings.json` and `appsettings.Development.json`. Disable it in production unless you intend to allow unauthenticated test notification dispatch.
@@ -890,8 +891,6 @@ PUT    /api/orders/{orderId}/shipping-location    User
 POST   /api/orders/{orderId}/checkout-session     User
 POST   /api/orders/{orderId}/cancel               User
 DELETE /api/orders/{orderId}                      User
-GET    /api/orders/{orderId}/items/{orderItemId}/download  User; paid digital item only
-
 GET    /api/seller/orders                         User or LibraryOwner
 POST   /api/seller/orders/{orderId}/items/{orderItemId}/processing  User or LibraryOwner
 POST   /api/seller/orders/{orderId}/items/{orderItemId}/fulfilled   User or LibraryOwner
@@ -900,6 +899,7 @@ POST   /api/payments/stripe/webhook               anonymous (Stripe signature)
 
 GET    /api/purchases/me/buy-history              User
 GET    /api/purchases/me/sell-history             User
+GET    /api/purchases/{purchaseId}/stream         User; owned digital purchase only
 
 GET    /api/categories                            anonymous by controller configuration
 GET    /api/categories/{categoryId}               anonymous by controller configuration
@@ -1282,7 +1282,7 @@ POST /api/listings/me/physical
 }
 ```
 
-The public response intentionally omits the digital asset path. A buyer can download a purchased ebook only from `GET /api/orders/{orderId}/items/{orderItemId}/download` after the order is paid.
+The public response intentionally omits the digital asset path. Paid ebooks are available only as an authenticated inline stream through `GET /api/purchases/{purchaseId}/stream`; there is no order-item attachment-download route.
 
 User physical listing creation uses the same local-then-Google ISBN resolution and rejects duplicate user/book listings. It creates one-unit `PendingReview` listings. `GET /api/listings/me` returns only the caller's active user listings, can search title/author/language, and sorts by `title`, `author`, or `quantity`. The current request DTO omits page fields even though the query inherits `PaginationRequestDTO`, so this route currently always returns page `1`, size `10`.
 
@@ -1341,10 +1341,9 @@ PUT    /api/orders/{orderId}/shipping-location
 POST   /api/orders/{orderId}/checkout-session
 POST   /api/orders/{orderId}/cancel
 DELETE /api/orders/{orderId}
-GET    /api/orders/{orderId}/items/{orderItemId}/download
 ```
 
-Shipping can change only while the order is unpaid. A new client changes it by sending an owned `shippingLocationId`; legacy raw coordinates remain accepted only during migration. Checkout-session creation resumes or attaches the active idempotent attempt. Cancelling an unpaid pending order expires any attached Stripe session, releases its physical-stock reservations, and reopens the cart. Only terminal orders can be archived. A paid buyer can download their own digital order item as a private PDF; the public ebook listing never exposes its storage path.
+Shipping can change only while the order is unpaid. A new client changes it by sending an owned `shippingLocationId`; legacy raw coordinates remain accepted only during migration. Checkout-session creation resumes or attaches the active idempotent attempt. Cancelling an unpaid pending order expires any attached Stripe session, releases its physical-stock reservations, and reopens the cart. Only terminal orders can be archived. Order responses expose neither a digital storage path nor a download-availability flag; paid ebook reading uses the separately authorized purchase stream.
 
 `POST /api/payments/stripe/webhook` verifies `Stripe-Signature`, provider mode, order/payment-attempt correlation, session, amount, currency, and payment intent. A durable `ProcessedPaymentEvent` inbox makes provider events idempotent. Paid `checkout.session.completed` and `checkout.session.async_payment_succeeded` events use the shared order-payment finalizer to mark the order/cart paid and create order-linked `BookPurchaseAggregate` rows; physical stock is not decremented again because it was reserved before Stripe. `checkout.session.async_payment_failed` and `checkout.session.expired` release reserved stock and reopen the cart. A hosted reconciler runs every minute and, after a two-minute webhook grace period, reconciles expired pending attempts. For a local `Created` attempt, it replays the exact persisted Checkout request with `checkout:{attempt.Id:N}`, attaches any recovered Session, retrieves Stripe's authoritative state, and invokes the same paid finalizer when a paid webhook was missed. Inventory is released only after Stripe confirms an unpaid expired Session or, within a conservative 23-hour idempotency-retention window, the replay proves no Session was created; older unattached attempts require manual reconciliation. A complete-but-unpaid asynchronous payment remains pending, and the reconciler keyset-scans each fixed-cutoff candidate set so removed rows cannot shift later work and deferred attempts are retried on the next scan.
 
@@ -2181,7 +2180,7 @@ Seeded ebook details:
 - The seeded listing uses the private logical path `DigitalAssetUrl = "books/book1.pdf"`.
 - Store the PDF at `Quraaa.API/storage/books/book1.pdf`; the project copies `storage/books/**` into build and publish output.
 - Public `/uploads/books/*.pdf` requests are blocked, and `EbookResponse` omits `DigitalAssetUrl`.
-- A paid buyer receives the PDF only through `GET /api/orders/{orderId}/items/{orderItemId}/download`, which verifies buyer/order/item access and then proxies a short-lived signed Cloudinary source or resolves a contained legacy file under `storage/books`.
+- A paid buyer reads the PDF through `GET /api/purchases/{purchaseId}/stream`, which verifies purchase ownership and then proxies a short-lived signed Cloudinary source inline or resolves a contained legacy file under `storage/books`. No attachment-download route is exposed.
 
 Flow:
 
@@ -2358,11 +2357,11 @@ seller fulfillment
   -> Pending -> Processing -> Fulfilled
   -> complete the order when every item is fulfilled
 
-paid ebook delivery
-  -> buyer/order/item authorization
-  -> require paid digital item with a private storage-reference snapshot
+paid ebook in-app streaming
+  -> buyer/purchase authorization
+  -> require an owned purchase with a private storage-reference snapshot
   -> resolve an owned authenticated Cloudinary raw asset or contained legacy storage/books file
-  -> proxy/stream a private no-store PDF response with range support
+  -> proxy an inline private PDF response with range and conditional-request support
 
 buy/sell history
   -> JWT UserId

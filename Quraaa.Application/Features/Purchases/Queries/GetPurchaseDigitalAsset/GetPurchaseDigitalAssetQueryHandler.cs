@@ -47,7 +47,7 @@ namespace Quraaa.Application.Features.Purchases.Queries.GetPurchaseDigitalAsset
 
             if (string.IsNullOrWhiteSpace(info.PurchasedDigitalAssetUrl))
             {
-                throw new DomainException("This purchase does not include a digital download.");
+                throw new DomainException("This purchase does not include a readable digital asset.");
             }
 
             var descriptor = await _fileAccessService.PrepareDownloadAsync(

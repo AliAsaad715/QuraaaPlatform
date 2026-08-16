@@ -2,14 +2,12 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Quraaa.API.Requests.Orders;
-using Quraaa.API.Results;
 using Quraaa.Application.Features.Orders.Commands.ArchiveOrder;
 using Quraaa.Application.Features.Orders.Commands.CancelOrder;
 using Quraaa.Application.Features.Orders.Commands.CreateOrder;
 using Quraaa.Application.Features.Orders.Commands.CreateOrderCheckoutSession;
 using Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocation;
 using Quraaa.Application.Features.Orders.Common;
-using Quraaa.Application.Features.Orders.Queries.GetDigitalOrderItemDownload;
 using Quraaa.Application.Features.Orders.Queries.GetMyOrders;
 using Quraaa.Application.Features.Orders.Queries.GetOrderCheckoutContext;
 using Quraaa.Application.Features.Orders.Queries.GetOrderById;
@@ -191,35 +189,6 @@ namespace Quraaa.API.Controllers
                 cancellationToken);
 
             return HandleResult(result);
-        }
-
-        [HttpGet("{orderId:guid}/items/{orderItemId:guid}/download")]
-        [Produces("application/pdf")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status502BadGateway)]
-        public async Task<IActionResult> GetDigitalItemDownload(
-            [FromRoute] Guid orderId,
-            [FromRoute] Guid orderItemId,
-            CancellationToken cancellationToken)
-        {
-            if (!TryGetCurrentUserId(out var userId))
-            {
-                return InvalidUserIdResult();
-            }
-
-            var result = await Mediator.Send(
-                new GetDigitalOrderItemDownloadQuery(userId, orderId, orderItemId),
-                cancellationToken);
-
-            return HandleResult(result, CreateDigitalFileResult);
-        }
-
-        private IActionResult CreateDigitalFileResult(DigitalOrderItemDownloadResponse download)
-        {
-            return new PrivateStoredFileResult(
-                download.File,
-                asAttachment: true,
-                cacheControl: "private, no-store");
         }
     }
 }
