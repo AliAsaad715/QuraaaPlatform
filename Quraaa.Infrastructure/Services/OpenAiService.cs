@@ -16,6 +16,15 @@ namespace Quraaa.Infrastructure.Services
     {
         private readonly HttpClient _httpClient;
         private readonly string _model;
+
+        /// <summary>
+        /// Reasoning models spend part of the output budget on internal thinking
+        /// before writing anything, so a small budget yields a few words or an
+        /// empty answer. Configure OpenAi:ReasoningEffort ("none"/"minimal"/"low")
+        /// to stop that; left empty the field is omitted, which keeps the request
+        /// valid for providers that reject it.
+        /// </summary>
+        private readonly string? _reasoningEffort;
         private readonly ILogger<OpenAiService> _logger;
 
         public OpenAiService(HttpClient httpClient, IConfiguration configuration, ILogger<OpenAiService> logger)
@@ -26,6 +35,12 @@ namespace Quraaa.Infrastructure.Services
             // config without a redeploy. GPT-5.6 Luna is a comparable,
             // slightly newer alternative at the same cost tier if preferred.
             _model = configuration["OpenAi:Model"] ?? configuration["OpenAi__Model"] ?? "gpt-5.4-mini";
+
+            var reasoningEffort = configuration["OpenAi:ReasoningEffort"]
+                ?? configuration["OpenAi__ReasoningEffort"];
+            _reasoningEffort = string.IsNullOrWhiteSpace(reasoningEffort)
+                ? null
+                : reasoningEffort.Trim();
             var apiKey = configuration["OpenAi:ApiKey"] ?? configuration["OpenAi__ApiKey"] ?? string.Empty;
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         }
@@ -41,7 +56,8 @@ namespace Quraaa.Infrastructure.Services
                     new ChatMessage("user", userMessage)
                 ],
                 MaxTokens: maxTokens,
-                Temperature: 0.3);
+                Temperature: 0.3,
+                ReasoningEffort: _reasoningEffort);
 
             try
             {
@@ -74,7 +90,24 @@ namespace Quraaa.Infrastructure.Services
                 var result = await response.Content.ReadFromJsonAsync<ChatCompletionResponse>(
                     cancellationToken: cancellationToken);
 
-                return result?.Choices?.FirstOrDefault()?.Message?.Content?.Trim();
+                var choice = result?.Choices?.FirstOrDefault();
+                var content = choice?.Message?.Content?.Trim();
+
+                // "length" means the model was cut off mid-answer. Without this
+                // check a truncated reply is indistinguishable from a complete
+                // one, which is exactly how a summary silently becomes a few
+                // words.
+                if (string.Equals(choice?.FinishReason, "length", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning(
+                        "OpenAI response was truncated at the {MaxTokens}-token budget " +
+                        "(returned {ReturnedCharacters} characters). Raise the budget, or set " +
+                        "OpenAi:ReasoningEffort to stop reasoning tokens consuming it.",
+                        maxTokens,
+                        content?.Length ?? 0);
+                }
+
+                return string.IsNullOrWhiteSpace(content) ? null : content;
             }
             catch (Exception ex)
             {
@@ -89,7 +122,10 @@ namespace Quraaa.Infrastructure.Services
             [property: JsonPropertyName("model")] string Model,
             [property: JsonPropertyName("messages")] List<ChatMessage> Messages,
             [property: JsonPropertyName("max_tokens")] int MaxTokens,
-            [property: JsonPropertyName("temperature")] double Temperature);
+            [property: JsonPropertyName("temperature")] double Temperature,
+            [property: JsonPropertyName("reasoning_effort")]
+            [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            string? ReasoningEffort);
 
         private record ChatMessage(
             [property: JsonPropertyName("role")] string Role,
@@ -99,6 +135,7 @@ namespace Quraaa.Infrastructure.Services
             [property: JsonPropertyName("choices")] List<ChatChoice>? Choices);
 
         private record ChatChoice(
-            [property: JsonPropertyName("message")] ChatMessage? Message);
+            [property: JsonPropertyName("message")] ChatMessage? Message,
+            [property: JsonPropertyName("finish_reason")] string? FinishReason);
     }
 }

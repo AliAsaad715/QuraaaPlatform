@@ -28,6 +28,13 @@ namespace Quraaa.Application.Features.AiAssistant.Commands.SummarizeText
         // OpenAI resilience policy for the RPM side of that same constraint).
         private const int MaxExtractedCharactersArabic = 8_000;
 
+        /// <summary>
+        /// Output budget for a summary. It covers the model's internal reasoning
+        /// tokens as well as the visible answer, so it is set well above the
+        /// length of the summary itself.
+        /// </summary>
+        private const int SummaryTokenBudget = 1_500;
+
         // Prompt strategy lives here, in the Application layer, not inside
         // OpenAiService — wording/tone is a product decision, calling the
         // API is an Infrastructure concern. Keeps them separable.
@@ -93,8 +100,11 @@ namespace Quraaa.Application.Features.AiAssistant.Commands.SummarizeText
 
                 var (systemPrompt, userContent, isMetadataOnly) = await BuildPromptAsync(context, cancellationToken);
 
+                // Generous on purpose: reasoning models spend part of this budget
+                // thinking before they write, so a tight cap returns a sentence
+                // fragment instead of a summary.
                 var summary = await _openAiService.GetCompletionAsync(
-                    systemPrompt, userContent, maxTokens: 400, cancellationToken);
+                    systemPrompt, userContent, maxTokens: SummaryTokenBudget, cancellationToken);
 
                 if (summary is null && !isMetadataOnly)
                 {
@@ -106,7 +116,7 @@ namespace Quraaa.Application.Features.AiAssistant.Commands.SummarizeText
                     // failing the request outright.
                     var (fallbackPrompt, fallbackContent, _) = BuildMetadataOnlyPrompt(context);
                     summary = await _openAiService.GetCompletionAsync(
-                        fallbackPrompt, fallbackContent, maxTokens: 400, cancellationToken);
+                        fallbackPrompt, fallbackContent, maxTokens: SummaryTokenBudget, cancellationToken);
                 }
 
                 if (summary is null)

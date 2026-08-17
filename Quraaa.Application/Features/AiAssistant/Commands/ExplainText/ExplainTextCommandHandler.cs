@@ -68,7 +68,7 @@ namespace Quraaa.Application.Features.AiAssistant.Commands.ExplainText
                 var systemPrompt = string.Format(SystemPromptTemplate, context.Title, context.Author);
 
                 var explanation = await _openAiService.GetCompletionAsync(
-                    systemPrompt, request.SelectedText, maxTokens: 200, cancellationToken);
+                    systemPrompt, request.SelectedText, maxTokens: 800, cancellationToken);
 
                 if (explanation is null)
                     throw new ApplicationBusinessException("The AI assistant is temporarily unavailable. Please try again.");
