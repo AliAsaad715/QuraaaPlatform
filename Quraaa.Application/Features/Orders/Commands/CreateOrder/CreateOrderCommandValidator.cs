@@ -11,12 +11,12 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
                 .NotEmpty()
                 .MaximumLength(2048)
                 .Must(OrderUrlValidator.IsAllowedRedirectUrl)
-                .WithMessage("Success URL must be an absolute HTTP or HTTPS URL.");
+                .WithMessage(OrderUrlValidator.InvalidRedirectUrlMessage);
             RuleFor(x => x.CancelUrl)
                 .NotEmpty()
                 .MaximumLength(2048)
                 .Must(OrderUrlValidator.IsAllowedRedirectUrl)
-                .WithMessage("Cancel URL must be an absolute HTTP or HTTPS URL.");
+                .WithMessage(OrderUrlValidator.InvalidRedirectUrlMessage);
             RuleFor(x => x)
                 .Must(x => x.ShippingLatitude.HasValue == x.ShippingLongitude.HasValue)
                 .WithMessage("Shipping latitude and longitude must be provided together.");

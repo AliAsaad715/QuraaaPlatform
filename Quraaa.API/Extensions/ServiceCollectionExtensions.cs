@@ -9,6 +9,7 @@ using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Payouts.Common;
 using Quraaa.Application.Shared.Files;
 using Quraaa.Persistence.Extensions;
@@ -53,6 +54,7 @@ namespace Quraaa.API.Extensions
                 "System.Net.Http.HttpClient.PrivateAssetDelivery",
                 LogLevel.None));
             services.AddSingleton(libraryRegistrationOptions);
+            services.AddSingleton(CreateCheckoutRedirectOptions(configuration));
             services.AddCors(options =>
             {
                 options.AddPolicy(LibraryDashboardCorsPolicy, policy =>
@@ -189,6 +191,42 @@ namespace Quraaa.API.Extensions
                 .OfType<string>()
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        /// <summary>
+        /// Bound from the "Checkout" section. An unset app scheme simply
+        /// disables the mobile hand-off, leaving a plain confirmation page.
+        /// </summary>
+        private static CheckoutRedirectOptions CreateCheckoutRedirectOptions(
+            IConfiguration configuration)
+        {
+            var options = new CheckoutRedirectOptions();
+            configuration.GetSection("Checkout").Bind(options);
+
+            var publicBaseUrl = options.PublicBaseUrl?.Trim() ?? string.Empty;
+
+            if (!string.IsNullOrEmpty(publicBaseUrl)
+                && !Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out _))
+            {
+                throw new InvalidOperationException(
+                    "Checkout:PublicBaseUrl must be an absolute URL when configured.");
+            }
+
+            options.PublicBaseUrl = publicBaseUrl;
+
+            // A scheme with "://" or a slash in it would produce a broken deep
+            // link that fails silently on the device.
+            var scheme = options.MobileAppScheme?.Trim() ?? string.Empty;
+
+            if (scheme.Contains("://", StringComparison.Ordinal) || scheme.Contains('/'))
+            {
+                throw new InvalidOperationException(
+                    "Checkout:MobileAppScheme must be the bare scheme, for example \"quraaa\".");
+            }
+
+            options.MobileAppScheme = scheme;
+
+            return options;
         }
 
         private static LibraryRegistrationOptions CreateLibraryRegistrationOptions(

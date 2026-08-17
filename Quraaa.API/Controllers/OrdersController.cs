@@ -55,8 +55,8 @@ namespace Quraaa.API.Controllers
 
             var result = await Mediator.Send(new CreateOrderCommand(
                 userId,
-                request.SuccessUrl,
-                request.CancelUrl,
+                ResolveReturnUrl(request.SuccessUrl, succeeded: true, orderId: null),
+                ResolveReturnUrl(request.CancelUrl, succeeded: false, orderId: null),
                 request.ShippingLocation?.Latitude,
                 request.ShippingLocation?.Longitude,
                 request.ShippingLocationId), cancellationToken);
@@ -147,8 +147,8 @@ namespace Quraaa.API.Controllers
             var result = await Mediator.Send(new CreateOrderCheckoutSessionCommand(
                 userId,
                 orderId,
-                request.SuccessUrl,
-                request.CancelUrl), cancellationToken);
+                ResolveReturnUrl(request.SuccessUrl, succeeded: true, orderId),
+                ResolveReturnUrl(request.CancelUrl, succeeded: false, orderId)), cancellationToken);
 
             return HandleResult(result);
         }
@@ -190,5 +190,36 @@ namespace Quraaa.API.Controllers
 
             return HandleResult(result);
         }
+
+        /// <summary>
+        /// Falls back to this API's app return page when the caller does not
+        /// supply its own URL. Stripe only accepts http/https here, so a mobile
+        /// client cannot pass its deep link directly — the return page performs
+        /// the hand-off instead.
+        /// </summary>
+        private string ResolveReturnUrl(string? providedUrl, bool succeeded, Guid? orderId)
+        {
+            if (!string.IsNullOrWhiteSpace(providedUrl))
+            {
+                return providedUrl.Trim();
+            }
+
+            var options = HttpContext.RequestServices
+                .GetRequiredService<CheckoutRedirectOptions>();
+
+            var baseUrl = string.IsNullOrWhiteSpace(options.PublicBaseUrl)
+                ? $"{Request.Scheme}://{Request.Host}{Request.PathBase}"
+                : options.PublicBaseUrl.TrimEnd('/');
+
+            var query = succeeded ? "status=success" : "status=cancel";
+
+            if (orderId.HasValue && orderId.Value != Guid.Empty)
+            {
+                query += $"&orderId={orderId.Value:D}";
+            }
+
+            return $"{baseUrl.TrimEnd('/')}/checkout/return?{query}";
+        }
+
     }
 }
