@@ -5,6 +5,7 @@ using Quraaa.API.Requests.Orders;
 using Quraaa.Application.Features.Orders.Commands.ArchiveOrder;
 using Quraaa.Application.Features.Orders.Commands.CancelOrder;
 using Quraaa.Application.Features.Orders.Commands.CreateOrder;
+using Quraaa.Application.Features.Orders.Commands.ConfirmCheckoutSession;
 using Quraaa.Application.Features.Orders.Commands.CreateOrderCheckoutSession;
 using Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocation;
 using Quraaa.Application.Features.Orders.Common;
@@ -191,6 +192,42 @@ namespace Quraaa.API.Controllers
             return HandleResult(result);
         }
 
+        // ── POST /api/orders/checkout/confirm ───────────────────────────────
+        /// <summary>
+        /// Settles a checkout after the buyer returns from the payment page, and
+        /// reports the result. Call this instead of trusting the redirect: the
+        /// redirect only means the buyer came back, whereas this verifies the
+        /// payment with the provider and marks the order paid if it went
+        /// through — so it works even when the provider webhook is delayed or
+        /// cannot reach this server.
+        ///
+        /// Safe to call repeatedly. <c>pending: true</c> means the payment is
+        /// not settled yet, so poll for a few seconds before showing a failure.
+        /// </summary>
+        /// <param name="request">The session id returned when checkout started.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <response code="200">The checkout status after confirmation.</response>
+        /// <response code="404">No checkout of yours matches this session.</response>
+        [HttpPost("checkout/confirm")]
+        [ProducesResponseType(typeof(CheckoutStatusResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ConfirmCheckout(
+            [FromBody] ConfirmCheckoutRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetCurrentUserId(out var userId))
+            {
+                return InvalidUserIdResult();
+            }
+
+            var result = await Mediator.Send(
+                new ConfirmCheckoutSessionCommand(userId, request.SessionId ?? string.Empty),
+                cancellationToken);
+
+            return HandleResult(result);
+        }
+
         /// <summary>
         /// Falls back to this API's app return page when the caller does not
         /// supply its own URL. Stripe only accepts http/https here, so a mobile
@@ -216,6 +253,14 @@ namespace Quraaa.API.Controllers
             if (orderId.HasValue && orderId.Value != Guid.Empty)
             {
                 query += $"&orderId={orderId.Value:D}";
+            }
+
+            if (succeeded)
+            {
+                // Stripe substitutes this placeholder for the real session id,
+                // but ONLY when the success URL asks for it. Without it the app
+                // gets no session to correlate the return with.
+                query += "&session_id={CHECKOUT_SESSION_ID}";
             }
 
             return $"{baseUrl.TrimEnd('/')}/checkout/return?{query}";
