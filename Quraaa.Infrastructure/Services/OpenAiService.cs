@@ -81,7 +81,16 @@ namespace Quraaa.Infrastructure.Services
                     }
                     else
                     {
-                        _logger.LogWarning("OpenAI API returned {StatusCode}", response.StatusCode);
+                        // The provider explains a 4xx in the body (bad model name,
+                        // unsupported parameter, quota). Without it a 400 is
+                        // undiagnosable from logs alone.
+                        var errorBody = await ReadErrorBodyAsync(response, cancellationToken);
+
+                        _logger.LogWarning(
+                            "OpenAI API returned {StatusCode} for model {Model}. Response: {ErrorBody}",
+                            response.StatusCode,
+                            _model,
+                            errorBody);
                     }
 
                     return null;
@@ -115,6 +124,35 @@ namespace Quraaa.Infrastructure.Services
                 // null, treats it as "unavailable," never an unhandled 500.
                 _logger.LogError(ex, "OpenAI API call failed");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Reads a failed response body defensively: diagnostics must never
+        /// replace the original failure with an exception of their own.
+        /// </summary>
+        private static async Task<string> ReadErrorBodyAsync(
+            HttpResponseMessage response,
+            CancellationToken cancellationToken)
+        {
+            const int MaxLoggedCharacters = 1_000;
+
+            try
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (string.IsNullOrWhiteSpace(body))
+                {
+                    return "(empty)";
+                }
+
+                return body.Length <= MaxLoggedCharacters
+                    ? body
+                    : body[..MaxLoggedCharacters] + "…";
+            }
+            catch (Exception)
+            {
+                return "(unreadable)";
             }
         }
 
