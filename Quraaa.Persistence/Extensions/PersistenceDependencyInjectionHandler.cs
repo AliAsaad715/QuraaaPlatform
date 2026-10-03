@@ -1,6 +1,8 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Quraaa.Application.Features.Admin.Interfaces;
+using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Features.BookReports.Interfaces;
@@ -19,6 +21,7 @@ using Quraaa.Application.Features.Reviews.Interfaces;
 using Quraaa.Persistence.Interceptors;
 using Microsoft.AspNetCore.Identity;
 using Quraaa.Domain.Library;
+using Quraaa.Persistence.Data;
 using Quraaa.Persistence.Repositories;
 using Quraaa.Persistence.Services;
 
@@ -26,22 +29,68 @@ namespace Quraaa.Persistence.Extensions
 {
     public static class PersistenceDependencyInjectionHandler
     {
-        public static IServiceCollection AddPersistenceDependencies(this IServiceCollection services, IConfiguration configuration)
+        /// <summary>
+        /// Registers everything that talks to the database: the DbContext and its
+        /// interceptors, ASP.NET Core Identity with its EF stores, and the
+        /// repositories. The host calls only this; it never configures EF Core or
+        /// Identity itself.
+        /// </summary>
+        public static IServiceCollection AddPersistence(this IServiceCollection services, IConfiguration configuration)
         {
-            var assembly = typeof(PersistenceDependencyInjectionHandler).Assembly;
+            AddDatabase(services, configuration);
+            AddIdentityServices(services);
+            AddRepositories(services);
 
+            return services;
+        }
+
+        private static void AddDatabase(IServiceCollection services, IConfiguration configuration)
+        {
+            var connectionString = configuration.GetConnectionString("DefaultConnection");
+
+            services.AddScoped<DomainEventOutboxInterceptor>();
+            services.AddScoped<BookVersionInterceptor>();
+
+            services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
+                options.UseNpgsql(connectionString)
+                    .AddInterceptors(
+                        serviceProvider.GetRequiredService<DomainEventOutboxInterceptor>(),
+                        serviceProvider.GetRequiredService<BookVersionInterceptor>()));
+        }
+
+        private static void AddIdentityServices(IServiceCollection services)
+        {
+            services.AddIdentityCore<ApplicationUser>(options =>
+            {
+                options.User.RequireUniqueEmail = false;
+                options.User.AllowedUserNameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+";
+                options.Password.RequiredLength = AuthenticationPasswordPolicy.MinimumLength;
+                options.Password.RequiredUniqueChars = AuthenticationPasswordPolicy.RequiredUniqueCharacters;
+                options.Password.RequireDigit = AuthenticationPasswordPolicy.RequireDigit;
+                options.Password.RequireLowercase = AuthenticationPasswordPolicy.RequireLowercase;
+                options.Password.RequireUppercase = AuthenticationPasswordPolicy.RequireUppercase;
+                options.Password.RequireNonAlphanumeric = AuthenticationPasswordPolicy.RequireNonAlphanumeric;
+            })
+            .AddRoles<IdentityRole<Guid>>()
+            .AddEntityFrameworkStores<ApplicationDbContext>()
+            .AddDefaultTokenProviders();
+
+            services.AddScoped<IIdentityService, IdentityService>();
+            services.AddScoped<IAuthenticationUnitOfWork, AuthenticationUnitOfWork>();
+            services.AddScoped<IPasswordHasher<LibraryAggregate>, PasswordHasher<LibraryAggregate>>();
+            services.AddScoped<ILibraryPasswordHasher, LibraryPasswordHasher>();
+        }
+
+        private static void AddRepositories(IServiceCollection services)
+        {
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IAuthorRepository, AuthorRepository>();
             services.AddScoped<ILibraryRepository, LibraryRepository>();
-            services.AddScoped<IPasswordHasher<LibraryAggregate>, PasswordHasher<LibraryAggregate>>();
-            services.AddScoped<ILibraryPasswordHasher, LibraryPasswordHasher>();
             services.AddScoped<ILibraryPasswordResetRepository, LibraryPasswordResetRepository>();
             services.AddScoped<ILibraryRegistrationRepository, LibraryRegistrationRepository>();
             services.AddScoped<ILibraryApprovalNotificationRepository, LibraryApprovalNotificationRepository>();
             services.AddScoped<IPushDeviceRepository, PushDeviceRepository>();
             services.AddScoped<IListingPushNotificationRepository, ListingPushNotificationRepository>();
-            services.AddScoped<IIdentityService, IdentityService>();
-            services.AddScoped<IAuthenticationUnitOfWork, AuthenticationUnitOfWork>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IBookReportRepository, BookReportRepository>();
             services.AddScoped<IBookVersionRepository, BookVersionRepository>();
@@ -61,9 +110,6 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<IAdminDashboardRepository, AdminDashboardRepository>();
             services.AddScoped<IAdminModerationRepository, AdminModerationRepository>();
             services.AddScoped<IListingModerationRepository, ListingModerationRepository>();
-            services.AddScoped<DomainEventOutboxInterceptor>();
-            services.AddScoped<BookVersionInterceptor>();
-            return services;
         }
     }
 }

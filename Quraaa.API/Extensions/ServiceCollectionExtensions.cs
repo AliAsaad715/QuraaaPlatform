@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Quraaa.API.Services;
-using Quraaa.Application.Extensions;
 using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Books.Interfaces;
@@ -12,17 +12,19 @@ using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Payouts.Common;
 using Quraaa.Application.Shared.Files;
-using Quraaa.Persistence.Extensions;
 using System.IdentityModel.Tokens.Jwt;
 using System.Globalization;
+using System.Net;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 
 namespace Quraaa.API.Extensions
 {
     public static class ServiceCollectionExtensions
     {
+        public const string DefaultCorsPolicy = "Default";
         public const string LibraryDashboardCorsPolicy = "library-dashboard";
         public const string LibraryRegistrationLinkRateLimitPolicy = "library-registration-link";
         public const string LibraryRegistrationPublicRateLimitPolicy = "library-registration-public";
@@ -30,19 +32,158 @@ namespace Quraaa.API.Extensions
         public const string LibraryPasswordResetRateLimitPolicy = "library-password-reset";
         public const string LibraryWalletSyncRateLimitPolicy = "library-wallet-sync";
 
-        public static void AddApplicationServices(
+        /// <summary>
+        /// Registers what the HTTP host itself owns: MVC, authentication, rate
+        /// limiting, CORS, forwarded headers, host-bound options, file delivery,
+        /// background workers and the OpenAPI document. Application, Persistence
+        /// and Infrastructure register themselves (see Program.cs).
+        /// </summary>
+        public static IServiceCollection AddApi(
             this IServiceCollection services,
             IConfiguration configuration,
-            bool isDevelopment)
+            IHostEnvironment environment)
         {
             var libraryRegistrationOptions = CreateLibraryRegistrationOptions(
                 configuration,
-                isDevelopment);
+                environment.IsDevelopment());
 
-            services.AddJwtAuthentication(configuration);
-            services.AddAuthenticationRateLimiting();
+            services.AddApiControllers();
+            services.AddApiAuthentication(configuration);
+            services.AddApiRateLimiting();
+            services.AddApiCors(configuration, libraryRegistrationOptions);
+            services.AddApiForwardedHeaders(configuration);
+            services.AddApiOptions(configuration, libraryRegistrationOptions);
+            services.AddApiFileServices();
+            services.AddWorkers();
+            services.AddSwaggerConfiguration(configuration);
+
+            return services;
+        }
+
+        private static void AddApiControllers(this IServiceCollection services)
+        {
+            services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                });
+
+            services.Configure<RouteOptions>(options =>
+            {
+                options.LowercaseUrls = true;
+            });
+        }
+
+        private static void AddApiCors(
+            this IServiceCollection services,
+            IConfiguration configuration,
+            LibraryRegistrationOptions libraryRegistrationOptions)
+        {
+            // Origins are configurable via Cors:AllowedOrigins (see appsettings/.env)
+            // so production can be locked down to real frontend origins once they're known.
+            // With no allow-list configured, fall back to allowing any origin — Bearer-token
+            // auth travels in the Authorization header, not cookies, so AllowAnyOrigin() here
+            // never needs (and must never be combined with) AllowCredentials().
+            // ReadAllowedOrigins also feeds the provider redirect allow-list, so the
+            // same setting cannot mean two different things.
+            var allowedOrigins = ReadAllowedOrigins(configuration);
+
+            services.AddCors(options =>
+            {
+                options.AddPolicy(DefaultCorsPolicy, policy =>
+                {
+                    if (allowedOrigins.Length > 0)
+                    {
+                        policy.WithOrigins(allowedOrigins)
+                              .AllowAnyMethod()
+                              .AllowAnyHeader();
+                    }
+                    else
+                    {
+                        policy.AllowAnyOrigin()
+                              .AllowAnyMethod()
+                              .AllowAnyHeader();
+                    }
+                });
+
+                options.AddPolicy(LibraryDashboardCorsPolicy, policy =>
+                {
+                    policy
+                        .WithOrigins(libraryRegistrationOptions.DashboardRegisterUrl.GetLeftPart(UriPartial.Authority))
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                });
+            });
+        }
+
+        private static void AddApiForwardedHeaders(
+            this IServiceCollection services,
+            IConfiguration configuration)
+        {
+            services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders =
+                    ForwardedHeaders.XForwardedFor |
+                    ForwardedHeaders.XForwardedProto |
+                    ForwardedHeaders.XForwardedHost;
+                options.ForwardLimit = 1;
+
+                var configuredProxies = configuration
+                    .GetSection("ForwardedHeaders:KnownProxies")
+                    .Get<string[]>() ?? Array.Empty<string>();
+                var configuredNetworks = configuration
+                    .GetSection("ForwardedHeaders:KnownNetworks")
+                    .Get<string[]>() ?? Array.Empty<string>();
+
+                if (configuredProxies.Length > 0 || configuredNetworks.Length > 0)
+                {
+                    options.KnownIPNetworks.Clear();
+                    options.KnownProxies.Clear();
+                }
+
+                foreach (var configuredProxy in configuredProxies)
+                {
+                    if (!IPAddress.TryParse(configuredProxy, out var proxyAddress))
+                    {
+                        throw new InvalidOperationException(
+                            $"Invalid forwarded-header proxy address: '{configuredProxy}'.");
+                    }
+
+                    options.KnownProxies.Add(proxyAddress);
+                }
+
+                foreach (var configuredNetwork in configuredNetworks)
+                {
+                    if (!System.Net.IPNetwork.TryParse(configuredNetwork, out var network))
+                    {
+                        throw new InvalidOperationException(
+                            $"Invalid forwarded-header proxy network: '{configuredNetwork}'.");
+                    }
+
+                    options.KnownIPNetworks.Add(network);
+                }
+            });
+        }
+
+        private static void AddApiOptions(
+            this IServiceCollection services,
+            IConfiguration configuration,
+            LibraryRegistrationOptions libraryRegistrationOptions)
+        {
             services.Configure<FileStorageOptions>(configuration.GetSection("Storage"));
             services.Configure<FileRetentionOptions>(configuration.GetSection("Storage:FileRetention"));
+            services.AddSingleton(libraryRegistrationOptions);
+            services.AddSingleton(CreateCheckoutRedirectOptions(configuration));
+            services.AddOptions<PayoutOptions>()
+                .Bind(configuration.GetSection("Payouts"))
+                .Validate(
+                    options => options.MaxTransferAttempts is >= 1 and <= 100,
+                    "Payouts:MaxTransferAttempts must be between 1 and 100.")
+                .ValidateOnStart();
+        }
+
+        private static void AddApiFileServices(this IServiceCollection services)
+        {
             services.AddScoped<IFileAccessService, FileAccessService>();
             services.AddHttpClient("PrivateAssetDelivery", client =>
             {
@@ -53,39 +194,23 @@ namespace Quraaa.API.Extensions
             services.AddLogging(logging => logging.AddFilter(
                 "System.Net.Http.HttpClient.PrivateAssetDelivery",
                 LogLevel.None));
-            services.AddSingleton(libraryRegistrationOptions);
-            services.AddSingleton(CreateCheckoutRedirectOptions(configuration));
-            services.AddCors(options =>
-            {
-                options.AddPolicy(LibraryDashboardCorsPolicy, policy =>
-                {
-                    policy
-                        .WithOrigins(libraryRegistrationOptions.DashboardRegisterUrl.GetLeftPart(UriPartial.Authority))
-                        .AllowAnyHeader()
-                        .AllowAnyMethod();
-                });
-            });
             services.AddScoped<ILibraryImageStorageService, LibraryImageStorageService>();
             services.AddScoped<ILibraryBookStorageService, LibraryBookStorageService>();
             services.AddScoped<IBulkBookStorageService, BulkBookStorageService>();
             services.AddScoped<IListingImageStorageService, ListingImageStorageService>();
+        }
+
+        private static void AddWorkers(this IServiceCollection services)
+        {
             services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
             services.AddHostedService<FileRetentionCleanupService>();
             services.AddHostedService<SellerPayoutProcessingService>();
             services.AddHostedService<BookModerationNotificationDeliveryService>();
-            services.AddOptions<PayoutOptions>()
-                .Bind(configuration.GetSection("Payouts"))
-                .Validate(
-                    options => options.MaxTransferAttempts is >= 1 and <= 100,
-                    "Payouts:MaxTransferAttempts must be between 1 and 100.")
-                .ValidateOnStart();
             services.AddHostedService<LibraryApprovalNotificationDeliveryService>();
             services.AddHostedService<ListingPushNotificationDeliveryService>();
-            PersistenceDependencyInjectionHandler.AddPersistenceDependencies(services, configuration);
-            ApplicationPackagesRegisterExtensions.AddApplicationDependencies(services);
         }
 
-        private static void AddAuthenticationRateLimiting(this IServiceCollection services)
+        private static void AddApiRateLimiting(this IServiceCollection services)
         {
             services.AddRateLimiter(options =>
             {
@@ -180,7 +305,7 @@ namespace Quraaa.API.Extensions
         /// Shared by the CORS policy and the provider redirect allow-list so the
         /// same setting cannot mean two different things.
         /// </summary>
-        public static string[] ReadAllowedOrigins(IConfiguration configuration)
+        private static string[] ReadAllowedOrigins(IConfiguration configuration)
         {
             return (configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [])
                 .Select(origin => origin?.Trim())
@@ -261,7 +386,7 @@ namespace Quraaa.API.Extensions
             };
         }
 
-        private static void AddJwtAuthentication(this IServiceCollection services, IConfiguration configuration)
+        private static void AddApiAuthentication(this IServiceCollection services, IConfiguration configuration)
         {
             var secretKey = configuration["JWT_SECRET_KEY"];
             if (string.IsNullOrWhiteSpace(secretKey))

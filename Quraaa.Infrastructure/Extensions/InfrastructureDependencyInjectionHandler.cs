@@ -26,7 +26,7 @@ namespace Quraaa.Infrastructure.Extensions
 {
     public static class InfrastructureDependencyInjectionHandler
     {
-        public static IServiceCollection AddInfrastructureDependencies(
+        public static IServiceCollection AddInfrastructure(
             this IServiceCollection services,
             IConfiguration configuration,
             bool isDevelopment)

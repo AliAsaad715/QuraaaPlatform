@@ -13,7 +13,7 @@ namespace Quraaa.Application.Extensions
 {
     public static class ApplicationPackagesRegisterExtensions
     {
-        public static IServiceCollection AddApplicationDependencies(this IServiceCollection services)
+        public static IServiceCollection AddApplication(this IServiceCollection services)
         {
             var assembly = typeof(ApplicationPackagesRegisterExtensions).Assembly;
 

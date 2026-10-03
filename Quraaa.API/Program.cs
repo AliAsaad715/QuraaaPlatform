@@ -1,13 +1,11 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Quraaa.API.Extensions;
-using Quraaa.Application.Features.AiAssistant.Interfaces;
+using Quraaa.Application.Extensions;
 using Quraaa.Infrastructure.Extensions;
-using Quraaa.Infrastructure.Services;
 using Quraaa.Persistence.Data;
+using Quraaa.Persistence.Extensions;
 using Quraaa.Persistence.Seed;
-using System.Net.Http.Headers;
-using System.Text.Json.Serialization;
 
 DotNetEnv.Env.Load();
 
@@ -23,52 +21,14 @@ builder.Configuration.AddEnvironmentVariables();
 
 CreateFirebaseCredentialsFile(builder.Environment.ContentRootPath);
 
-// Add Controllers with JSON serialization options
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-    });
-
-builder.Services.Configure<RouteOptions>(options =>
-{
-    options.LowercaseUrls = true;
-});
-
-builder.Services.AddDatabaseConfiguration(builder.Configuration);
-builder.Services.AddApplicationServices(
-    builder.Configuration,
-    builder.Environment.IsDevelopment());
-builder.Services.AddInfrastructureDependencies(builder.Configuration, builder.Environment.IsDevelopment());
-builder.Services.AddSwaggerConfiguration(builder.Configuration);
-
-// CORS: origins are configurable via Cors:AllowedOrigins (see appsettings/.env)
-// so production can be locked down to real frontend origins once they're known.
-// With no allow-list configured, fall back to allowing any origin — Bearer-token
-// auth travels in the Authorization header, not cookies, so AllowAnyOrigin() here
-// never needs (and must never be combined with) AllowCredentials().
-// Parsed once and reused by the provider redirect allow-list, so the same
-// setting cannot mean two different things (see ServiceCollectionExtensions).
-var allowedOrigins = ServiceCollectionExtensions.ReadAllowedOrigins(builder.Configuration);
-
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("Default", policy =>
-    {
-        if (allowedOrigins.Length > 0)
-        {
-            policy.WithOrigins(allowedOrigins)
-                  .AllowAnyMethod()
-                  .AllowAnyHeader();
-        }
-        else
-        {
-            policy.AllowAnyOrigin()
-                  .AllowAnyMethod()
-                  .AllowAnyHeader();
-        }
-    });
-});
+// One registration call per layer; each layer owns its own wiring. Persistence
+// registers the DbContext, its interceptors and the Identity stores, and the API
+// registers only what the HTTP host itself needs.
+builder.Services
+    .AddApplication()
+    .AddPersistence(builder.Configuration)
+    .AddInfrastructure(builder.Configuration, builder.Environment.IsDevelopment())
+    .AddApi(builder.Configuration, builder.Environment);
 
 var app = builder.Build();
 
@@ -86,7 +46,7 @@ app.UseRouting();
 // after routing so it can see endpoint-level CORS metadata, and before auth so
 // unauthenticated CORS preflight (OPTIONS) requests aren't rejected before the
 // CORS headers are ever added to the response.
-app.UseCors("Default");
+app.UseCors(ServiceCollectionExtensions.DefaultCorsPolicy);
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
