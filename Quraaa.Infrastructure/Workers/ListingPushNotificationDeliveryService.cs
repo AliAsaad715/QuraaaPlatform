@@ -1,20 +1,23 @@
 using MediatR;
-using Quraaa.Application.Features.Libraries.Commands.DispatchLibraryApprovalNotifications;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Quraaa.Application.Features.Notifications.Commands.DispatchListingPushNotifications;
 
-namespace Quraaa.API.Services;
+namespace Quraaa.Infrastructure.Workers;
 
-public sealed class LibraryApprovalNotificationDeliveryService : BackgroundService
+public sealed class ListingPushNotificationDeliveryService : BackgroundService
 {
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ScanInterval = TimeSpan.FromSeconds(30);
     private const int BatchSize = 20;
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<LibraryApprovalNotificationDeliveryService> _logger;
+    private readonly ILogger<ListingPushNotificationDeliveryService> _logger;
 
-    public LibraryApprovalNotificationDeliveryService(
+    public ListingPushNotificationDeliveryService(
         IServiceScopeFactory scopeFactory,
-        ILogger<LibraryApprovalNotificationDeliveryService> logger)
+        ILogger<ListingPushNotificationDeliveryService> logger)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -38,20 +41,17 @@ public sealed class LibraryApprovalNotificationDeliveryService : BackgroundServi
                 await using var scope = _scopeFactory.CreateAsyncScope();
                 var sender = scope.ServiceProvider.GetRequiredService<ISender>();
                 var result = await sender.Send(
-                    new DispatchLibraryApprovalNotificationsCommand(BatchSize),
+                    new DispatchListingPushNotificationsCommand(BatchSize),
                     stoppingToken);
 
                 if (result.ClaimedCount > 0)
                 {
                     _logger.LogInformation(
-                        "Library approval notification delivery: {ClaimedCount} claimed, " +
-                        "{EmailSentCount} email sent, {EmailUncertainCount} email uncertain, " +
-                        "{PushSentCount} push sent, {RetryScheduledCount} retry scheduled, " +
+                        "Listing push notification delivery: {ClaimedCount} claimed, " +
+                        "{CompletedCount} completed, {RetryScheduledCount} retry scheduled, " +
                         "{AbandonedCount} abandoned.",
                         result.ClaimedCount,
-                        result.EmailSentCount,
-                        result.EmailUncertainCount,
-                        result.PushSentCount,
+                        result.CompletedCount,
                         result.RetryScheduledCount,
                         result.AbandonedCount);
                 }
@@ -64,7 +64,7 @@ public sealed class LibraryApprovalNotificationDeliveryService : BackgroundServi
             {
                 _logger.LogError(
                     exception,
-                    "Library approval notification delivery cycle failed.");
+                    "Listing push notification delivery cycle failed.");
             }
 
             try

@@ -84,8 +84,8 @@ Quraaa.Domain ──> no project references
 | `Quraaa.Domain`         | Aggregates, entities, value objects, enums, and business invariants.                                                 |
 | `Quraaa.Application`    | Commands, queries, handlers, validators, DTOs, result types, and service interfaces.                                 |
 | `Quraaa.Persistence`    | EF Core context and mappings, PostgreSQL migrations, repositories, Identity persistence, and seeders.                |
-| `Quraaa.Infrastructure` | Cloudinary, Stripe, Firebase, Redis/cache, Google Books, and other external-service implementations.                 |
-| `Quraaa.API`            | Controllers, HTTP contracts, authentication setup, OpenAPI, file adapters, hosted services, and application startup. |
+| `Quraaa.Infrastructure` | Cloudinary, Stripe, Firebase, Redis/cache, Google Books, other external services, and the background workers.        |
+| `Quraaa.API`            | Controllers, HTTP contracts, authentication setup, OpenAPI, file adapters, and application startup.                  |
 
 Application operations are dispatched through MediatR. FluentValidation validators are registered automatically, and application results are mapped centrally to HTTP `200`, `400`, `401`, `403`, `404`, and `409` responses.
 

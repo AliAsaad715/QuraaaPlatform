@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Services;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Files;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Library;
@@ -20,7 +21,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
         private readonly IUserRepository _userRepository;
         private readonly ILibraryPasswordHasher _libraryPasswordHasher;
         private readonly IIdentityService _identityService;
-        private readonly ILibraryImageStorageService _libraryImageStorageService;
+        private readonly IImageStorageService _imageStorageService;
         private readonly ILibraryRegistrationRepository _registrationRepository;
         private readonly LibraryRegistrationSessionService _sessionService;
         private readonly ILibraryEmailOtpProtector _otpProtector;
@@ -32,7 +33,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
             IUserRepository userRepository,
             ILibraryPasswordHasher libraryPasswordHasher,
             IIdentityService identityService,
-            ILibraryImageStorageService libraryImageStorageService,
+            IImageStorageService imageStorageService,
             ILibraryRegistrationRepository registrationRepository,
             LibraryRegistrationSessionService sessionService,
             ILibraryEmailOtpProtector otpProtector,
@@ -46,7 +47,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
             _userRepository = userRepository;
             _libraryPasswordHasher = libraryPasswordHasher;
             _identityService = identityService;
-            _libraryImageStorageService = libraryImageStorageService;
+            _imageStorageService = imageStorageService;
             _registrationRepository = registrationRepository;
             _sessionService = sessionService;
             _otpProtector = otpProtector;
@@ -108,11 +109,13 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
 
                     try
                     {
-                        libraryImagePath = await _libraryImageStorageService.SaveLibraryImageAsync(
+                        libraryImagePath = await _imageStorageService.UploadAsync(
                             request.LibraryImage!,
+                            ImageAssetKind.LibraryLogo,
                             cancellationToken);
-                        headerImagePath = await _libraryImageStorageService.SaveHeaderImageAsync(
+                        headerImagePath = await _imageStorageService.UploadAsync(
                             request.HeaderImage!,
+                            ImageAssetKind.LibraryHeader,
                             cancellationToken);
 
                         // Uploads can take long enough for the user to log out or
@@ -263,8 +266,8 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
         {
             try
             {
-                await _libraryImageStorageService.DeleteAsync(libraryImagePath, cancellationToken);
-                await _libraryImageStorageService.DeleteAsync(headerImagePath, cancellationToken);
+                await _imageStorageService.DeleteAsync(libraryImagePath, cancellationToken);
+                await _imageStorageService.DeleteAsync(headerImagePath, cancellationToken);
             }
             catch (Exception exception)
             {

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Shared.Files;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Catalog;
@@ -20,14 +21,14 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
         private readonly IAuthorRepository _authorRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IBookMetadataService _bookMetadataService;
-        private readonly IListingImageStorageService _listingImageStorageService;
+        private readonly IImageStorageService _imageStorageService;
 
         public AddUserPhysicalBookCommandHandler(
             IBookRepository bookRepository,
             IAuthorRepository authorRepository,
             IListingRepository listingRepository,
             IBookMetadataService bookMetadataService,
-            IListingImageStorageService listingImageStorageService,
+            IImageStorageService imageStorageService,
             ILogger<AddUserPhysicalBookCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -36,7 +37,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
             _authorRepository = authorRepository;
             _listingRepository = listingRepository;
             _bookMetadataService = bookMetadataService;
-            _listingImageStorageService = listingImageStorageService;
+            _imageStorageService = imageStorageService;
         }
 
         public async Task<AppResult<AddPhysicalBookResponse>> Handle(
@@ -58,8 +59,9 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
                 string? coverImageUrl = null;
                 try
                 {
-                    coverImageUrl = await _listingImageStorageService.SaveCoverImageAsync(
+                    coverImageUrl = await _imageStorageService.UploadAsync(
                         request.CoverImage,
+                        ImageAssetKind.ListingCover,
                         cancellationToken);
 
                     var listing = ListingAggregate.CreateForUser(
@@ -82,7 +84,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
                     {
                         try
                         {
-                            await _listingImageStorageService.DeleteAsync(
+                            await _imageStorageService.DeleteAsync(
                                 coverImageUrl,
                                 CancellationToken.None);
                         }

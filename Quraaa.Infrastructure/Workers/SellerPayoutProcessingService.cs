@@ -1,9 +1,12 @@
 ﻿using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayout;
 using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Domain.Shared.Exceptions;
 
-namespace Quraaa.API.Services
+namespace Quraaa.Infrastructure.Workers
 {
     /// <summary>
     /// Drains the seller-payout transactional outbox: finds pending payouts

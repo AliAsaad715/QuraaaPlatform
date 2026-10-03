@@ -139,9 +139,6 @@ Quraaa.API/
     Orders/
     Profiles/
     Purchases/
-  Services/
-    ExpiredOrderPaymentReconciliationService.cs
-    LibraryImageStorageService.cs
   storage/firebase/       # Firebase service-account JSON files (ignored by git)
   storage/books/          # Legacy/seeded private PDFs copied into build/publish output
   wwwroot/                # Immutable public assets shipped with the application
@@ -347,6 +344,14 @@ Quraaa.Infrastructure/
     OtpCacheService.cs
     AccessTokenRevocationService.cs
     StripePaymentService.cs
+    FileAccessService.cs
+  Workers/                # Background workers; AddWorkers registers them unless Workers:Enabled is false
+    BookModerationNotificationDeliveryService.cs
+    ExpiredOrderPaymentReconciliationService.cs
+    FileRetentionCleanupService.cs
+    LibraryApprovalNotificationDeliveryService.cs
+    ListingPushNotificationDeliveryService.cs
+    SellerPayoutProcessingService.cs
 ```
 
 Ignore generated build output:
@@ -535,6 +540,7 @@ Startup calls `DotNetEnv.Env.Load()` before creating the builder, then also load
 | Google Books  | `GoogleBooks:ApiKey`, `GoogleBooks:BaseUrl` (defaults to `https://www.googleapis.com/`)                                                       |
 | Swagger       | `Swagger:ServerUrl`                                                                                                                           |
 | Reverse proxy | `ForwardedHeaders:KnownProxies`, `ForwardedHeaders:KnownNetworks`                                                                             |
+| Workers       | `Workers:Enabled` (default `true`; `false` stops this instance from running the background workers)                                           |
 | Library link  | `LIBRARY_DASHBOARD_REGISTER_URL`                                                                                                            |
 | Email OTP     | `LIBRARY_EMAIL_OTP_PEPPER`                                                                                                                  |
 | SMTP          | `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_ENCRYPTION`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME`          |
@@ -2295,12 +2301,12 @@ Quraaa.API/Controllers/OrdersController.cs
 Quraaa.API/Controllers/PaymentsController.cs
 Quraaa.API/Controllers/PurchaseHistoryController.cs
 Quraaa.API/Controllers/SellerOrdersController.cs
-Quraaa.API/Services/ExpiredOrderPaymentReconciliationService.cs
 Quraaa.Application/Features/Carts/
 Quraaa.Application/Features/Orders/
 Quraaa.Application/Features/Payments/
 Quraaa.Application/Features/Purchases/
 Quraaa.Infrastructure/Services/StripePaymentService.cs
+Quraaa.Infrastructure/Workers/ExpiredOrderPaymentReconciliationService.cs
 Quraaa.Persistence/Repositories/CartRepository.cs
 Quraaa.Persistence/Repositories/BookPurchaseRepository.cs
 Quraaa.Persistence/Repositories/OrderRepository.cs
@@ -2466,7 +2472,6 @@ Quraaa.API/Controllers/NotificationsController.cs
 Quraaa.API/Requests/Notifications/RegisterPushDeviceRequest.cs
 Quraaa.API/Requests/Notifications/UnregisterPushDeviceRequest.cs
 Quraaa.API/Requests/Notifications/SendNotificationRequest.cs
-Quraaa.API/Services/LibraryApprovalNotificationDeliveryService.cs
 Quraaa.Application/Features/Notifications/Commands/RegisterPushDevice/
 Quraaa.Application/Features/Notifications/Commands/UnregisterPushDevice/
 Quraaa.Application/Features/Notifications/Commands/SendNotification/
@@ -2476,6 +2481,7 @@ Quraaa.Application/Features/Notifications/Interfaces/IPushDeviceRepository.cs
 Quraaa.Domain/User/Entities/PushDevice.cs
 Quraaa.Persistence/Repositories/PushDeviceRepository.cs
 Quraaa.Infrastructure/Services/FirebaseNotificationService.cs
+Quraaa.Infrastructure/Workers/LibraryApprovalNotificationDeliveryService.cs
 ```
 
 Routes:

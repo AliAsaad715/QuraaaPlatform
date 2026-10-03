@@ -2,16 +2,11 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
-using Quraaa.API.Services;
 using Quraaa.Application.Features.Authentication.Common;
 using Quraaa.Application.Features.Authentication.Interfaces;
-using Quraaa.Application.Features.Books.Interfaces;
-using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Common;
-using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Payouts.Common;
-using Quraaa.Application.Shared.Files;
 using System.IdentityModel.Tokens.Jwt;
 using System.Globalization;
 using System.Net;
@@ -34,9 +29,10 @@ namespace Quraaa.API.Extensions
 
         /// <summary>
         /// Registers what the HTTP host itself owns: MVC, authentication, rate
-        /// limiting, CORS, forwarded headers, host-bound options, file delivery,
-        /// background workers and the OpenAPI document. Application, Persistence
-        /// and Infrastructure register themselves (see Program.cs).
+        /// limiting, CORS, forwarded headers, host-bound options, private file
+        /// delivery and the OpenAPI document. Application, Persistence,
+        /// Infrastructure and the background workers register themselves (see
+        /// Program.cs).
         /// </summary>
         public static IServiceCollection AddApi(
             this IServiceCollection services,
@@ -53,8 +49,7 @@ namespace Quraaa.API.Extensions
             services.AddApiCors(configuration, libraryRegistrationOptions);
             services.AddApiForwardedHeaders(configuration);
             services.AddApiOptions(configuration, libraryRegistrationOptions);
-            services.AddApiFileServices();
-            services.AddWorkers();
+            services.AddApiFileDelivery();
             services.AddSwaggerConfiguration(configuration);
 
             return services;
@@ -170,8 +165,6 @@ namespace Quraaa.API.Extensions
             IConfiguration configuration,
             LibraryRegistrationOptions libraryRegistrationOptions)
         {
-            services.Configure<FileStorageOptions>(configuration.GetSection("Storage"));
-            services.Configure<FileRetentionOptions>(configuration.GetSection("Storage:FileRetention"));
             services.AddSingleton(libraryRegistrationOptions);
             services.AddSingleton(CreateCheckoutRedirectOptions(configuration));
             services.AddOptions<PayoutOptions>()
@@ -182,9 +175,9 @@ namespace Quraaa.API.Extensions
                 .ValidateOnStart();
         }
 
-        private static void AddApiFileServices(this IServiceCollection services)
+        // PrivateStoredFileResult proxies paid ebooks through this client.
+        private static void AddApiFileDelivery(this IServiceCollection services)
         {
-            services.AddScoped<IFileAccessService, FileAccessService>();
             services.AddHttpClient("PrivateAssetDelivery", client =>
             {
                 // Large ebooks are streamed until the caller disconnects. RequestAborted
@@ -194,20 +187,6 @@ namespace Quraaa.API.Extensions
             services.AddLogging(logging => logging.AddFilter(
                 "System.Net.Http.HttpClient.PrivateAssetDelivery",
                 LogLevel.None));
-            services.AddScoped<ILibraryImageStorageService, LibraryImageStorageService>();
-            services.AddScoped<ILibraryBookStorageService, LibraryBookStorageService>();
-            services.AddScoped<IBulkBookStorageService, BulkBookStorageService>();
-            services.AddScoped<IListingImageStorageService, ListingImageStorageService>();
-        }
-
-        private static void AddWorkers(this IServiceCollection services)
-        {
-            services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
-            services.AddHostedService<FileRetentionCleanupService>();
-            services.AddHostedService<SellerPayoutProcessingService>();
-            services.AddHostedService<BookModerationNotificationDeliveryService>();
-            services.AddHostedService<LibraryApprovalNotificationDeliveryService>();
-            services.AddHostedService<ListingPushNotificationDeliveryService>();
         }
 
         private static void AddApiRateLimiting(this IServiceCollection services)
