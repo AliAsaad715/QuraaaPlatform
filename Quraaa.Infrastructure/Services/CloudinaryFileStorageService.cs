@@ -612,8 +612,8 @@ namespace Quraaa.Infrastructure.Services
             var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
             var folderMatchesExtension = normalizedFolder switch
             {
-                "books" or "books/pdf" => extension == ".pdf",
-                "books/docs" => extension is ".doc" or ".docx",
+                FileStorageFolders.LibraryBooks or FileStorageFolders.BookPdfs => extension == ".pdf",
+                FileStorageFolders.BookWordDocuments => extension is ".doc" or ".docx",
                 _ => false
             };
 

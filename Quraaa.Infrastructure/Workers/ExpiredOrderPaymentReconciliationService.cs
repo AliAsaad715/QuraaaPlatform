@@ -1,10 +1,13 @@
 using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Orders.Commands.ReconcileExpiredOrderPayment;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Domain.Shared.Exceptions;
 
-namespace Quraaa.API.Services
+namespace Quraaa.Infrastructure.Workers
 {
     public sealed class ExpiredOrderPaymentReconciliationService : BackgroundService
     {

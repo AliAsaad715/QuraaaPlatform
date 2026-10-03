@@ -1,7 +1,10 @@
 using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.BookReports.Commands.DispatchBookModerationNotifications;
 
-namespace Quraaa.API.Services;
+namespace Quraaa.Infrastructure.Workers;
 
 /// <summary>
 /// Delivers queued book moderation notices to libraries and administrators.

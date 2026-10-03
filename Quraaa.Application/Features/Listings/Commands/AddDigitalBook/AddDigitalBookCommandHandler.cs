@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Shared.Files;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Catalog;
@@ -21,7 +22,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
         private readonly IAuthorRepository _authorRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IBookMetadataService _bookMetadataService;
-        private readonly ILibraryBookStorageService _libraryBookStorageService;
+        private readonly IFileStorageService _fileStorageService;
 
         public AddDigitalBookCommandHandler(
             ILibraryRepository libraryRepository,
@@ -29,7 +30,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
             IAuthorRepository authorRepository,
             IListingRepository listingRepository,
             IBookMetadataService bookMetadataService,
-            ILibraryBookStorageService libraryBookStorageService,
+            IFileStorageService fileStorageService,
             ILogger<AddDigitalBookCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -39,7 +40,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
             _authorRepository = authorRepository;
             _listingRepository = listingRepository;
             _bookMetadataService = bookMetadataService;
-            _libraryBookStorageService = libraryBookStorageService;
+            _fileStorageService = fileStorageService;
         }
 
         public async Task<AppResult<AddDigitalBookResponse>> Handle(
@@ -70,8 +71,9 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
                 string? digitalAssetReference = null;
                 try
                 {
-                    digitalAssetReference = await _libraryBookStorageService.SaveAsync(
+                    digitalAssetReference = await _fileStorageService.SaveAsync(
                         request.DigitalAsset,
+                        FileStorageFolders.LibraryBooks,
                         cancellationToken);
 
                     var listing = ListingAggregate.CreateDigitalForLibrary(
@@ -88,11 +90,11 @@ namespace Quraaa.Application.Features.Listings.Commands.AddDigitalBook
                 }
                 catch
                 {
-                    if (digitalAssetReference is not null)
+                    if (!string.IsNullOrWhiteSpace(digitalAssetReference))
                     {
                         try
                         {
-                            await _libraryBookStorageService.DeleteAsync(
+                            await _fileStorageService.DeleteAsync(
                                 digitalAssetReference,
                                 CancellationToken.None);
                         }

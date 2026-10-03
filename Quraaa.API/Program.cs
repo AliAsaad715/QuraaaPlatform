@@ -23,12 +23,14 @@ CreateFirebaseCredentialsFile(builder.Environment.ContentRootPath);
 
 // One registration call per layer; each layer owns its own wiring. Persistence
 // registers the DbContext, its interceptors and the Identity stores, and the API
-// registers only what the HTTP host itself needs.
+// registers only what the HTTP host itself needs. This host also runs the
+// background workers unless Workers:Enabled is false.
 builder.Services
     .AddApplication()
     .AddPersistence(builder.Configuration)
     .AddInfrastructure(builder.Configuration, builder.Environment.IsDevelopment())
-    .AddApi(builder.Configuration, builder.Environment);
+    .AddApi(builder.Configuration, builder.Environment)
+    .AddWorkers(builder.Configuration);
 
 var app = builder.Build();
 

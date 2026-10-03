@@ -1,9 +1,12 @@
 using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup;
 using Quraaa.Application.Shared.Files;
 
-namespace Quraaa.API.Services
+namespace Quraaa.Infrastructure.Workers
 {
     /// <summary>
     /// Periodically discovers owned private files that no listing, book, or purchase

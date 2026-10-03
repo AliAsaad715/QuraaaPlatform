@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Shared.Files;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
@@ -15,19 +16,19 @@ namespace Quraaa.Application.Features.Listings.Commands.UpdateListingDigitalAsse
     {
         private readonly ILibraryRepository _libraryRepository;
         private readonly IListingRepository _listingRepository;
-        private readonly ILibraryBookStorageService _libraryBookStorageService;
+        private readonly IFileStorageService _fileStorageService;
 
         public UpdateListingDigitalAssetCommandHandler(
             ILibraryRepository libraryRepository,
             IListingRepository listingRepository,
-            ILibraryBookStorageService libraryBookStorageService,
+            IFileStorageService fileStorageService,
             ILogger<UpdateListingDigitalAssetCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
         {
             _libraryRepository = libraryRepository;
             _listingRepository = listingRepository;
-            _libraryBookStorageService = libraryBookStorageService;
+            _fileStorageService = fileStorageService;
         }
 
         public async Task<AppResult> Handle(
@@ -54,8 +55,8 @@ namespace Quraaa.Application.Features.Listings.Commands.UpdateListingDigitalAsse
                     throw new DomainException("Only digital listings have a digital asset.");
 
                 // ── Upload first, then persist — matches AddDigitalBook's order ─
-                var newUrl = await _libraryBookStorageService.SaveAsync(
-                    request.DigitalAsset, cancellationToken);
+                var newUrl = await _fileStorageService.SaveAsync(
+                    request.DigitalAsset, FileStorageFolders.LibraryBooks, cancellationToken);
 
                 listing.UpdateCustomDigitalAsset(newUrl, request.RequestingUserId);
 

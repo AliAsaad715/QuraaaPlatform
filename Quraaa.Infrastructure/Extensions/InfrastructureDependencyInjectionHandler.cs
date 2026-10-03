@@ -15,6 +15,7 @@ using Quraaa.Application.Features.Payments.Interfaces;
 using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Shared.Files;
 using Quraaa.Infrastructure.Services;
+using Quraaa.Infrastructure.Workers;
 using StackExchange.Redis;
 using Stripe;
 using System.Net;
@@ -137,10 +138,37 @@ namespace Quraaa.Infrastructure.Extensions
             return services;
         }
 
+        /// <summary>
+        /// Registers the background workers. A host runs them unless
+        /// <c>Workers:Enabled</c> is false, so web replicas can leave the work
+        /// to a dedicated instance.
+        /// </summary>
+        public static IServiceCollection AddWorkers(
+            this IServiceCollection services,
+            IConfiguration configuration)
+        {
+            if (!configuration.GetValue("Workers:Enabled", defaultValue: true))
+            {
+                return services;
+            }
+
+            services.AddHostedService<ExpiredOrderPaymentReconciliationService>();
+            services.AddHostedService<FileRetentionCleanupService>();
+            services.AddHostedService<SellerPayoutProcessingService>();
+            services.AddHostedService<BookModerationNotificationDeliveryService>();
+            services.AddHostedService<LibraryApprovalNotificationDeliveryService>();
+            services.AddHostedService<ListingPushNotificationDeliveryService>();
+
+            return services;
+        }
+
         private static void AddCloudinaryStorage(
             IServiceCollection services,
             IConfiguration configuration)
         {
+            services.Configure<FileStorageOptions>(configuration.GetSection("Storage"));
+            services.Configure<FileRetentionOptions>(configuration.GetSection("Storage:FileRetention"));
+
             services.AddOptions<CloudinaryOptions>()
                 .Configure(options =>
                 {
@@ -185,6 +213,7 @@ namespace Quraaa.Infrastructure.Extensions
                 LogLevel.None));
             services.AddScoped<IFileStorageService>(serviceProvider =>
                 serviceProvider.GetRequiredService<CloudinaryFileStorageService>());
+            services.AddScoped<IFileAccessService, FileAccessService>();
         }
 
         private static void AddLibraryEmailServices(

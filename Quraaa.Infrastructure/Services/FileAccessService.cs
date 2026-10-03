@@ -1,6 +1,6 @@
 using Quraaa.Application.Shared.Files;
 
-namespace Quraaa.API.Services
+namespace Quraaa.Infrastructure.Services
 {
     public sealed class FileAccessService : IFileAccessService
     {

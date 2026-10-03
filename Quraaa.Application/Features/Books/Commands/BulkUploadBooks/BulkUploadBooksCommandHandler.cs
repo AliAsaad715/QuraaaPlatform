@@ -2,9 +2,9 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Features.Books.Common;
-using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Shared.Files;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Author;
@@ -23,7 +23,8 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
         private readonly IAuthorRepository _authorRepository;
         private readonly IListingRepository _listingRepository;
         private readonly ILibraryRepository _libraryRepository;
-        private readonly IBulkBookStorageService _storageService;
+        private readonly IImageStorageService _imageStorageService;
+        private readonly IFileStorageService _fileStorageService;
         private readonly IImageUrlFormatter _imageUrlFormatter;
 
         public BulkUploadBooksCommandHandler(
@@ -31,7 +32,8 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             IAuthorRepository authorRepository,
             IListingRepository listingRepository,
             ILibraryRepository libraryRepository,
-            IBulkBookStorageService storageService,
+            IImageStorageService imageStorageService,
+            IFileStorageService fileStorageService,
             IImageUrlFormatter imageUrlFormatter,
             ILogger<BulkUploadBooksCommandHandler> logger,
             IServiceProvider serviceProvider)
@@ -41,7 +43,8 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             _authorRepository = authorRepository;
             _listingRepository = listingRepository;
             _libraryRepository = libraryRepository;
-            _storageService = storageService;
+            _imageStorageService = imageStorageService;
+            _fileStorageService = fileStorageService;
             _imageUrlFormatter = imageUrlFormatter;
         }
 
@@ -135,11 +138,11 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             catch
             {
                 // Compensate: delete only the files that were actually written.
-                var partialPaths = saveTasks
+                var partialAssets = saveTasks
                     .Where(t => t.IsCompletedSuccessfully)
-                    .SelectMany(t => t.Result.AllPaths)
+                    .SelectMany(t => t.Result.AllAssets)
                     .ToList();
-                await CleanupFilesAsync(partialPaths, CancellationToken.None);
+                await CleanupFilesAsync(partialAssets, CancellationToken.None);
                 throw;
             }
 
@@ -203,8 +206,8 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             catch
             {
                 // DB failed — delete every file we saved during Phase 4.
-                var allPaths = savedResults.SelectMany(r => r.AllPaths).ToList();
-                await CleanupFilesAsync(allPaths, CancellationToken.None);
+                var allAssets = savedResults.SelectMany(r => r.AllAssets).ToList();
+                await CleanupFilesAsync(allAssets, CancellationToken.None);
                 throw;
             }
         }
@@ -318,9 +321,11 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             BookUploadFileGroup group,
             CancellationToken cancellationToken)
         {
-            var coverTask = _storageService.SaveCoverImageAsync(group.CoverImage, cancellationToken);
-            var pdfTask   = _storageService.SavePdfAsync(group.PdfFile,          cancellationToken);
-            var wordTask  = _storageService.SaveWordDocAsync(group.WordFile,      cancellationToken);
+            // Covers are public display images; PDFs and Word documents are private
+            // provider assets whose references are not download URLs.
+            var coverTask = _imageStorageService.UploadAsync(group.CoverImage, ImageAssetKind.BookCover, cancellationToken);
+            var pdfTask   = _fileStorageService.SaveAsync(group.PdfFile,  FileStorageFolders.BookPdfs,          cancellationToken);
+            var wordTask  = _fileStorageService.SaveAsync(group.WordFile, FileStorageFolders.BookWordDocuments, cancellationToken);
 
             try
             {
@@ -331,33 +336,40 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
                 // A provider/file failure can occur after one of the sibling writes
                 // succeeded. Clean those partial results here; the outer batch cleanup
                 // handles only book groups that completed all three writes.
-                var partialPaths = new List<string>(3);
+                var partialAssets = new List<StoredAsset>(3);
                 if (coverTask.IsCompletedSuccessfully)
-                    partialPaths.Add(coverTask.Result);
+                    partialAssets.Add(StoredAsset.Image(coverTask.Result));
                 if (pdfTask.IsCompletedSuccessfully)
-                    partialPaths.Add(pdfTask.Result);
+                    partialAssets.Add(StoredAsset.Document(pdfTask.Result));
                 if (wordTask.IsCompletedSuccessfully)
-                    partialPaths.Add(wordTask.Result);
+                    partialAssets.Add(StoredAsset.Document(wordTask.Result));
 
-                await CleanupFilesAsync(partialPaths, CancellationToken.None);
+                await CleanupFilesAsync(partialAssets, CancellationToken.None);
                 throw;
             }
 
             return new SavedFileSet(group, await coverTask, await pdfTask, await wordTask);
         }
 
-        private async Task CleanupFilesAsync(IEnumerable<string> paths, CancellationToken cancellationToken)
-            => await Task.WhenAll(paths.Select(p => SafeDeleteAsync(p, cancellationToken)));
+        private async Task CleanupFilesAsync(IEnumerable<StoredAsset> assets, CancellationToken cancellationToken)
+            => await Task.WhenAll(assets.Select(a => SafeDeleteAsync(a, cancellationToken)));
 
-        private async Task SafeDeleteAsync(string path, CancellationToken cancellationToken)
+        private async Task SafeDeleteAsync(StoredAsset asset, CancellationToken cancellationToken)
         {
+            if (string.IsNullOrWhiteSpace(asset.Reference))
+                return;
+
             try
             {
-                await _storageService.DeleteAsync(path, cancellationToken);
+                // Each asset is deleted through the store that wrote it.
+                if (asset.IsImage)
+                    await _imageStorageService.DeleteAsync(asset.Reference, cancellationToken);
+                else
+                    await _fileStorageService.DeleteAsync(asset.Reference, cancellationToken);
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, "Failed to delete orphaned file: {Path}", path);
+                Logger.LogWarning(ex, "Failed to delete orphaned file: {Path}", asset.Reference);
             }
         }
 
@@ -367,7 +379,15 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             string PdfUrl,
             string WordDocUrl)
         {
-            public IEnumerable<string> AllPaths => [CoverImageUrl, PdfUrl, WordDocUrl];
+            public IEnumerable<StoredAsset> AllAssets =>
+                [StoredAsset.Image(CoverImageUrl), StoredAsset.Document(PdfUrl), StoredAsset.Document(WordDocUrl)];
+        }
+
+        private readonly record struct StoredAsset(string Reference, bool IsImage)
+        {
+            public static StoredAsset Image(string reference) => new(reference, IsImage: true);
+
+            public static StoredAsset Document(string reference) => new(reference, IsImage: false);
         }
     }
 }
