@@ -124,7 +124,6 @@ Quraaa.API/
   DesignTime/
     ApplicationDbContextFactory.cs
   Extensions/
-    DatabaseExtensions.cs
     ServiceCollectionExtensions.cs
     SwaggerExtensions.cs
   Requests/
@@ -540,7 +539,7 @@ Startup calls `DotNetEnv.Env.Load()` before creating the builder, then also load
 | Email OTP     | `LIBRARY_EMAIL_OTP_PEPPER`                                                                                                                  |
 | SMTP          | `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_ENCRYPTION`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME`          |
 
-`JWT_SECRET_KEY` is required by `IdentityService.GenerateAuthTokensAsync` and by `ServiceCollectionExtensions.AddJwtAuthentication`. If it is missing, the application throws `InvalidOperationException` at startup.
+`JWT_SECRET_KEY` is required by `IdentityService.GenerateAuthTokensAsync` and by `ServiceCollectionExtensions.AddApiAuthentication`. If it is missing, the application throws `InvalidOperationException` at startup.
 `JWT_DURATION_IN_MINUTES` defaults to `60` and is validated at startup as an invariant finite number greater than zero and no greater than `10080` (seven days).
 
 Firebase Admin credential resolution order:
