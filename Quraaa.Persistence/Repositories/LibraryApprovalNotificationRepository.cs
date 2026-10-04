@@ -78,9 +78,6 @@ public sealed class LibraryApprovalNotificationRepository
         return notifications;
     }
 
-    public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
-        _context.SaveChangesAsync(cancellationToken);
-
     private static DateTime NormalizeUtc(DateTime value) =>
         value.Kind switch
         {

@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Payouts.Common;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -13,13 +14,16 @@ namespace Quraaa.Application.Features.Payouts.Commands.SetLibraryProfitShare
           IRequestHandler<SetLibraryProfitShareCommand, AppResult<LibraryProfitShareResponse>>
     {
         private readonly ILibraryRepository _libraryRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public SetLibraryProfitShareCommandHandler(
             ILibraryRepository libraryRepository,
+            IUnitOfWork unitOfWork,
             ILogger<SetLibraryProfitShareCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _libraryRepository = libraryRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<LibraryProfitShareResponse>> Handle(
@@ -45,7 +49,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.SetLibraryProfitShare
 
                 // Optimistic-concurrency conflicts surface from the repository
                 // as ConflictException (HTTP 409).
-                await _libraryRepository.SaveChangesAsync();
+                await _unitOfWork.SaveChangesAsync();
 
                 if (previousPercent != library.ProfitSharePercent)
                 {

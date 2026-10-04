@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Features.Reviews.Common;
 using Quraaa.Application.Features.Reviews.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Reviews;
@@ -23,12 +24,14 @@ namespace Quraaa.Application.Features.Reviews.Commands.CreateBookReview
         private readonly IBookPurchaseRepository _bookPurchaseRepository;
         private readonly IUserRepository _userRepository;
         private readonly IImageUrlFormatter _imageUrlFormatter;
+        private readonly IUnitOfWork _unitOfWork;
 
         public CreateBookReviewCommandHandler(
             IBookReviewRepository bookReviewRepository,
             IBookPurchaseRepository bookPurchaseRepository,
             IUserRepository userRepository,
             IImageUrlFormatter imageUrlFormatter,
+            IUnitOfWork unitOfWork,
             ILogger<CreateBookReviewCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
@@ -36,6 +39,7 @@ namespace Quraaa.Application.Features.Reviews.Commands.CreateBookReview
             _bookPurchaseRepository = bookPurchaseRepository;
             _userRepository = userRepository;
             _imageUrlFormatter = imageUrlFormatter;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<BookReviewResponse>> Handle(
@@ -73,7 +77,7 @@ namespace Quraaa.Application.Features.Reviews.Commands.CreateBookReview
 
                 try
                 {
-                    await _bookReviewRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
                 catch (ApplicationBusinessException ex) when (
                     string.Equals(ex.Message, ReviewErrorCodes.DuplicateReview, StringComparison.Ordinal))

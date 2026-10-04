@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Common;
-using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Payouts.Common;
 using Quraaa.Application.Features.Payouts.Exceptions;
 using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.Library.Enums;
 using Quraaa.Domain.Shared.Exceptions;
@@ -29,25 +29,25 @@ namespace Quraaa.Application.Features.Payouts.Services
         private const string RefreshUrlFieldName = "RefreshUrl";
 
         private readonly IPayoutGateway _payoutGateway;
-        private readonly ILibraryRepository _libraryRepository;
         private readonly ISellerPayoutRepository _sellerPayoutRepository;
         private readonly ISellerPayoutDispatchSignal _payoutDispatchSignal;
         private readonly LibraryRegistrationOptions _registrationOptions;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<LibraryStripeOnboardingService> _logger;
 
         public LibraryStripeOnboardingService(
             IPayoutGateway payoutGateway,
-            ILibraryRepository libraryRepository,
             ISellerPayoutRepository sellerPayoutRepository,
             ISellerPayoutDispatchSignal payoutDispatchSignal,
             LibraryRegistrationOptions registrationOptions,
+            IUnitOfWork unitOfWork,
             ILogger<LibraryStripeOnboardingService> logger)
         {
             _payoutGateway = payoutGateway;
-            _libraryRepository = libraryRepository;
             _sellerPayoutRepository = sellerPayoutRepository;
             _payoutDispatchSignal = payoutDispatchSignal;
             _registrationOptions = registrationOptions;
+            _unitOfWork = unitOfWork;
             _logger = logger;
         }
 
@@ -110,7 +110,7 @@ namespace Quraaa.Application.Features.Payouts.Services
                     library.Id);
 
                 library.RemoveStripeWallet(library.UserId);
-                await _libraryRepository.SaveChangesAsync();
+                await _unitOfWork.SaveChangesAsync();
 
                 accountId = await CreateAndAttachAccountAsync(library, cancellationToken);
 
@@ -160,7 +160,7 @@ namespace Quraaa.Application.Features.Payouts.Services
                     library.Id);
 
                 library.RemoveStripeWallet(library.UserId);
-                await _libraryRepository.SaveChangesAsync();
+                await _unitOfWork.SaveChangesAsync();
                 return LibraryWalletResponse.From(library);
             }
 
@@ -169,7 +169,7 @@ namespace Quraaa.Application.Features.Payouts.Services
                 if (library.IsStripeWalletActive)
                 {
                     library.DeactivateStripeWallet();
-                    await _libraryRepository.SaveChangesAsync();
+                    await _unitOfWork.SaveChangesAsync();
 
                     _logger.LogWarning(
                         "Stripe wallet {AccountId} of library {LibraryId} can no longer receive transfers.",
@@ -186,7 +186,7 @@ namespace Quraaa.Application.Features.Payouts.Services
             }
 
             library.MarkStripeWalletActive(DateTime.UtcNow);
-            await _libraryRepository.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Stripe wallet {AccountId} of library {LibraryId} is now active.",
@@ -224,7 +224,7 @@ namespace Quraaa.Application.Features.Payouts.Services
                 cancellationToken);
 
             library.ConnectStripeWallet(accountId, activatedAtUtc: null, library.UserId);
-            await _libraryRepository.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Created Stripe connected account {AccountId} for library {LibraryId}.",

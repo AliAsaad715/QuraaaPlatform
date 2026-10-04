@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
 using Quraaa.Application.Features.Profiles.Common;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -14,17 +15,20 @@ namespace Quraaa.Application.Features.Profiles.Commands.UpdateProfile
         private readonly IUserRepository _userRepository;
         private readonly ICategoryRepository _categoryRepository;
         private readonly IImageUrlFormatter _imageUrlFormatter;
+        private readonly IUnitOfWork _unitOfWork;
 
         public UpdateProfileCommandHandler(
             IUserRepository userRepository,
             ICategoryRepository categoryRepository,
             IImageUrlFormatter imageUrlFormatter,
+            IUnitOfWork unitOfWork,
             ILogger<UpdateProfileCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _userRepository = userRepository;
             _categoryRepository = categoryRepository;
             _imageUrlFormatter = imageUrlFormatter;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<ProfileResponse>> Handle(UpdateProfileCommand request, CancellationToken cancellationToken)
@@ -48,7 +52,7 @@ namespace Quraaa.Application.Features.Profiles.Commands.UpdateProfile
                     request.Interests,
                     request.UserId);
 
-                await _userRepository.SaveChangesAsync();
+                await _unitOfWork.SaveChangesAsync();
 
                 var interestCategories = await _categoryRepository.GetByIdsAsync(user.InterestedCategoryIds.ToList(), cancellationToken);
 

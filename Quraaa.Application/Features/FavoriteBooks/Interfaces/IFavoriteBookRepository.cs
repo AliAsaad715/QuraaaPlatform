@@ -15,6 +15,5 @@ namespace Quraaa.Application.Features.FavoriteBooks.Interfaces
             CancellationToken cancellationToken = default);
         Task AddAsync(FavoriteBookAggregate favoriteBook, CancellationToken cancellationToken = default);
         Task<bool> RemoveAsync(Guid userId, Guid bookId, CancellationToken cancellationToken = default);
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

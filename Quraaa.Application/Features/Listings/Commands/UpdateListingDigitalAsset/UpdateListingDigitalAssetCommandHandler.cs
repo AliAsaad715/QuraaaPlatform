@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Shared.Files;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
@@ -17,11 +18,13 @@ namespace Quraaa.Application.Features.Listings.Commands.UpdateListingDigitalAsse
         private readonly ILibraryRepository _libraryRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IFileStorageService _fileStorageService;
+        private readonly IUnitOfWork _unitOfWork;
 
         public UpdateListingDigitalAssetCommandHandler(
             ILibraryRepository libraryRepository,
             IListingRepository listingRepository,
             IFileStorageService fileStorageService,
+            IUnitOfWork unitOfWork,
             ILogger<UpdateListingDigitalAssetCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -29,6 +32,7 @@ namespace Quraaa.Application.Features.Listings.Commands.UpdateListingDigitalAsse
             _libraryRepository = libraryRepository;
             _listingRepository = listingRepository;
             _fileStorageService = fileStorageService;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -60,7 +64,7 @@ namespace Quraaa.Application.Features.Listings.Commands.UpdateListingDigitalAsse
 
                 listing.UpdateCustomDigitalAsset(newUrl, request.RequestingUserId);
 
-                await _listingRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             }, "Listing digital asset updated successfully.");
         }

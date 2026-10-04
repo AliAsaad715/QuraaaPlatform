@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Admin.Common;
 using Quraaa.Application.Features.Admin.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 
@@ -12,13 +13,16 @@ namespace Quraaa.Application.Features.Admin.Commands.SetAuthorActivation
           IRequestHandler<SetAuthorActivationCommand, AppResult<BulkModerationResult>>
     {
         private readonly IAdminModerationRepository _moderationRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public SetAuthorActivationCommandHandler(
             IAdminModerationRepository moderationRepository,
+            IUnitOfWork unitOfWork,
             ILogger<SetAuthorActivationCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _moderationRepository = moderationRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<BulkModerationResult>> Handle(
@@ -54,7 +58,7 @@ namespace Quraaa.Application.Features.Admin.Commands.SetAuthorActivation
                     outcomes.Add(new BulkModerationOutcome(id, true));
                 }
 
-                await _moderationRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 Logger.LogInformation(
                     "Admin {AdminId} set activation ({Deactivate}) on {SucceededCount} of {RequestedCount} authors.",

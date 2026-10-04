@@ -71,7 +71,5 @@ namespace Quraaa.Application.Features.Orders.Interfaces
             int pageSize,
             OrderStatus? status = null,
             CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

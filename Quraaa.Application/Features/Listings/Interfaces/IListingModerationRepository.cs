@@ -25,7 +25,5 @@ namespace Quraaa.Application.Features.Listings.Interfaces
             CancellationToken cancellationToken = default);
 
         void Remove(IReadOnlyCollection<ListingAggregate> listings);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

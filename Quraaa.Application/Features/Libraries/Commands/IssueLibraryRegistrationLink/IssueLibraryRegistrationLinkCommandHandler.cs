@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Library;
@@ -21,6 +22,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.IssueLibraryRegistratio
         private readonly ILibraryRegistrationRepository _registrationRepository;
         private readonly ILibraryRegistrationTokenService _tokenService;
         private readonly LibraryRegistrationOptions _options;
+        private readonly IUnitOfWork _unitOfWork;
 
         public IssueLibraryRegistrationLinkCommandHandler(
             IUserRepository userRepository,
@@ -28,6 +30,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.IssueLibraryRegistratio
             ILibraryRegistrationRepository registrationRepository,
             ILibraryRegistrationTokenService tokenService,
             LibraryRegistrationOptions options,
+            IUnitOfWork unitOfWork,
             ILogger<IssueLibraryRegistrationLinkCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -37,6 +40,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.IssueLibraryRegistratio
             _registrationRepository = registrationRepository;
             _tokenService = tokenService;
             _options = options;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<LibraryRegistrationLinkResponse>> Handle(
@@ -119,7 +123,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.IssueLibraryRegistratio
                             submittedAtUtc);
                     }
 
-                    await _registrationRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                     var linkBuilder = new UriBuilder(_options.DashboardRegisterUrl)
                     {

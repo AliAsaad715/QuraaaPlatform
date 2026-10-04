@@ -4,6 +4,7 @@ using Quraaa.Application.Features.BookReports.Interfaces;
 using Quraaa.Application.Features.Books.Common;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Catalog;
@@ -18,15 +19,18 @@ namespace Quraaa.Application.Features.Books.Commands.RevertBookToVersion
     {
         private readonly IBookVersionRepository _bookVersionRepository;
         private readonly IBookReportRepository _bookReportRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public RevertBookToVersionCommandHandler(
             IBookVersionRepository bookVersionRepository,
             IBookReportRepository bookReportRepository,
+            IUnitOfWork unitOfWork,
             ILogger<RevertBookToVersionCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _bookVersionRepository = bookVersionRepository;
             _bookReportRepository = bookReportRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<BookModerationResponse>> Handle(
@@ -85,7 +89,7 @@ namespace Quraaa.Application.Features.Books.Commands.RevertBookToVersion
                         restoredFrom),
                     cancellationToken);
 
-                await _bookVersionRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 Logger.LogInformation(
                     "Admin {AdminId} reverted book {BookId} to version {RestoredVersion} (now version {CurrentVersion}).",

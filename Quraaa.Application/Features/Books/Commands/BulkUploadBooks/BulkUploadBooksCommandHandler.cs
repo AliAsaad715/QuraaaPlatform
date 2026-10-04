@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Books.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Shared.Files;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Author;
@@ -26,6 +27,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
         private readonly IImageStorageService _imageStorageService;
         private readonly IFileStorageService _fileStorageService;
         private readonly IImageUrlFormatter _imageUrlFormatter;
+        private readonly IUnitOfWork _unitOfWork;
 
         public BulkUploadBooksCommandHandler(
             IBookRepository bookRepository,
@@ -35,6 +37,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             IImageStorageService imageStorageService,
             IFileStorageService fileStorageService,
             IImageUrlFormatter imageUrlFormatter,
+            IUnitOfWork unitOfWork,
             ILogger<BulkUploadBooksCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -46,6 +49,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             _imageStorageService = imageStorageService;
             _fileStorageService = fileStorageService;
             _imageUrlFormatter = imageUrlFormatter;
+            _unitOfWork = unitOfWork;
         }
 
         public Task<AppResult<BulkUploadBooksResponse>> Handle(
@@ -63,8 +67,8 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
         //   2. Single DB roundtrip  — find which of the new books already exist
         //   3. Partition            — new books vs. duplicates
         //   4. File I/O             — save files only for genuinely new books
-        //   5. Bulk insert          — books + their listings in one SaveChanges
-        //                              call, rolls back files on failure
+        //   5. Bulk insert          — authors, books and listings in one unit-of-work
+        //                              save, rolls back files on failure
         // ─────────────────────────────────────────────────────────────────────────
         private async Task<BulkUploadBooksResponse> ProcessAsync(
             BulkUploadBooksCommand command,
@@ -151,8 +155,8 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
             {
                 // Resolve or create an Author per distinct name in this batch so every new
                 // book links to a real Author row instead of storing free text. New Authors
-                // are staged only (no SaveChanges) so BulkInsertAsync's SaveChangesAsync call
-                // below commits authors, books, and listings together, atomically.
+                // are staged only (no SaveChanges) so the single unit-of-work save below
+                // commits authors, books, and listings together, atomically.
                 var authorIdByNormalizedName = await ResolveAuthorsAsync(savedResults, cancellationToken);
 
                 var entities = savedResults
@@ -180,13 +184,15 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
 
                 var books = entities.Select(e => e.Book).ToList();
 
-                // Listings are staged (not yet saved) here so that BulkInsertAsync's
-                // internal SaveChangesAsync call below commits books and listings
-                // together in one atomic transaction — both share the same DbContext.
+                // Books and listings are only staged here; the one save below commits
+                // them with the new authors in a single atomic transaction. A
+                // (Title, Author, Language) race with another upload surfaces as a
+                // ConflictException, and the catch below removes the files.
                 foreach (var entity in entities)
                     await _listingRepository.AddAsync(entity.Listing, cancellationToken);
 
-                await _bookRepository.BulkInsertAsync(books, cancellationToken);
+                await _bookRepository.AddRangeAsync(books, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 var uploadResults = entities
                     .Select(e => new BookUploadResult(
@@ -245,7 +251,7 @@ namespace Quraaa.Application.Features.Books.Commands.BulkUploadBooks
         /// <summary>
         /// Resolves an AuthorId per distinct normalized author name across the batch,
         /// reusing existing Authors and staging (not saving) new ones so the caller's
-        /// later single SaveChangesAsync call commits everything atomically.
+        /// later single unit-of-work save commits everything atomically.
         /// </summary>
         private async Task<Dictionary<string, Guid>> ResolveAuthorsAsync(
             IReadOnlyList<SavedFileSet> savedResults,

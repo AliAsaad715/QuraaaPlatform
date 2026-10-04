@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Payments.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
@@ -23,6 +24,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CancelOrder
         private readonly IListingRepository _listingRepository;
         private readonly IPaymentGateway _paymentGateway;
         private readonly IImageUrlFormatter _imageUrlFormatter;
+        private readonly IUnitOfWork _unitOfWork;
 
         public CancelOrderCommandHandler(
             IOrderRepository orderRepository,
@@ -30,6 +32,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CancelOrder
             IListingRepository listingRepository,
             IPaymentGateway paymentGateway,
             IImageUrlFormatter imageUrlFormatter,
+            IUnitOfWork unitOfWork,
             ILogger<CancelOrderCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -39,6 +42,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CancelOrder
             _listingRepository = listingRepository;
             _paymentGateway = paymentGateway;
             _imageUrlFormatter = imageUrlFormatter;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<OrderResponse>> Handle(
@@ -116,7 +120,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CancelOrder
                     }
                 }
 
-                await _orderRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 return order.ToResponse(_imageUrlFormatter);
             }, "Order cancelled successfully");

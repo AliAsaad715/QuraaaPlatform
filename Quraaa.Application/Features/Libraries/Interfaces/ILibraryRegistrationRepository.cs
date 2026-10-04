@@ -23,7 +23,5 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
         Task AddChallengeAsync(
             LibraryEmailVerificationChallenge challenge,
             CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

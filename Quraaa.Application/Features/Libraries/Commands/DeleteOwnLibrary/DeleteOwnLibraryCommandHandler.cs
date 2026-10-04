@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Admin.Common;
 using Quraaa.Application.Features.Admin.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -17,17 +18,20 @@ namespace Quraaa.Application.Features.Libraries.Commands.DeleteOwnLibrary
         private readonly ILibraryRepository _libraryRepository;
         private readonly ILibraryPasswordHasher _libraryPasswordHasher;
         private readonly IAdminModerationRepository _moderationRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public DeleteOwnLibraryCommandHandler(
             ILibraryRepository libraryRepository,
             ILibraryPasswordHasher libraryPasswordHasher,
             IAdminModerationRepository moderationRepository,
+            IUnitOfWork unitOfWork,
             ILogger<DeleteOwnLibraryCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _libraryRepository = libraryRepository;
             _libraryPasswordHasher = libraryPasswordHasher;
             _moderationRepository = moderationRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -77,7 +81,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.DeleteOwnLibrary
                     cancellationToken);
 
                 _moderationRepository.RemoveLibraries(libraries);
-                await _moderationRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 Logger.LogWarning(
                     "Library {LibraryId} was permanently deleted by its owner {UserId}.",

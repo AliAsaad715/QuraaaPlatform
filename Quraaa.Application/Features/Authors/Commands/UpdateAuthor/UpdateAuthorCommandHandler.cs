@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authors.Common;
 using Quraaa.Application.Features.Authors.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -13,13 +14,16 @@ namespace Quraaa.Application.Features.Authors.Commands.UpdateAuthor
           IRequestHandler<UpdateAuthorCommand, AppResult<AuthorResponse>>
     {
         private readonly IAuthorRepository _authorRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public UpdateAuthorCommandHandler(
             IAuthorRepository authorRepository,
+            IUnitOfWork unitOfWork,
             ILogger<UpdateAuthorCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _authorRepository = authorRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<AuthorResponse>> Handle(UpdateAuthorCommand request, CancellationToken cancellationToken)
@@ -31,7 +35,7 @@ namespace Quraaa.Application.Features.Authors.Commands.UpdateAuthor
 
                 author.UpdateDetails(request.Name, request.Bio, request.PhotoUrl, request.BirthDate, request.ModifiedBy);
 
-                await _authorRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 return new AuthorResponse(author.Id, author.Name, author.Bio, author.PhotoUrl, author.BirthDate, author.CreationTime);
             }, "Author updated successfully");

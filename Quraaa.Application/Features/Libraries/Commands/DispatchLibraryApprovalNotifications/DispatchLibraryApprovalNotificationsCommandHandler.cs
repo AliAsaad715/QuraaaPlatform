@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Notifications.Common;
 using Quraaa.Application.Features.Notifications.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Domain.Notifications;
 using Quraaa.Domain.Notifications.Enums;
 
@@ -29,6 +30,7 @@ public sealed class DispatchLibraryApprovalNotificationsCommandHandler
     private readonly IPushDeviceRepository _pushDeviceRepository;
     private readonly ILibraryEmailSender _emailSender;
     private readonly IFirebaseNotificationService _firebaseNotificationService;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<DispatchLibraryApprovalNotificationsCommandHandler> _logger;
 
     public DispatchLibraryApprovalNotificationsCommandHandler(
@@ -36,12 +38,14 @@ public sealed class DispatchLibraryApprovalNotificationsCommandHandler
         IPushDeviceRepository pushDeviceRepository,
         ILibraryEmailSender emailSender,
         IFirebaseNotificationService firebaseNotificationService,
+        IUnitOfWork unitOfWork,
         ILogger<DispatchLibraryApprovalNotificationsCommandHandler> logger)
     {
         _notificationRepository = notificationRepository;
         _pushDeviceRepository = pushDeviceRepository;
         _emailSender = emailSender;
         _firebaseNotificationService = firebaseNotificationService;
+        _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
@@ -99,7 +103,7 @@ public sealed class DispatchLibraryApprovalNotificationsCommandHandler
                 // Persist the email outcome before starting push delivery. The two
                 // providers are independent; a later FCM failure must not cause an
                 // already accepted SMTP message to be retried.
-                await _notificationRepository.SaveChangesAsync(CancellationToken.None);
+                await _unitOfWork.SaveChangesAsync(CancellationToken.None);
             }
 
             if (notification.ShouldAttemptPush(utcNow))
@@ -114,14 +118,14 @@ public sealed class DispatchLibraryApprovalNotificationsCommandHandler
                         : 0;
                 abandonedCount += pushResult == NotificationDeliveryState.Abandoned ? 1 : 0;
 
-                await _notificationRepository.SaveChangesAsync(CancellationToken.None);
+                await _unitOfWork.SaveChangesAsync(CancellationToken.None);
                 await RemoveInvalidPushTokensAsync(
                     notification,
                     pushOutcome.InvalidDeviceTokens);
             }
 
             notification.ReleaseLease();
-            await _notificationRepository.SaveChangesAsync(CancellationToken.None);
+            await _unitOfWork.SaveChangesAsync(CancellationToken.None);
         }
 
         return new DispatchLibraryApprovalNotificationsResult(

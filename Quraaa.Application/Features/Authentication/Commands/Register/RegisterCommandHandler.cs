@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Otp.Exceptions;
 using Quraaa.Application.Features.Otp.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.User;
@@ -20,7 +21,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
         private readonly IPhoneService _phoneService;
         private readonly IOtpCacheService _otpCacheService;
         private readonly IFirebaseSmsGateway _firebaseSmsGateway;
-        private readonly IAuthenticationUnitOfWork _authenticationUnitOfWork;
+        private readonly IUnitOfWork _unitOfWork;
 
         private const string OtpKeyPrefix = "register-otp";
         private static readonly TimeSpan OtpExpiration = TimeSpan.FromMinutes(10);
@@ -33,7 +34,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
             IPhoneService phoneService,
             IOtpCacheService otpCacheService,
             IFirebaseSmsGateway firebaseSmsGateway,
-            IAuthenticationUnitOfWork authenticationUnitOfWork,
+            IUnitOfWork unitOfWork,
             ILogger<RegisterCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
@@ -42,7 +43,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
             _phoneService = phoneService;
             _otpCacheService = otpCacheService;
             _firebaseSmsGateway = firebaseSmsGateway;
-            _authenticationUnitOfWork = authenticationUnitOfWork;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(RegisterCommand request, CancellationToken cancellationToken)
@@ -95,7 +96,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
 
                 try
                 {
-                    await _authenticationUnitOfWork.ExecuteInTransactionAsync(async transactionCancellationToken =>
+                    await _unitOfWork.ExecuteInTransactionAsync(async transactionCancellationToken =>
                     {
                         var id = Guid.NewGuid();
                         var roleName = Role.User.ToString();
@@ -129,7 +130,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.Register
 
                         AddInterests(userProfile, request.Interests);
                         await _userRepository.AddUserAsync(userProfile, transactionCancellationToken);
-                        await _userRepository.SaveChangesAsync(transactionCancellationToken);
+                        await _unitOfWork.SaveChangesAsync(transactionCancellationToken);
 
                         // Dispatch must happen before commit: if the SMS gateway throws, the
                         // rollback below must undo the identity/role/profile rows too, so a

@@ -1,8 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Quraaa.Application.Features.Categories.Interfaces;
 using Quraaa.Domain.Category;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -45,23 +43,12 @@ namespace Quraaa.Persistence.Repositories
         public async Task AddAsync(CategoryAggregate category, CancellationToken cancellationToken = default)
         {
             await _context.Categories.AddAsync(category, cancellationToken);
-            await _context.SaveChangesAsync();
         }
 
-        public async Task RemoveAsync(CategoryAggregate category, CancellationToken cancellationToken = default)
+        public Task RemoveAsync(CategoryAggregate category, CancellationToken cancellationToken = default)
         {
             _context.Categories.Remove(category);
-
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException ex) when (IsForeignKeyViolation(ex))
-            {
-                _context.Entry(category).State = EntityState.Unchanged;
-                throw new ConflictException(
-                    "This category cannot be deleted because one or more books still reference it.");
-            }
+            return Task.CompletedTask;
         }
 
         public async Task<bool> ExistsByCodeAsync(string code, CancellationToken cancellationToken = default)
@@ -93,12 +80,5 @@ namespace Quraaa.Persistence.Repositories
                 .AsNoTracking()
                 .AnyAsync(b => b.CategoryId == categoryId && !b.IsDeleted, cancellationToken);
         }
-
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
-            _context.SaveChangesAsync(cancellationToken);
-
-        // PostgreSQL error code 23503 = foreign_key_violation
-        private static bool IsForeignKeyViolation(DbUpdateException exception) =>
-            exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation };
     }
 }

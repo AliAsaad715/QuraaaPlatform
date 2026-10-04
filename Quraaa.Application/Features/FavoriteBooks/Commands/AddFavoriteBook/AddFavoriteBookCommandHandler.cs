@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.FavoriteBooks.Common;
 using Quraaa.Application.Features.FavoriteBooks.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Favorites;
@@ -17,15 +18,18 @@ namespace Quraaa.Application.Features.FavoriteBooks.Commands.AddFavoriteBook
     {
         private readonly IFavoriteBookRepository _favoriteBookRepository;
         private readonly IUserRepository _userRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public AddFavoriteBookCommandHandler(
             IFavoriteBookRepository favoriteBookRepository,
             IUserRepository userRepository,
+            IUnitOfWork unitOfWork,
             ILogger<AddFavoriteBookCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _favoriteBookRepository = favoriteBookRepository;
             _userRepository = userRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<FavoriteBookResponse>> Handle(
@@ -61,7 +65,7 @@ namespace Quraaa.Application.Features.FavoriteBooks.Commands.AddFavoriteBook
 
                 try
                 {
-                    await _favoriteBookRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
                 catch (ApplicationBusinessException ex) when (
                     string.Equals(ex.Message, FavoriteBookErrorCodes.DuplicateFavoriteBook, StringComparison.Ordinal))

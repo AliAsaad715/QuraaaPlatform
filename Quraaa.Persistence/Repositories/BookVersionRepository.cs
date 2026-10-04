@@ -1,8 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Domain.Catalog;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -66,31 +64,6 @@ namespace Quraaa.Persistence.Repositories
             CancellationToken cancellationToken = default)
         {
             await _context.BookVersions.AddAsync(version, cancellationToken);
-        }
-
-        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConflictException(
-                    "This book changed concurrently. Reload it and retry.");
-            }
-            catch (DbUpdateException exception)
-                when (exception.InnerException is PostgresException
-                {
-                    SqlState: PostgresErrorCodes.UniqueViolation,
-                    ConstraintName: "IX_BookVersions_BookId_VersionNumber"
-                })
-            {
-                // Books carry no concurrency token, so two simultaneous reverts
-                // collide on the version number instead. The loser retries.
-                throw new ConflictException(
-                    "This book changed concurrently. Reload it and retry.");
-            }
         }
     }
 }

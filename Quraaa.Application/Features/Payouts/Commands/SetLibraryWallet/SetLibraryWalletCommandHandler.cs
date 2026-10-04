@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Payouts.Common;
 using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Features.Payouts.Services;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -18,17 +19,20 @@ namespace Quraaa.Application.Features.Payouts.Commands.SetLibraryWallet
         private readonly ILibraryRepository _libraryRepository;
         private readonly IPayoutGateway _payoutGateway;
         private readonly LibraryStripeOnboardingService _onboardingService;
+        private readonly IUnitOfWork _unitOfWork;
 
         public SetLibraryWalletCommandHandler(
             ILibraryRepository libraryRepository,
             IPayoutGateway payoutGateway,
             LibraryStripeOnboardingService onboardingService,
+            IUnitOfWork unitOfWork,
             ILogger<SetLibraryWalletCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _libraryRepository = libraryRepository;
             _payoutGateway = payoutGateway;
             _onboardingService = onboardingService;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<LibraryWalletResponse>> Handle(
@@ -87,7 +91,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.SetLibraryWallet
 
                 // Verified above as able to receive transfers -> active now.
                 library.ConnectStripeWallet(stripeAccountId, DateTime.UtcNow, request.UserId);
-                await _libraryRepository.SaveChangesAsync();
+                await _unitOfWork.SaveChangesAsync();
 
                 if (walletChanged)
                 {

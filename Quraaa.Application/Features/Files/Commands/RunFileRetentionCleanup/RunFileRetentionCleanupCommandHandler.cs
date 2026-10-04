@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Files;
+using Quraaa.Application.Shared.Persistence;
 
 namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
 {
@@ -16,6 +17,7 @@ namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
         private readonly IListingRepository _listingRepository;
         private readonly IBookRepository _bookRepository;
         private readonly IBookPurchaseRepository _purchaseRepository;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<RunFileRetentionCleanupCommandHandler> _logger;
 
         public RunFileRetentionCleanupCommandHandler(
@@ -24,6 +26,7 @@ namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
             IListingRepository listingRepository,
             IBookRepository bookRepository,
             IBookPurchaseRepository purchaseRepository,
+            IUnitOfWork unitOfWork,
             ILogger<RunFileRetentionCleanupCommandHandler> logger)
         {
             _fileStorageService = fileStorageService;
@@ -31,6 +34,7 @@ namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
             _listingRepository = listingRepository;
             _bookRepository = bookRepository;
             _purchaseRepository = purchaseRepository;
+            _unitOfWork = unitOfWork;
             _logger = logger;
         }
 
@@ -99,7 +103,7 @@ namespace Quraaa.Application.Features.Files.Commands.RunFileRetentionCleanup
                 return 0;
 
             await _candidateRepository.AddPendingAsync(newPaths, nowUtc, cancellationToken);
-            await _candidateRepository.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return newPaths.Count;
         }

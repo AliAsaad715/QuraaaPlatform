@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Library.Enums;
@@ -19,14 +20,14 @@ namespace Quraaa.Application.Features.Libraries.Commands.UpdateLibraryApprovalSt
         private readonly ILibraryRepository _libraryRepository;
         private readonly IUserRepository _userRepository;
         private readonly IIdentityService _identityService;
-        private readonly IAuthenticationUnitOfWork _unitOfWork;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly ILibraryApprovalNotificationRepository _approvalNotificationRepository;
 
         public UpdateLibraryApprovalStatusCommandHandler(
             ILibraryRepository libraryRepository,
             IUserRepository userRepository,
             IIdentityService identityService,
-            IAuthenticationUnitOfWork unitOfWork,
+            IUnitOfWork unitOfWork,
             ILibraryApprovalNotificationRepository approvalNotificationRepository,
             ILogger<UpdateLibraryApprovalStatusCommandHandler> logger,
             IServiceProvider serviceProvider)
@@ -90,7 +91,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.UpdateLibraryApprovalSt
                         library.Reject(request.AdminId);
                     }
 
-                    await _libraryRepository.SaveChangesAsync();
+                    await _unitOfWork.SaveChangesAsync();
                 }, cancellationToken);
 
             }, $"Library status updated to {request.Status} successfully.");

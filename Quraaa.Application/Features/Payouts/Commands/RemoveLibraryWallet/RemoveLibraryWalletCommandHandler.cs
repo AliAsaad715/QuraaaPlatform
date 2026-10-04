@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -12,13 +13,16 @@ namespace Quraaa.Application.Features.Payouts.Commands.RemoveLibraryWallet
           IRequestHandler<RemoveLibraryWalletCommand, AppResult>
     {
         private readonly ILibraryRepository _libraryRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public RemoveLibraryWalletCommandHandler(
             ILibraryRepository libraryRepository,
+            IUnitOfWork unitOfWork,
             ILogger<RemoveLibraryWalletCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _libraryRepository = libraryRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -37,7 +41,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.RemoveLibraryWallet
                 }
 
                 library.RemoveStripeWallet(request.UserId);
-                await _libraryRepository.SaveChangesAsync();
+                await _unitOfWork.SaveChangesAsync();
             }, "Stripe wallet removed successfully");
         }
     }

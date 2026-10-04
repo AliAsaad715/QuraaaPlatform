@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Admin.Common;
 using Quraaa.Application.Features.Admin.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Author;
@@ -13,13 +14,16 @@ namespace Quraaa.Application.Features.Admin.Commands.DeleteAuthors
           IRequestHandler<DeleteAuthorsCommand, AppResult<BulkModerationResult>>
     {
         private readonly IAdminModerationRepository _moderationRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public DeleteAuthorsCommandHandler(
             IAdminModerationRepository moderationRepository,
+            IUnitOfWork unitOfWork,
             ILogger<DeleteAuthorsCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _moderationRepository = moderationRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<BulkModerationResult>> Handle(
@@ -67,7 +71,7 @@ namespace Quraaa.Application.Features.Admin.Commands.DeleteAuthors
                 if (removable.Count > 0)
                 {
                     _moderationRepository.RemoveAuthors(removable);
-                    await _moderationRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
 
                 Logger.LogWarning(

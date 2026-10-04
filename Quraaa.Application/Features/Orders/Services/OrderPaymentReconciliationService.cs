@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
-using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Payments.Common;
 using Quraaa.Application.Features.Payments.Exceptions;
 using Quraaa.Application.Features.Payments.Interfaces;
 using Quraaa.Application.Features.Payouts.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Domain.Cart.Enums;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
@@ -25,28 +25,28 @@ namespace Quraaa.Application.Features.Orders.Services
             TimeSpan.FromHours(23);
 
         private readonly IPaymentGateway _paymentGateway;
-        private readonly IOrderRepository _orderRepository;
         private readonly ICartRepository _cartRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IOrderPaymentFinalizationService _paymentFinalizationService;
         private readonly ISellerPayoutDispatchSignal _payoutDispatchSignal;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<OrderPaymentReconciliationService> _logger;
 
         public OrderPaymentReconciliationService(
             IPaymentGateway paymentGateway,
-            IOrderRepository orderRepository,
             ICartRepository cartRepository,
             IListingRepository listingRepository,
             IOrderPaymentFinalizationService paymentFinalizationService,
             ISellerPayoutDispatchSignal payoutDispatchSignal,
+            IUnitOfWork unitOfWork,
             ILogger<OrderPaymentReconciliationService> logger)
         {
             _paymentGateway = paymentGateway;
-            _orderRepository = orderRepository;
             _cartRepository = cartRepository;
             _listingRepository = listingRepository;
             _paymentFinalizationService = paymentFinalizationService;
             _payoutDispatchSignal = payoutDispatchSignal;
+            _unitOfWork = unitOfWork;
             _logger = logger;
         }
 
@@ -147,7 +147,7 @@ namespace Quraaa.Application.Features.Orders.Services
                     checkoutSession,
                     cancellationToken);
 
-                await _orderRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 // Payouts staged above are now committed: pay the sellers now
                 // rather than on the next periodic sweep.
@@ -189,7 +189,7 @@ namespace Quraaa.Application.Features.Orders.Services
                         checkoutSession,
                         cancellationToken);
 
-                    await _orderRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                     _payoutDispatchSignal.RequestImmediateProcessing();
                     return OrderPaymentReconciliationOutcome.Paid;
                 }
@@ -224,7 +224,7 @@ namespace Quraaa.Application.Features.Orders.Services
                 // still report success.
                 if (recoveredAttachment)
                 {
-                    await _orderRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
 
                 return OrderPaymentReconciliationOutcome.AwaitingPayment;
@@ -273,7 +273,7 @@ namespace Quraaa.Application.Features.Orders.Services
                 cart.ReopenAfterPaymentFailure(order.Id);
             }
 
-            await _orderRepository.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
         private async Task TryAttachRecoveredSessionToCartAsync(

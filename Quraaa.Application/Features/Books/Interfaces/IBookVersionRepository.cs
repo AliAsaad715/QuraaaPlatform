@@ -24,7 +24,5 @@ namespace Quraaa.Application.Features.Books.Interfaces
         Task AddAsync(
             BookVersion version,
             CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

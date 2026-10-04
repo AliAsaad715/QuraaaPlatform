@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.BookReports.Interfaces;
 using Quraaa.Application.Features.Notifications.Common;
 using Quraaa.Application.Features.Notifications.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Domain.Notifications;
 using Quraaa.Domain.Notifications.Enums;
 
@@ -31,17 +32,20 @@ public sealed class DispatchBookModerationNotificationsCommandHandler
     private readonly IBookModerationNotificationRepository _notificationRepository;
     private readonly IPushDeviceRepository _pushDeviceRepository;
     private readonly IFirebaseNotificationService _firebaseNotificationService;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<DispatchBookModerationNotificationsCommandHandler> _logger;
 
     public DispatchBookModerationNotificationsCommandHandler(
         IBookModerationNotificationRepository notificationRepository,
         IPushDeviceRepository pushDeviceRepository,
         IFirebaseNotificationService firebaseNotificationService,
+        IUnitOfWork unitOfWork,
         ILogger<DispatchBookModerationNotificationsCommandHandler> logger)
     {
         _notificationRepository = notificationRepository;
         _pushDeviceRepository = pushDeviceRepository;
         _firebaseNotificationService = firebaseNotificationService;
+        _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
@@ -87,7 +91,7 @@ public sealed class DispatchBookModerationNotificationsCommandHandler
                     break;
             }
 
-            await _notificationRepository.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
             await RemoveInvalidPushTokensAsync(notification, invalidTokens);
         }
 

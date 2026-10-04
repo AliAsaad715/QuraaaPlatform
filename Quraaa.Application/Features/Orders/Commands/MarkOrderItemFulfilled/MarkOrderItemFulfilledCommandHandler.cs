@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Orders.Commands.Common;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 
@@ -17,16 +18,19 @@ namespace Quraaa.Application.Features.Orders.Commands.MarkOrderItemFulfilled
     {
         private readonly IOrderRepository _orderRepository;
         private readonly ILibraryRepository _libraryRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public MarkOrderItemFulfilledCommandHandler(
             IOrderRepository orderRepository,
             ILibraryRepository libraryRepository,
+            IUnitOfWork unitOfWork,
             ILogger<MarkOrderItemFulfilledCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
         {
             _orderRepository = orderRepository;
             _libraryRepository = libraryRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<SellerOrderItemFulfillmentResponse>> Handle(
@@ -47,7 +51,7 @@ namespace Quraaa.Application.Features.Orders.Commands.MarkOrderItemFulfilled
                         cancellationToken);
 
                 order.MarkItemFulfilled(item.Id, request.RequestingUserId);
-                await _orderRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 return SellerOrderItemFulfillmentAccess.ToResponse(order, item);
             }, "Order item marked as fulfilled.");

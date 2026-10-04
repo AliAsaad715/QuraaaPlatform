@@ -28,11 +28,6 @@ namespace Quraaa.Persistence.Repositories
             await _context.BookPurchases.AddRangeAsync(purchases, cancellationToken);
         }
 
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default)
-        {
-            return _context.SaveChangesAsync(cancellationToken);
-        }
-
         public Task<bool> HasUserPurchasedListingAsync(
             Guid userId,
             Guid listingId,

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Otp.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -18,7 +19,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
         private readonly IPhoneService _phoneService;
         private readonly IOtpCacheService _otpCacheService;
         private readonly IIdentityService _identityService;
-        private readonly IAuthenticationUnitOfWork _authenticationUnitOfWork;
+        private readonly IUnitOfWork _unitOfWork;
 
         private const string OtpKeyPrefix = "forgot-password-otp";
         private const int MaxFailedAttempts = 5;
@@ -30,7 +31,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
             IPhoneService phoneService,
             IOtpCacheService otpCacheService,
             IIdentityService identityService,
-            IAuthenticationUnitOfWork authenticationUnitOfWork,
+            IUnitOfWork unitOfWork,
             ILogger<ResetForgotPasswordCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
@@ -38,7 +39,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
             _phoneService = phoneService;
             _otpCacheService = otpCacheService;
             _identityService = identityService;
-            _authenticationUnitOfWork = authenticationUnitOfWork;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(ResetForgotPasswordCommand request, CancellationToken cancellationToken)
@@ -94,7 +95,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
                     throw new NotFoundException("User was not found.");
                 }
 
-                await _authenticationUnitOfWork.ExecuteInTransactionAsync(
+                await _unitOfWork.ExecuteInTransactionAsync(
                     async transactionCancellationToken =>
                     {
                         var (succeeded, updatedPasswordHash, errors) =
@@ -113,7 +114,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetForgotPasswor
                         }
 
                         user.UpdatePasswordHash(updatedPasswordHash, user.Id);
-                        await _userRepository.SaveChangesAsync(transactionCancellationToken);
+                        await _unitOfWork.SaveChangesAsync(transactionCancellationToken);
                     },
                     cancellationToken);
 

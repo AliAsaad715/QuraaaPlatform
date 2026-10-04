@@ -1,11 +1,9 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Quraaa.Application.Features.Authors.Common;
 using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -105,14 +103,15 @@ namespace Quraaa.Persistence.Repositories
             // that cannot be translated to SQL, so candidates are matched in memory.
             // Authors is a small reference table, like Categories, so a full scan is cheap.
             var authors = await _context.Authors.AsNoTracking().ToListAsync(cancellationToken);
-            var existing = authors.FirstOrDefault(a => BookTextNormalizer.Normalize(a.Name) == normalized);
+            var existing = authors.FirstOrDefault(a => BookTextNormalizer.Normalize(a.Name) == normalized)
+                // An author staged earlier in this unit of work is not in the table yet.
+                ?? _context.Authors.Local.FirstOrDefault(a => BookTextNormalizer.Normalize(a.Name) == normalized);
 
             if (existing is not null)
                 return existing;
 
             var author = new AuthorAggregate(Guid.NewGuid(), trimmed, null, null);
             await _context.Authors.AddAsync(author, cancellationToken);
-            await _context.SaveChangesAsync(cancellationToken);
             return author;
         }
 
@@ -140,30 +139,12 @@ namespace Quraaa.Persistence.Repositories
         public async Task AddAsync(AuthorAggregate author, CancellationToken cancellationToken = default)
         {
             await _context.Authors.AddAsync(author, cancellationToken);
-            await _context.SaveChangesAsync(cancellationToken);
         }
 
-        public async Task RemoveAsync(AuthorAggregate author, CancellationToken cancellationToken = default)
+        public Task RemoveAsync(AuthorAggregate author, CancellationToken cancellationToken = default)
         {
             _context.Authors.Remove(author);
-
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException ex) when (IsForeignKeyViolation(ex))
-            {
-                _context.Entry(author).State = EntityState.Unchanged;
-                throw new ConflictException(
-                    "This author cannot be deleted because one or more books still reference it.");
-            }
+            return Task.CompletedTask;
         }
-
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
-            _context.SaveChangesAsync(cancellationToken);
-
-        // PostgreSQL error code 23503 = foreign_key_violation
-        private static bool IsForeignKeyViolation(DbUpdateException exception) =>
-            exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation };
     }
 }

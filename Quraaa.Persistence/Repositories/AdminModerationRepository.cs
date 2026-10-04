@@ -392,7 +392,6 @@ public class AdminModerationRepository : IAdminModerationRepository
         profile.UpdateAudit(createdBy);
 
         await _context.UsersProfiles.AddAsync(profile, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
 
         return new AdminUserResponse(
             profile.Id,
@@ -406,7 +405,4 @@ public class AdminModerationRepository : IAdminModerationRepository
             LibraryName: null,
             profile.CreationTime);
     }
-
-    public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
-        _context.SaveChangesAsync(cancellationToken);
 }

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Reviews.Common;
 using Quraaa.Application.Features.Reviews.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -16,17 +17,20 @@ namespace Quraaa.Application.Features.Reviews.Commands.UpdateBookReview
         private readonly IBookReviewRepository _bookReviewRepository;
         private readonly IUserRepository _userRepository;
         private readonly IImageUrlFormatter _imageUrlFormatter;
+        private readonly IUnitOfWork _unitOfWork;
 
         public UpdateBookReviewCommandHandler(
             IBookReviewRepository bookReviewRepository,
             IUserRepository userRepository,
             IImageUrlFormatter imageUrlFormatter,
+            IUnitOfWork unitOfWork,
             ILogger<UpdateBookReviewCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _bookReviewRepository = bookReviewRepository;
             _userRepository = userRepository;
             _imageUrlFormatter = imageUrlFormatter;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<BookReviewResponse>> Handle(
@@ -42,7 +46,7 @@ namespace Quraaa.Application.Features.Reviews.Commands.UpdateBookReview
                 }
 
                 review.UpdateReview(request.Score, request.Content, request.UserId);
-                await _bookReviewRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 var user = await _userRepository.GetUserByIdAsync(request.UserId);
                 if (user is null)

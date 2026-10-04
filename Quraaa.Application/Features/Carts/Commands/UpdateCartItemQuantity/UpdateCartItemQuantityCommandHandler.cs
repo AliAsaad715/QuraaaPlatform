@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Carts.Common;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
@@ -14,15 +15,18 @@ namespace Quraaa.Application.Features.Carts.Commands.UpdateCartItemQuantity
     {
         private readonly ICartRepository _cartRepository;
         private readonly IListingRepository _listingRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public UpdateCartItemQuantityCommandHandler(
             ICartRepository cartRepository,
             IListingRepository listingRepository,
+            IUnitOfWork unitOfWork,
             ILogger<UpdateCartItemQuantityCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _cartRepository = cartRepository;
             _listingRepository = listingRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<CartResponse>> Handle(UpdateCartItemQuantityCommand request, CancellationToken cancellationToken)
@@ -57,7 +61,7 @@ namespace Quraaa.Application.Features.Carts.Commands.UpdateCartItemQuantity
 
                 cart.UpdateItemQuantity(request.ListingId, request.Quantity);
 
-                await _cartRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 return CartResponse.FromCart(cart);
             }, "Cart item updated successfully");

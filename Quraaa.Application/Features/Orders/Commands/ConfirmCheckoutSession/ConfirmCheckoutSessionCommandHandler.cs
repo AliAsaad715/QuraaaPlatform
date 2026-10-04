@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Orders.Services;
 using Quraaa.Application.Features.Payments.Interfaces;
 using Quraaa.Application.Features.Payouts.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Orders;
@@ -21,12 +22,14 @@ namespace Quraaa.Application.Features.Orders.Commands.ConfirmCheckoutSession
         private readonly IPaymentGateway _paymentGateway;
         private readonly IOrderPaymentFinalizationService _paymentFinalizationService;
         private readonly ISellerPayoutDispatchSignal _payoutDispatchSignal;
+        private readonly IUnitOfWork _unitOfWork;
 
         public ConfirmCheckoutSessionCommandHandler(
             IOrderRepository orderRepository,
             IPaymentGateway paymentGateway,
             IOrderPaymentFinalizationService paymentFinalizationService,
             ISellerPayoutDispatchSignal payoutDispatchSignal,
+            IUnitOfWork unitOfWork,
             ILogger<ConfirmCheckoutSessionCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
@@ -34,6 +37,7 @@ namespace Quraaa.Application.Features.Orders.Commands.ConfirmCheckoutSession
             _paymentGateway = paymentGateway;
             _paymentFinalizationService = paymentFinalizationService;
             _payoutDispatchSignal = payoutDispatchSignal;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<CheckoutStatusResponse>> Handle(
@@ -92,7 +96,7 @@ namespace Quraaa.Application.Features.Orders.Commands.ConfirmCheckoutSession
                     session,
                     cancellationToken);
 
-                await _orderRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 // Seller profit shares were staged in that same transaction.
                 _payoutDispatchSignal.RequestImmediateProcessing();

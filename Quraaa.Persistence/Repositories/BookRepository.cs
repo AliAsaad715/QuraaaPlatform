@@ -3,7 +3,6 @@ using Npgsql;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Catalog.Enums;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -79,37 +78,13 @@ namespace Quraaa.Persistence.Repositories
             BookAggregate book, CancellationToken cancellationToken = default) =>
             await _context.Books.AddAsync(book, cancellationToken);
 
-        public async Task BulkInsertAsync(
+        // EF Core + Npgsql batches the inserts into multi-row INSERT statements when
+        // the unit of work saves. For 1 000+ rows, consider EFCore.BulkExtensions.
+        public async Task AddRangeAsync(
             IReadOnlyList<BookAggregate> books,
             CancellationToken cancellationToken = default)
         {
             await _context.Books.AddRangeAsync(books, cancellationToken);
-
-            try
-            {
-                // EF Core + Npgsql batches multiple inserts into a single round-trip
-                // using PostgreSQL multi-row INSERT syntax (up to the configured batch size).
-                // For 1 000+ rows, swap this for EFCore.BulkExtensions:
-                //   await _context.BulkInsertAsync(books, cancellationToken: cancellationToken);
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException ex) when (IsUniqueViolation(ex))
-            {
-                // Detach pending entities so the DbContext remains usable after the failure.
-                // The version interceptor staged one BookVersion per book; leaving
-            // them Added would break the next SaveChanges on this context with a
-            // foreign key to a book that was never inserted.
-            foreach (var versionEntry in _context.ChangeTracker.Entries<BookVersion>().ToList())
-            {
-                versionEntry.State = EntityState.Detached;
-            }
-
-            foreach (var entry in _context.ChangeTracker.Entries<BookAggregate>().ToList())
-                    entry.State = EntityState.Detached;
-
-                throw new ConflictException(
-                    "One or more books already exist with the same Title, Author, and Language combination.");
-            }
         }
 
         public async Task<HashSet<string>> FilterReferencedCanonicalAssetPathsAsync(
@@ -144,12 +119,5 @@ namespace Quraaa.Persistence.Repositories
                 .Select(reference => reference!)
                 .ToHashSet(StringComparer.Ordinal);
         }
-
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
-            _context.SaveChangesAsync(cancellationToken);
-
-        // PostgreSQL error code 23505 = unique_violation
-        private static bool IsUniqueViolation(DbUpdateException ex) =>
-            ex.InnerException is PostgresException { SqlState: "23505" };
     }
 }

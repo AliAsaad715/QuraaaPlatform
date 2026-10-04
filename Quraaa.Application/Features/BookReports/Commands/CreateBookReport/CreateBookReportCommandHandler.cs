@@ -5,6 +5,7 @@ using Quraaa.Application.Features.BookReports.Common;
 using Quraaa.Application.Features.BookReports.Interfaces;
 using Quraaa.Application.Features.BookReports.Services;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Reports;
@@ -19,17 +20,20 @@ namespace Quraaa.Application.Features.BookReports.Commands.CreateBookReport
         private readonly IBookReportRepository _bookReportRepository;
         private readonly IUserRepository _userRepository;
         private readonly BookReportEscalationService _escalationService;
+        private readonly IUnitOfWork _unitOfWork;
 
         public CreateBookReportCommandHandler(
             IBookReportRepository bookReportRepository,
             IUserRepository userRepository,
             BookReportEscalationService escalationService,
+            IUnitOfWork unitOfWork,
             ILogger<CreateBookReportCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _bookReportRepository = bookReportRepository;
             _userRepository = userRepository;
             _escalationService = escalationService;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<BookReportResponse>> Handle(
@@ -76,7 +80,7 @@ namespace Quraaa.Application.Features.BookReports.Commands.CreateBookReport
 
                 try
                 {
-                    await _bookReportRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
                 catch (ApplicationBusinessException exception) when (
                     string.Equals(

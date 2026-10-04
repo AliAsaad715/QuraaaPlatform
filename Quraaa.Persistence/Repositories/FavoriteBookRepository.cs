@@ -1,8 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Quraaa.Application.Features.FavoriteBooks.Common;
 using Quraaa.Application.Features.FavoriteBooks.Interfaces;
-using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Favorites;
 using Quraaa.Persistence.Data;
@@ -164,29 +162,5 @@ namespace Quraaa.Persistence.Repositories
             favoriteBook.Delete(userId);
             return true;
         }
-
-        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException ex) when (IsDuplicateFavoriteBookViolation(ex))
-            {
-                foreach (var entry in ex.Entries.Where(entry => entry.Entity is FavoriteBookAggregate))
-                {
-                    entry.State = EntityState.Detached;
-                }
-
-                throw new ApplicationBusinessException(FavoriteBookErrorCodes.DuplicateFavoriteBook);
-            }
-        }
-
-        private static bool IsDuplicateFavoriteBookViolation(DbUpdateException exception) =>
-            exception.InnerException is PostgresException
-            {
-                SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: "IX_FavoriteBooks_UserId_BookId"
-            };
     }
 }

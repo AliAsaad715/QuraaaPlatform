@@ -9,6 +9,7 @@ using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Orders.Services;
 using Quraaa.Application.Features.Payments.Common;
 using Quraaa.Application.Features.Payments.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Cart.Enums;
@@ -30,6 +31,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
         private readonly IOrderRepository _orderRepository;
         private readonly IOrderCheckoutService _orderCheckoutService;
         private readonly IPaymentGateway _paymentGateway;
+        private readonly IUnitOfWork _unitOfWork;
 
         public CreateOrderCommandHandler(
             ICartRepository cartRepository,
@@ -39,6 +41,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
             IOrderRepository orderRepository,
             IOrderCheckoutService orderCheckoutService,
             IPaymentGateway paymentGateway,
+            IUnitOfWork unitOfWork,
             ILogger<CreateOrderCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -50,6 +53,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
             _orderRepository = orderRepository;
             _orderCheckoutService = orderCheckoutService;
             _paymentGateway = paymentGateway;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<OrderCheckoutResponse>> Handle(
@@ -93,7 +97,7 @@ namespace Quraaa.Application.Features.Orders.Commands.CreateOrder
 
                             cart.ReopenAfterLegacyPaymentFailure(
                                 cart.StripeCheckoutSessionId);
-                            await _orderRepository.SaveChangesAsync(
+                            await _unitOfWork.SaveChangesAsync(
                                 cancellationToken);
 
                             throw new ConflictException(

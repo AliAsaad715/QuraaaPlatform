@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Admin.Common;
 using Quraaa.Application.Features.Admin.Interfaces;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -17,15 +18,18 @@ namespace Quraaa.Application.Features.Admin.Commands.DeleteOwnSuperAdminAccount
     {
         private readonly IAdminModerationRepository _moderationRepository;
         private readonly IIdentityService _identityService;
+        private readonly IUnitOfWork _unitOfWork;
 
         public DeleteOwnSuperAdminAccountCommandHandler(
             IAdminModerationRepository moderationRepository,
             IIdentityService identityService,
+            IUnitOfWork unitOfWork,
             ILogger<DeleteOwnSuperAdminAccountCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _moderationRepository = moderationRepository;
             _identityService = identityService;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -82,7 +86,7 @@ namespace Quraaa.Application.Features.Admin.Commands.DeleteOwnSuperAdminAccount
                 }
 
                 await _moderationRepository.RemoveUsersAsync([account], cancellationToken);
-                await _moderationRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 Logger.LogWarning(
                     "Super admin {UserId} permanently deleted their own account.",

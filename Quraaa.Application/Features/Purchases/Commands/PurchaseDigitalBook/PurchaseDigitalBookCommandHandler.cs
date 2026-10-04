@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Purchases.Common;
 using Quraaa.Application.Features.Purchases.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
@@ -17,16 +18,19 @@ namespace Quraaa.Application.Features.Purchases.Commands.PurchaseDigitalBook
     {
         private readonly IListingRepository _listingRepository;
         private readonly IBookPurchaseRepository _purchaseRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public PurchaseDigitalBookCommandHandler(
             IListingRepository listingRepository,
             IBookPurchaseRepository purchaseRepository,
+            IUnitOfWork unitOfWork,
             ILogger<PurchaseDigitalBookCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
         {
             _listingRepository = listingRepository;
             _purchaseRepository = purchaseRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public Task<AppResult<PurchaseDigitalBookResponse>> Handle(
@@ -80,7 +84,7 @@ namespace Quraaa.Application.Features.Purchases.Commands.PurchaseDigitalBook
                 purchasedDigitalAssetUrl:  assetUrl);
 
             await _purchaseRepository.AddRangeAsync([purchase], cancellationToken);
-            await _purchaseRepository.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return new PurchaseDigitalBookResponse(
                 purchase.Id,

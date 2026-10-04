@@ -1,8 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Domain.Library;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -54,32 +52,5 @@ namespace Quraaa.Persistence.Repositories
             LibraryEmailVerificationChallenge challenge,
             CancellationToken cancellationToken = default) =>
             await _context.LibraryEmailVerificationChallenges.AddAsync(challenge, cancellationToken);
-
-        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConflictException(
-                    "The library registration changed concurrently. Reload it and retry.");
-            }
-            catch (DbUpdateException exception) when (IsRegistrationUniqueViolation(exception))
-            {
-                throw new ConflictException(
-                    "A library registration session or email challenge already exists.");
-            }
-        }
-
-        private static bool IsRegistrationUniqueViolation(DbUpdateException exception) =>
-            exception.InnerException is PostgresException
-            {
-                SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: "IX_LibraryRegistrationSessions_UserId" or
-                    "IX_LibraryRegistrationSessions_TokenHash" or
-                    "IX_LibraryEmailVerificationChallenges_LibraryId"
-            };
     }
 }

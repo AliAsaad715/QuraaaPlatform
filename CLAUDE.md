@@ -52,6 +52,8 @@ Interfaces live in the Application layer (`Features/{Feature}/Interfaces/`); imp
 
 Slice layout under `Quraaa.Application/Features/{Feature}/`: `Commands/{Name}/{Name}Command.cs` + `{Name}CommandHandler.cs` + `{Name}CommandValidator.cs`, `Queries/{Name}/...` in the same triple, `Common/` for response DTOs and error-code constants, `Interfaces/` for abstractions. Then add a controller action in [Quraaa.API/Controllers/](Quraaa.API/Controllers/). MediatR handlers and FluentValidation validators are auto-registered by assembly scan — no manual registration.
 
+Repositories only read and stage changes; the handler commits by calling `IUnitOfWork.SaveChangesAsync` ([IUnitOfWork.cs](Quraaa.Application/Shared/Persistence/IUnitOfWork.cs)), and uses `ExecuteInTransactionAsync` when the save must be atomic with Identity writes. A new constraint that should surface as a 409 or an error code gets a case in [SaveChangesExceptionTranslator.cs](Quraaa.Persistence/Services/SaveChangesExceptionTranslator.cs), not a `try`/`catch` in a repository.
+
 ### The two base classes that carry the request pipeline
 
 **Handlers** inherit `BaseApplicationService<THandler>` ([BaseApplicationService.cs](Quraaa.Application/Shared/Services/BaseApplicationService.cs)) and wrap their body in `ExecuteAsync(request, async () => { ... })`. That wrapper resolves `IValidator<TRequest>` from the container, runs it, and translates thrown exceptions into result cases — so handlers signal failure by **throwing**, not by returning:
@@ -81,7 +83,7 @@ Enums are stored as `int` in PostgreSQL but serialized as strings in JSON (`Json
 
 ### Uniqueness invariants enforced in the database
 
-These are partial/unique indexes, and the repositories translate the resulting Npgsql violations into `409 Conflict` — check for a pre-existing row *and* handle the race:
+These are partial/unique indexes, and the unit of work's [SaveChangesExceptionTranslator](Quraaa.Persistence/Services/SaveChangesExceptionTranslator.cs) translates the resulting Npgsql violations into `409 Conflict` — check for a pre-existing row *and* handle the race:
 
 - One library per user (unique index on `Libraries.UserId`), plus unique library email.
 - One open cart per user: partial unique `IX_Carts_UserId_Open` over non-deleted `Active`/`PendingPayment` carts; historical `Paid`/`Abandoned` carts are unconstrained.

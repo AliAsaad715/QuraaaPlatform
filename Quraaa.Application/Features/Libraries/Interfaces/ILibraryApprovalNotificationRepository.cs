@@ -13,6 +13,4 @@ public interface ILibraryApprovalNotificationRepository
         int batchSize,
         TimeSpan leaseDuration,
         CancellationToken cancellationToken = default);
-
-    Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

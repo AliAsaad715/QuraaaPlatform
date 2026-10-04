@@ -10,7 +10,6 @@ using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Category;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 // Aliased instead of a plain `using`: GetListingDetails also declares a "ListingDetailsResponse",
 // which would otherwise collide with the GetListingById one already imported above.
@@ -348,20 +347,6 @@ namespace Quraaa.Persistence.Repositories
                 .ToListAsync(cancellationToken);
 
             return referenced.ToHashSet(StringComparer.Ordinal);
-        }
-
-        public async Task SaveChangesAsync(
-            CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConflictException(
-                    "Listing changed concurrently. Reload it and retry the operation.");
-            }
         }
 
         private static IQueryable<UserListingFlatProjection> ApplySorting(
