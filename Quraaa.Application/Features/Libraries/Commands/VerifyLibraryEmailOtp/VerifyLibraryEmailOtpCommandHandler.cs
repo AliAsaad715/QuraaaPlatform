@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Services;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Library;
@@ -24,6 +25,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
         private readonly ILibraryEmailOtpProtector _otpProtector;
         private readonly ILibraryRegistrationTokenService _tokenService;
         private readonly LibraryRegistrationOptions _options;
+        private readonly IUnitOfWork _unitOfWork;
 
         public VerifyLibraryEmailOtpCommandHandler(
             LibraryRegistrationSessionService sessionService,
@@ -32,6 +34,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
             ILibraryEmailOtpProtector otpProtector,
             ILibraryRegistrationTokenService tokenService,
             LibraryRegistrationOptions options,
+            IUnitOfWork unitOfWork,
             ILogger<VerifyLibraryEmailOtpCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -42,6 +45,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
             _otpProtector = otpProtector;
             _tokenService = tokenService;
             _options = options;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<LibraryEmailVerificationResponse>> Handle(
@@ -120,7 +124,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
                                 utcNow,
                                 _options.MaxEmailOtpVerificationAttempts,
                                 _options.EmailOtpVerificationLockout);
-                            await _registrationRepository.SaveChangesAsync(cancellationToken);
+                            await _unitOfWork.SaveChangesAsync(cancellationToken);
                         }
 
                         throw new ApplicationBusinessException(InvalidOtpMessage);
@@ -142,7 +146,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.VerifyLibraryEmailOtp
                         utcNow.Add(_options.WalletSetupSessionLifetime),
                         session.SubmittedAtUtc);
 
-                    await _registrationRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                     return new LibraryEmailVerificationResponse(
                         library.Id,

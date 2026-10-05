@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Cart.Enums;
@@ -18,12 +19,14 @@ namespace Quraaa.Application.Features.Carts.Commands.ProcessStripeWebhook
         private readonly ICartRepository _cartRepository;
         private readonly IBookPurchaseRepository _purchaseRepository;
         private readonly IListingRepository _listingRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public ProcessStripeWebhookCommandHandler(
             IStripePaymentService stripePaymentService,
             ICartRepository cartRepository,
             IBookPurchaseRepository purchaseRepository,
             IListingRepository listingRepository,
+            IUnitOfWork unitOfWork,
             ILogger<ProcessStripeWebhookCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
@@ -31,6 +34,7 @@ namespace Quraaa.Application.Features.Carts.Commands.ProcessStripeWebhook
             _cartRepository = cartRepository;
             _purchaseRepository = purchaseRepository;
             _listingRepository = listingRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(ProcessStripeWebhookCommand request, CancellationToken cancellationToken)
@@ -82,7 +86,7 @@ namespace Quraaa.Application.Features.Carts.Commands.ProcessStripeWebhook
                 await _purchaseRepository.AddRangeAsync(purchases, cancellationToken);
                 cart.MarkPaid(webhook.PaymentIntentId);
 
-                await _cartRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }, "Stripe webhook processed successfully");
         }
     }

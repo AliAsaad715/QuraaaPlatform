@@ -8,7 +8,6 @@ namespace Quraaa.Application.Features.Purchases.Interfaces
     public interface IBookPurchaseRepository
     {
         Task AddRangeAsync(IEnumerable<BookPurchaseAggregate> purchases, CancellationToken cancellationToken = default);
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
         Task<bool> HasUserPurchasedListingAsync(Guid userId, Guid listingId, CancellationToken cancellationToken = default);
 
         /// <summary>

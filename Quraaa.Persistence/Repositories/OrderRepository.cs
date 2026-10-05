@@ -1,13 +1,10 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Interfaces;
-using Quraaa.Application.Features.Payments.Exceptions;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
 using Quraaa.Domain.Orders;
 using Quraaa.Domain.Orders.Enums;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -340,53 +337,6 @@ namespace Quraaa.Persistence.Repositories
                 .ToListAsync(cancellationToken);
 
             return (items, totalCount);
-        }
-
-        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConflictException(
-                    "Checkout state changed concurrently. Retry the operation.");
-            }
-            catch (DbUpdateException exception)
-                when (exception.InnerException is PostgresException
-                {
-                    SqlState: PostgresErrorCodes.UniqueViolation,
-                    ConstraintName: "IX_Orders_SourceCartId"
-                })
-            {
-                throw new ConflictException(
-                    "Another order is already being created from this cart. Reload it and retry.");
-            }
-            catch (DbUpdateException exception)
-                when (exception.InnerException is PostgresException
-                {
-                    SqlState: PostgresErrorCodes.UniqueViolation,
-                    ConstraintName: "IX_ProcessedPaymentEvents_Provider_EventId"
-                })
-            {
-                throw new PaymentEventAlreadyProcessedException();
-            }
-            catch (DbUpdateException exception)
-                when (exception.InnerException is PostgresException
-                {
-                    SqlState: PostgresErrorCodes.UniqueViolation,
-                    ConstraintName: "IX_BookPurchases_OrderItemId"
-                        or "IX_SellerPayouts_OrderId_LibraryId"
-                })
-            {
-                // A verified webhook and provider reconciliation can both stage
-                // the same immutable purchases and seller-payout outbox rows
-                // before the order's concurrency update is issued. The losing
-                // transaction rolls back and retries against the now-paid order.
-                throw new ConflictException(
-                    "This order payment was finalized concurrently. Retry the operation.");
-            }
         }
 
         private IQueryable<OrderAggregate> AggregateQuery()

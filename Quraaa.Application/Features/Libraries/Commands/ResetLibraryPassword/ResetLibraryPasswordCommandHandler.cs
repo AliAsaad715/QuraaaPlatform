@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 
@@ -24,6 +25,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ResetLibraryPassword
         private readonly ILibraryPasswordHasher _libraryPasswordHasher;
         private readonly IIdentityService _identityService;
         private readonly LibraryRegistrationOptions _options;
+        private readonly IUnitOfWork _unitOfWork;
 
         public ResetLibraryPasswordCommandHandler(
             ILibraryRepository libraryRepository,
@@ -32,6 +34,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ResetLibraryPassword
             ILibraryPasswordHasher libraryPasswordHasher,
             IIdentityService identityService,
             LibraryRegistrationOptions options,
+            IUnitOfWork unitOfWork,
             ILogger<ResetLibraryPasswordCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
@@ -41,6 +44,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ResetLibraryPassword
             _libraryPasswordHasher = libraryPasswordHasher;
             _identityService = identityService;
             _options = options;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -92,7 +96,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ResetLibraryPassword
                             utcNow,
                             _options.MaxEmailOtpVerificationAttempts,
                             _options.EmailOtpVerificationLockout);
-                        await _resetRepository.SaveChangesAsync(cancellationToken);
+                        await _unitOfWork.SaveChangesAsync(cancellationToken);
                     }
 
                     throw new ApplicationBusinessException(InvalidResetMessage);
@@ -114,7 +118,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ResetLibraryPassword
 
                 // Both repositories share the request's DbContext, so this one
                 // save commits the new password and the burnt code together.
-                await _resetRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 // Whoever knew the old password loses their dashboard session:
                 // a reset that left it live would not remediate anything.

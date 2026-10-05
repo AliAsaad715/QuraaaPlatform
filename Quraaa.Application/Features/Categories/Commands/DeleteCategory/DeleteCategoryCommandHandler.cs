@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Categories.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -12,13 +13,16 @@ namespace Quraaa.Application.Features.Categories.Commands.DeleteCategory
           IRequestHandler<DeleteCategoryCommand, AppResult>
     {
         private readonly ICategoryRepository _categoryRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public DeleteCategoryCommandHandler(
             ICategoryRepository categoryRepository,
+            IUnitOfWork unitOfWork,
             ILogger<DeleteCategoryCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _categoryRepository = categoryRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(DeleteCategoryCommand request, CancellationToken cancellationToken)
@@ -36,6 +40,10 @@ namespace Quraaa.Application.Features.Categories.Commands.DeleteCategory
                 }
 
                 await _categoryRepository.RemoveAsync(category, cancellationToken);
+
+                // HasLinkedBooksAsync can race a concurrent book insert; the
+                // foreign key then fails the save with the same ConflictException.
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }, "Category deleted successfully");
         }
     }

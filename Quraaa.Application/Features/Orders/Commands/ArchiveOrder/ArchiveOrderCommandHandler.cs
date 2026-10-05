@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Orders.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -12,14 +13,17 @@ namespace Quraaa.Application.Features.Orders.Commands.ArchiveOrder
           IRequestHandler<ArchiveOrderCommand, AppResult>
     {
         private readonly IOrderRepository _orderRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public ArchiveOrderCommandHandler(
             IOrderRepository orderRepository,
+            IUnitOfWork unitOfWork,
             ILogger<ArchiveOrderCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
         {
             _orderRepository = orderRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -35,7 +39,7 @@ namespace Quraaa.Application.Features.Orders.Commands.ArchiveOrder
                     ?? throw new NotFoundException("Order not found.");
 
                 order.Archive(request.BuyerUserId);
-                await _orderRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }, "Order archived successfully");
         }
     }

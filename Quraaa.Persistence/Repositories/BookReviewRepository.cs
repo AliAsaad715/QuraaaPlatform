@@ -1,8 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Quraaa.Application.Features.Reviews.Common;
 using Quraaa.Application.Features.Reviews.Interfaces;
-using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Reviews;
 using Quraaa.Persistence.Data;
@@ -68,29 +66,5 @@ namespace Quraaa.Persistence.Repositories
 
         public async Task AddAsync(BookReviewAggregate review, CancellationToken cancellationToken = default) =>
             await _context.BookReviews.AddAsync(review, cancellationToken);
-
-        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException ex) when (IsDuplicateReviewViolation(ex))
-            {
-                foreach (var entry in ex.Entries.Where(entry => entry.Entity is BookReviewAggregate))
-                {
-                    entry.State = EntityState.Detached;
-                }
-
-                throw new ApplicationBusinessException(ReviewErrorCodes.DuplicateReview);
-            }
-        }
-
-        private static bool IsDuplicateReviewViolation(DbUpdateException exception) =>
-            exception.InnerException is PostgresException
-            {
-                SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: "IX_BookReviews_UserId_BookId"
-            };
     }
 }

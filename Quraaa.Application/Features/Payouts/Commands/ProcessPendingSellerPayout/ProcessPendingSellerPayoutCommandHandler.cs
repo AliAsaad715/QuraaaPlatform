@@ -6,6 +6,7 @@ using Quraaa.Application.Features.Payments.Interfaces;
 using Quraaa.Application.Features.Payouts.Common;
 using Quraaa.Application.Features.Payouts.Exceptions;
 using Quraaa.Application.Features.Payouts.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Domain.Library;
 using Quraaa.Domain.Payouts;
 using Quraaa.Domain.Payouts.Enums;
@@ -45,6 +46,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
         private readonly IPayoutGateway _payoutGateway;
         private readonly IPaymentGateway _paymentGateway;
         private readonly PayoutOptions _payoutOptions;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<ProcessPendingSellerPayoutCommandHandler> _logger;
 
         public ProcessPendingSellerPayoutCommandHandler(
@@ -53,6 +55,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
             IPayoutGateway payoutGateway,
             IPaymentGateway paymentGateway,
             IOptions<PayoutOptions> payoutOptions,
+            IUnitOfWork unitOfWork,
             ILogger<ProcessPendingSellerPayoutCommandHandler> logger)
         {
             _sellerPayoutRepository = sellerPayoutRepository;
@@ -60,6 +63,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
             _payoutGateway = payoutGateway;
             _paymentGateway = paymentGateway;
             _payoutOptions = payoutOptions.Value;
+            _unitOfWork = unitOfWork;
             _logger = logger;
         }
 
@@ -91,7 +95,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
                 payout.RecordDefinitiveRejection(
                     $"Payout currency '{payout.Currency}' is not supported by the payment gateway.",
                     _payoutOptions.MaxTransferAttempts);
-                await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 return false;
             }
 
@@ -122,7 +126,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
                 }
 
                 payout.PostponeUntilWalletConfigured(DateTime.UtcNow);
-                await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 return false;
             }
 
@@ -143,7 +147,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
             // the same payout fails its own claim with a ConflictException and
             // never reaches Stripe.
             payout.ClaimForProcessing(DateTime.UtcNow);
-            await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             try
             {
@@ -187,7 +191,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
                     cancellationToken);
 
                 payout.MarkPaid(transfer.TransferId, destinationAccountId);
-                await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Paid seller payout {PayoutId} for order {OrderId} to library {LibraryId} via transfer {TransferId}.",
@@ -235,7 +239,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
                 payout.RecordDefinitiveRejection(
                     "The transfer request conflicted with an earlier attempt. It will be retried automatically.",
                     _payoutOptions.MaxTransferAttempts);
-                await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 return false;
             }
@@ -318,7 +322,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
 
             payout.MarkPaid(existingTransfer.TransferId, destinationAccountId);
 
-            await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Adopted existing transfer {TransferId} for seller payout {PayoutId} after {Context}.",
@@ -390,12 +394,12 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
                 payout.PostponeUntilWalletConfigured(
                     DateTime.UtcNow,
                     "The library's Stripe wallet cannot receive transfers yet.");
-                await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 return false;
             }
 
             library.MarkStripeWalletActive(DateTime.UtcNow);
-            await _libraryRepository.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Stripe wallet {AccountId} of library {LibraryId} became active; proceeding with payout {PayoutId}.",
@@ -458,7 +462,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
             }
 
             payout.AttachSourceCharge(chargeId);
-            await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return chargeId;
         }
@@ -482,7 +486,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
             {
                 payout.RecordFundsUnavailable(
                     "The payment is still settling. The transfer will be retried automatically.");
-                await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 EscalateIfStuck(payout, "the funds backing it have not settled");
                 return;
             }
@@ -493,7 +497,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
             {
                 payout.RecordIndeterminateFailure(
                     "The transfer could not be completed. It will be retried automatically.");
-                await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 EscalateIfStuck(payout, "the payment provider keeps failing the request");
                 return;
             }
@@ -505,12 +509,12 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
             if (await IsWalletUnusableAsync(destinationAccountId, cancellationToken))
             {
                 library.DeactivateStripeWallet();
-                await _libraryRepository.SaveChangesAsync();
+                await _unitOfWork.SaveChangesAsync();
 
                 payout.PostponeUntilWalletConfigured(
                     DateTime.UtcNow,
                     "The library's Stripe wallet cannot receive transfers yet.");
-                await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 _logger.LogWarning(
                     "Stripe wallet {AccountId} of library {LibraryId} can no longer receive transfers; it was deactivated and payout {PayoutId} is waiting.",
@@ -525,7 +529,7 @@ namespace Quraaa.Application.Features.Payouts.Commands.ProcessPendingSellerPayou
             payout.RecordDefinitiveRejection(
                 "The payment provider declined the transfer. It will be retried automatically.",
                 _payoutOptions.MaxTransferAttempts);
-            await _sellerPayoutRepository.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             if (payout.Status == SellerPayoutStatus.Failed)
             {

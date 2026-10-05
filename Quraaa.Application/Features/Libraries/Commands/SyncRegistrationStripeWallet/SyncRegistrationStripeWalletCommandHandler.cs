@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Libraries.Services;
 using Quraaa.Application.Features.Payouts.Common;
 using Quraaa.Application.Features.Payouts.Services;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 
@@ -15,22 +16,22 @@ namespace Quraaa.Application.Features.Libraries.Commands.SyncRegistrationStripeW
           IRequestHandler<SyncRegistrationStripeWalletCommand, AppResult<LibraryWalletResponse>>
     {
         private readonly LibraryRegistrationSessionService _sessionService;
-        private readonly ILibraryRegistrationRepository _registrationRepository;
         private readonly ILibraryRepository _libraryRepository;
         private readonly LibraryStripeOnboardingService _onboardingService;
+        private readonly IUnitOfWork _unitOfWork;
 
         public SyncRegistrationStripeWalletCommandHandler(
             LibraryRegistrationSessionService sessionService,
-            ILibraryRegistrationRepository registrationRepository,
             ILibraryRepository libraryRepository,
             LibraryStripeOnboardingService onboardingService,
+            IUnitOfWork unitOfWork,
             ILogger<SyncRegistrationStripeWalletCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _sessionService = sessionService;
-            _registrationRepository = registrationRepository;
             _libraryRepository = libraryRepository;
             _onboardingService = onboardingService;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<LibraryWalletResponse>> Handle(
@@ -67,7 +68,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.SyncRegistrationStripeW
                 if (library.IsStripeWalletActive && session.IsActiveAt(utcNow))
                 {
                     session.Complete(utcNow);
-                    await _registrationRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
 
                 return wallet;

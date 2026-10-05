@@ -29,7 +29,5 @@ namespace Quraaa.Application.Features.Files.Interfaces
         /// before its grace period elapsed — its file was never touched.
         /// </summary>
         Task RemoveAsync(Guid id, CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

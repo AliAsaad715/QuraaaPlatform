@@ -13,7 +13,5 @@ namespace Quraaa.Application.Features.BookReports.Interfaces
             int batchSize,
             TimeSpan leaseDuration,
             CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

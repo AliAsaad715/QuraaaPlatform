@@ -1,7 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Domain.User;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -57,19 +56,6 @@ namespace Quraaa.Persistence.Repositories
         {
             return await _context.UsersProfiles
                         .FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber && !u.IsDeleted);
-        }
-
-        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConflictException(
-                    "The profile changed in another request. Reload it and try again.");
-            }
         }
     }
 }

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.BookReports.Interfaces;
 using Quraaa.Application.Features.Books.Common;
 using Quraaa.Application.Features.Books.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -15,15 +16,18 @@ namespace Quraaa.Application.Features.Books.Commands.SetBookVisibility
     {
         private readonly IBookVersionRepository _bookVersionRepository;
         private readonly IBookReportRepository _bookReportRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public SetBookVisibilityCommandHandler(
             IBookVersionRepository bookVersionRepository,
             IBookReportRepository bookReportRepository,
+            IUnitOfWork unitOfWork,
             ILogger<SetBookVisibilityCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _bookVersionRepository = bookVersionRepository;
             _bookReportRepository = bookReportRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<BookModerationResponse>> Handle(
@@ -50,7 +54,7 @@ namespace Quraaa.Application.Features.Books.Commands.SetBookVisibility
                     book.Restore(request.ModerationNote, request.AdminId);
                 }
 
-                await _bookVersionRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 Logger.LogInformation(
                     "Admin {AdminId} set book {BookId} moderation status to {ModerationStatus}.",

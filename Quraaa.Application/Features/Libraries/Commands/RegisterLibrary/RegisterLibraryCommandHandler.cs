@@ -6,6 +6,7 @@ using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Services;
 using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Files;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Library;
@@ -27,6 +28,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
         private readonly ILibraryEmailOtpProtector _otpProtector;
         private readonly ILibraryEmailSender _emailSender;
         private readonly LibraryRegistrationOptions _options;
+        private readonly IUnitOfWork _unitOfWork;
 
         public RegisterLibraryCommandHandler(
             ILibraryRepository libraryRepository,
@@ -39,6 +41,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
             ILibraryEmailOtpProtector otpProtector,
             ILibraryEmailSender emailSender,
             LibraryRegistrationOptions options,
+            IUnitOfWork unitOfWork,
             ILogger<RegisterLibraryCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -53,6 +56,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
             _otpProtector = otpProtector;
             _emailSender = emailSender;
             _options = options;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<LibraryRegistrationSubmissionResponse>> Handle(
@@ -174,7 +178,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
 
                         try
                         {
-                            await _libraryRepository.SaveChangesAsync();
+                            await _unitOfWork.SaveChangesAsync();
                         }
                         catch (ApplicationBusinessException ex)
                             when (ex.Message == LibraryErrorCodes.DuplicateLibraryForUser
@@ -244,7 +248,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RegisterLibrary
                     return;
                 }
 
-                await _registrationRepository.SaveChangesAsync(CancellationToken.None);
+                await _unitOfWork.SaveChangesAsync(CancellationToken.None);
             }
             catch (Exception exception)
             {

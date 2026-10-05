@@ -18,6 +18,7 @@ using Quraaa.Application.Features.Orders.Interfaces;
 using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
 using Quraaa.Application.Features.Reviews.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Persistence.Interceptors;
 using Microsoft.AspNetCore.Identity;
 using Quraaa.Domain.Library;
@@ -30,9 +31,9 @@ namespace Quraaa.Persistence.Extensions
     public static class PersistenceDependencyInjectionHandler
     {
         /// <summary>
-        /// Registers everything that talks to the database: the DbContext and its
-        /// interceptors, ASP.NET Core Identity with its EF stores, and the
-        /// repositories. The host calls only this; it never configures EF Core or
+        /// Registers everything that talks to the database: the DbContext, its
+        /// interceptors and unit of work, ASP.NET Core Identity with its EF stores,
+        /// and the repositories. The host calls only this; it never configures EF Core or
         /// Identity itself.
         /// </summary>
         public static IServiceCollection AddPersistence(this IServiceCollection services, IConfiguration configuration)
@@ -56,6 +57,10 @@ namespace Quraaa.Persistence.Extensions
                     .AddInterceptors(
                         serviceProvider.GetRequiredService<DomainEventOutboxInterceptor>(),
                         serviceProvider.GetRequiredService<BookVersionInterceptor>()));
+
+            // Scoped like the DbContext it commits, so every repository in a request
+            // stages into the same unit of work.
+            services.AddScoped<IUnitOfWork, UnitOfWork>();
         }
 
         private static void AddIdentityServices(IServiceCollection services)
@@ -76,7 +81,6 @@ namespace Quraaa.Persistence.Extensions
             .AddDefaultTokenProviders();
 
             services.AddScoped<IIdentityService, IdentityService>();
-            services.AddScoped<IAuthenticationUnitOfWork, AuthenticationUnitOfWork>();
             services.AddScoped<IPasswordHasher<LibraryAggregate>, PasswordHasher<LibraryAggregate>>();
             services.AddScoped<ILibraryPasswordHasher, LibraryPasswordHasher>();
         }

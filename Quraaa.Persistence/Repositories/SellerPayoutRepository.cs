@@ -3,7 +3,6 @@ using Quraaa.Application.Features.Payouts.Common;
 using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Domain.Payouts;
 using Quraaa.Domain.Payouts.Enums;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -126,19 +125,6 @@ namespace Quraaa.Persistence.Repositories
                             payout => payout.LastModificationTime,
                             DateTime.UtcNow),
                     cancellationToken);
-        }
-
-        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConflictException(
-                    "The payout changed concurrently. Retry the operation.");
-            }
         }
     }
 }

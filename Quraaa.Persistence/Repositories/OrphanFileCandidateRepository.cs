@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Quraaa.Application.Features.Files.Common;
 using Quraaa.Application.Features.Files.Interfaces;
 using Quraaa.Persistence.Data;
@@ -76,25 +75,5 @@ namespace Quraaa.Persistence.Repositories
             _context.OrphanFileCandidates
                 .Where(x => x.Id == id)
                 .ExecuteDeleteAsync(cancellationToken);
-
-        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException exception) when (IsUniqueViolation(exception))
-            {
-                // A concurrently-running instance already started tracking one of
-                // these paths between our lookup and this insert; treat it as a no-op.
-                foreach (var entry in _context.ChangeTracker.Entries<OrphanFileCandidate>().ToList())
-                {
-                    entry.State = EntityState.Detached;
-                }
-            }
-        }
-
-        private static bool IsUniqueViolation(DbUpdateException ex) =>
-            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
     }
 }

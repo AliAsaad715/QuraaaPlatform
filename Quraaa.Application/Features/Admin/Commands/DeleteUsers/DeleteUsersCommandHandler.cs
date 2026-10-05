@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Admin.Common;
 using Quraaa.Application.Features.Admin.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.User;
@@ -13,13 +14,16 @@ namespace Quraaa.Application.Features.Admin.Commands.DeleteUsers
           IRequestHandler<DeleteUsersCommand, AppResult<BulkModerationResult>>
     {
         private readonly IAdminModerationRepository _moderationRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public DeleteUsersCommandHandler(
             IAdminModerationRepository moderationRepository,
+            IUnitOfWork unitOfWork,
             ILogger<DeleteUsersCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _moderationRepository = moderationRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<BulkModerationResult>> Handle(
@@ -77,7 +81,7 @@ namespace Quraaa.Application.Features.Admin.Commands.DeleteUsers
                 if (removable.Count > 0)
                 {
                     await _moderationRepository.RemoveUsersAsync(removable, cancellationToken);
-                    await _moderationRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
 
                 Logger.LogWarning(

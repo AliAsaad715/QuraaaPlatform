@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Carts.Common;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Payments.Common;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Cart;
@@ -15,15 +16,18 @@ namespace Quraaa.Application.Features.Carts.Commands.AddCartItem
     {
         private readonly ICartRepository _cartRepository;
         private readonly IListingRepository _listingRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public AddCartItemCommandHandler(
             ICartRepository cartRepository,
             IListingRepository listingRepository,
+            IUnitOfWork unitOfWork,
             ILogger<AddCartItemCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _cartRepository = cartRepository;
             _listingRepository = listingRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<CartResponse>> Handle(AddCartItemCommand request, CancellationToken cancellationToken)
@@ -71,7 +75,7 @@ namespace Quraaa.Application.Features.Carts.Commands.AddCartItem
                     await _cartRepository.AddAsync(cart, cancellationToken);
                 }
 
-                await _cartRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 return CartResponse.FromCart(cart);
             }, "Cart item added successfully");

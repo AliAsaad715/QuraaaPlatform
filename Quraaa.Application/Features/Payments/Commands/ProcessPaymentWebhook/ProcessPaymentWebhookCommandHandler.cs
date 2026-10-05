@@ -9,6 +9,7 @@ using Quraaa.Application.Features.Payments.Exceptions;
 using Quraaa.Application.Features.Payments.Interfaces;
 using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Cart.Enums;
@@ -35,6 +36,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
         private readonly IBookPurchaseRepository _bookPurchaseRepository;
         private readonly IOrderPaymentFinalizationService _paymentFinalizationService;
         private readonly ISellerPayoutDispatchSignal _payoutDispatchSignal;
+        private readonly IUnitOfWork _unitOfWork;
 
         public ProcessPaymentWebhookCommandHandler(
             IPaymentGateway paymentGateway,
@@ -45,6 +47,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
             IBookPurchaseRepository bookPurchaseRepository,
             IOrderPaymentFinalizationService paymentFinalizationService,
             ISellerPayoutDispatchSignal payoutDispatchSignal,
+            IUnitOfWork unitOfWork,
             ILogger<ProcessPaymentWebhookCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -57,6 +60,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
             _bookPurchaseRepository = bookPurchaseRepository;
             _paymentFinalizationService = paymentFinalizationService;
             _payoutDispatchSignal = payoutDispatchSignal;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -210,7 +214,7 @@ namespace Quraaa.Application.Features.Payments.Commands.ProcessPaymentWebhook
         {
             try
             {
-                await _orderRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
             catch (PaymentEventAlreadyProcessedException)
             {

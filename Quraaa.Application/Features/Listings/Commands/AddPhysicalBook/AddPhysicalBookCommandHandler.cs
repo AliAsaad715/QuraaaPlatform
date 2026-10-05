@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Catalog;
@@ -20,6 +21,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddPhysicalBook
         private readonly IAuthorRepository _authorRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IBookMetadataService _bookMetadataService;
+        private readonly IUnitOfWork _unitOfWork;
 
         public AddPhysicalBookCommandHandler(
             ILibraryRepository libraryRepository,
@@ -27,6 +29,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddPhysicalBook
             IAuthorRepository authorRepository,
             IListingRepository listingRepository,
             IBookMetadataService bookMetadataService,
+            IUnitOfWork unitOfWork,
             ILogger<AddPhysicalBookCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -36,6 +39,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddPhysicalBook
             _authorRepository = authorRepository;
             _listingRepository = listingRepository;
             _bookMetadataService = bookMetadataService;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<AddPhysicalBookResponse>> Handle(
@@ -70,7 +74,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddPhysicalBook
                 );
 
                 await _listingRepository.AddAsync(listing, cancellationToken);
-                await _listingRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 return new AddPhysicalBookResponse(listing.Id);
 

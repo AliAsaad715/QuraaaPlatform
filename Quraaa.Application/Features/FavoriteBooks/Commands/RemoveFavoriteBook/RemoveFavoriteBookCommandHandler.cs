@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.FavoriteBooks.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -14,15 +15,18 @@ namespace Quraaa.Application.Features.FavoriteBooks.Commands.RemoveFavoriteBook
     {
         private readonly IFavoriteBookRepository _favoriteBookRepository;
         private readonly IUserRepository _userRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public RemoveFavoriteBookCommandHandler(
             IFavoriteBookRepository favoriteBookRepository,
             IUserRepository userRepository,
+            IUnitOfWork unitOfWork,
             ILogger<RemoveFavoriteBookCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _favoriteBookRepository = favoriteBookRepository;
             _userRepository = userRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -52,7 +56,7 @@ namespace Quraaa.Application.Features.FavoriteBooks.Commands.RemoveFavoriteBook
                     throw new NotFoundException("Favorite book was not found.");
                 }
 
-                await _favoriteBookRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }, "Favorite book removed successfully");
         }
     }

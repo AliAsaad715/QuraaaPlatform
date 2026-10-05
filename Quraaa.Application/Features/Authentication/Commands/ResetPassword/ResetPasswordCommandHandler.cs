@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -12,25 +13,25 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetPassword
     {
         private readonly IIdentityService _identityService;
         private readonly IUserRepository _userRepository;
-        private readonly IAuthenticationUnitOfWork _authenticationUnitOfWork;
+        private readonly IUnitOfWork _unitOfWork;
 
         public ResetPasswordCommandHandler(
             IIdentityService identityService,
             IUserRepository userRepository,
-            IAuthenticationUnitOfWork authenticationUnitOfWork,
+            IUnitOfWork unitOfWork,
             ILogger<ResetPasswordCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _identityService = identityService;
             _userRepository = userRepository;
-            _authenticationUnitOfWork = authenticationUnitOfWork;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(ResetPasswordCommand request, CancellationToken cancellationToken)
         {
             return await ExecuteAsync(request, async () =>
             {
-                await _authenticationUnitOfWork.ExecuteInTransactionAsync(
+                await _unitOfWork.ExecuteInTransactionAsync(
                     async transactionCancellationToken =>
                     {
                         var user = await _userRepository.GetUserByIdAsync(request.UserId);
@@ -57,7 +58,7 @@ namespace Quraaa.Application.Features.Authentication.Commands.ResetPassword
                         }
 
                         user.UpdatePasswordHash(identityResult.PasswordHash!, request.UserId);
-                        await _userRepository.SaveChangesAsync(transactionCancellationToken);
+                        await _unitOfWork.SaveChangesAsync(transactionCancellationToken);
                     },
                     cancellationToken);
             }, "Password reset successfully");

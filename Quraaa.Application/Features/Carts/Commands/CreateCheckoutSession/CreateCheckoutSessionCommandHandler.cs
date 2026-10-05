@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Carts.Common;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Cart.Enums;
@@ -15,17 +16,20 @@ namespace Quraaa.Application.Features.Carts.Commands.CreateCheckoutSession
         private readonly ICartRepository _cartRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IStripePaymentService _stripePaymentService;
+        private readonly IUnitOfWork _unitOfWork;
 
         public CreateCheckoutSessionCommandHandler(
             ICartRepository cartRepository,
             IListingRepository listingRepository,
             IStripePaymentService stripePaymentService,
+            IUnitOfWork unitOfWork,
             ILogger<CreateCheckoutSessionCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _cartRepository = cartRepository;
             _listingRepository = listingRepository;
             _stripePaymentService = stripePaymentService;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<StripeCheckoutSessionResponse>> Handle(CreateCheckoutSessionCommand request, CancellationToken cancellationToken)
@@ -76,7 +80,7 @@ namespace Quraaa.Application.Features.Carts.Commands.CreateCheckoutSession
                     cancellationToken);
 
                 cart.MarkPendingPayment(session.SessionId);
-                await _cartRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 return session;
             }, "Stripe checkout session created successfully");

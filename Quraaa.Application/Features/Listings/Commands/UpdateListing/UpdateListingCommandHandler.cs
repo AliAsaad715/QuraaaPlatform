@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Orders.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -16,11 +17,13 @@ namespace Quraaa.Application.Features.Listings.Commands.UpdateListing
         private readonly ILibraryRepository _libraryRepository;
         private readonly IListingRepository _listingRepository;
         private readonly IOrderRepository _orderRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public UpdateListingCommandHandler(
             ILibraryRepository libraryRepository,
             IListingRepository listingRepository,
             IOrderRepository orderRepository,
+            IUnitOfWork unitOfWork,
             ILogger<UpdateListingCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -28,6 +31,7 @@ namespace Quraaa.Application.Features.Listings.Commands.UpdateListing
             _libraryRepository = libraryRepository;
             _listingRepository = listingRepository;
             _orderRepository = orderRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -71,7 +75,7 @@ namespace Quraaa.Application.Features.Listings.Commands.UpdateListing
                 if (request.Condition.HasValue)
                     listing.UpdateCondition(request.Condition.Value, actorId);
 
-                await _listingRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             }, "Listing updated successfully.");
         }

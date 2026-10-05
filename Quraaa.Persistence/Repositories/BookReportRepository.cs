@@ -1,15 +1,12 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Quraaa.Application.Features.BookReports.Common;
 using Quraaa.Application.Features.BookReports.Interfaces;
-using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
 using Quraaa.Domain.Reports;
 using Quraaa.Domain.Reports.Enums;
 using Quraaa.Domain.User.Enums;
 using Quraaa.Domain.User;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -248,29 +245,6 @@ namespace Quraaa.Persistence.Repositories
             await _context.BookReports.AddAsync(report, cancellationToken);
         }
 
-        public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConflictException(
-                    "This report was updated by someone else. Reload it and retry.");
-            }
-            catch (DbUpdateException exception) when (IsDuplicateReportViolation(exception))
-            {
-                foreach (var entry in exception.Entries
-                    .Where(entry => entry.Entity is BookReportAggregate))
-                {
-                    entry.State = EntityState.Detached;
-                }
-
-                throw new ApplicationBusinessException(BookReportErrorCodes.DuplicateBookReport);
-            }
-        }
-
         /// <summary>
         /// Reports joined to their book (and the book's optional author) and to
         /// the reporter, left unprojected so callers filter on the entities.
@@ -330,12 +304,5 @@ namespace Quraaa.Persistence.Repositories
             public required UserAggregate Reporter { get; init; }
             public AuthorAggregate? Author { get; init; }
         }
-
-        private static bool IsDuplicateReportViolation(DbUpdateException exception) =>
-            exception.InnerException is PostgresException
-            {
-                SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: "IX_BookReports_UserId_BookId"
-            };
     }
 }

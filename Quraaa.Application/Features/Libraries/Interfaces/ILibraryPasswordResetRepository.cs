@@ -11,7 +11,5 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
         Task AddAsync(
             LibraryPasswordResetChallenge challenge,
             CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

@@ -5,6 +5,7 @@ using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Notifications.Common;
 using Quraaa.Application.Features.Notifications.Interfaces;
 using Quraaa.Application.Features.Purchases.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Domain.Notifications;
 using Quraaa.Domain.Notifications.Enums;
 
@@ -32,6 +33,7 @@ public sealed class DispatchListingPushNotificationsCommandHandler
     private readonly IBookRepository _bookRepository;
     private readonly ILibraryRepository _libraryRepository;
     private readonly IFirebaseNotificationService _firebaseNotificationService;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<DispatchListingPushNotificationsCommandHandler> _logger;
 
     public DispatchListingPushNotificationsCommandHandler(
@@ -41,6 +43,7 @@ public sealed class DispatchListingPushNotificationsCommandHandler
         IBookRepository bookRepository,
         ILibraryRepository libraryRepository,
         IFirebaseNotificationService firebaseNotificationService,
+        IUnitOfWork unitOfWork,
         ILogger<DispatchListingPushNotificationsCommandHandler> logger)
     {
         _notificationRepository = notificationRepository;
@@ -49,6 +52,7 @@ public sealed class DispatchListingPushNotificationsCommandHandler
         _bookRepository = bookRepository;
         _libraryRepository = libraryRepository;
         _firebaseNotificationService = firebaseNotificationService;
+        _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
@@ -88,7 +92,7 @@ public sealed class DispatchListingPushNotificationsCommandHandler
             var previousState = notification.State;
             var invalidTokens = await DeliverAsync(notification, cancellationToken);
 
-            await _notificationRepository.SaveChangesAsync(CancellationToken.None);
+            await _unitOfWork.SaveChangesAsync(CancellationToken.None);
             await RemoveInvalidTokensAsync(notification, invalidTokens);
 
             completedCount += notification.State == NotificationDeliveryState.Sent ? 1 : 0;
@@ -99,7 +103,7 @@ public sealed class DispatchListingPushNotificationsCommandHandler
             abandonedCount += notification.State == NotificationDeliveryState.Abandoned ? 1 : 0;
 
             notification.ReleaseLease();
-            await _notificationRepository.SaveChangesAsync(CancellationToken.None);
+            await _unitOfWork.SaveChangesAsync(CancellationToken.None);
         }
 
         return new DispatchListingPushNotificationsResult(

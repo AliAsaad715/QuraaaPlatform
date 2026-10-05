@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Admin.Common;
 using Quraaa.Application.Features.Admin.Interfaces;
 using Quraaa.Application.Features.Authentication.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -16,18 +17,18 @@ namespace Quraaa.Application.Features.Admin.Commands.CreateSuperAdmin
     {
         private readonly IAdminModerationRepository _moderationRepository;
         private readonly IUserRepository _userRepository;
-        private readonly IAuthenticationUnitOfWork _authenticationUnitOfWork;
+        private readonly IUnitOfWork _unitOfWork;
 
         public CreateSuperAdminCommandHandler(
             IAdminModerationRepository moderationRepository,
             IUserRepository userRepository,
-            IAuthenticationUnitOfWork authenticationUnitOfWork,
+            IUnitOfWork unitOfWork,
             ILogger<CreateSuperAdminCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _moderationRepository = moderationRepository;
             _userRepository = userRepository;
-            _authenticationUnitOfWork = authenticationUnitOfWork;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<AdminUserResponse>> Handle(
@@ -47,7 +48,7 @@ namespace Quraaa.Application.Features.Admin.Commands.CreateSuperAdmin
                 }
 
                 AdminUserResponse? created = null;
-                await _authenticationUnitOfWork.ExecuteInTransactionAsync(
+                await _unitOfWork.ExecuteInTransactionAsync(
                     async transactionCancellationToken =>
                     {
                         // Identity's CreateAsync/AddToRoleAsync each save immediately.
@@ -60,6 +61,8 @@ namespace Quraaa.Application.Features.Admin.Commands.CreateSuperAdmin
                             request.LastName.Trim(),
                             request.CreatedByUserId,
                             transactionCancellationToken);
+
+                        await _unitOfWork.SaveChangesAsync(transactionCancellationToken);
                     },
                     cancellationToken);
 

@@ -421,7 +421,9 @@ Across aggregate boundaries, domain types expose scalar identity references such
 
 The user-to-library ownership rule is one-to-one: `LibraryAggregate` stores only scalar `UserId`; `LibraryConfiguration` uses a navigationless one-to-one mapping plus a unique index on `UserId`; the migration enforces the unique index; and application code checks for an existing library before creating another one. Library email is also unique.
 
-The open-cart rule is also one-to-one per user. `CartConfiguration` defines the partial unique index `IX_Carts_UserId_Open` on `UserId` for non-deleted `Active` or `PendingPayment` carts, `CartRepository` translates a concurrent unique-index violation to `409 Conflict`, and historical `Paid`/`Abandoned` carts remain unrestricted.
+Writes go through an explicit unit of work. Repositories only read and stage changes; the command handler or application service commits by calling `IUnitOfWork.SaveChangesAsync` (`Quraaa.Application/Shared/Persistence/IUnitOfWork.cs`, implemented by `Quraaa.Persistence/Services/UnitOfWork.cs` over the request-scoped `ApplicationDbContext`). A handler commits more than once only when a step must be durable before an external call: the checkout reservation before Stripe, the payout lease before a transfer, or the library registration before SMTP. `IUnitOfWork.ExecuteInTransactionAsync` wraps saves that must be atomic with ASP.NET Core Identity writes, which save on their own. `Quraaa.Persistence/Services/SaveChangesExceptionTranslator.cs` is the only place that maps a failed save to an application exception: optimistic-concurrency conflicts become `ConflictException`, and each known unique or foreign-key constraint becomes its documented `ConflictException`, `ApplicationBusinessException` error code, or `PaymentEventAlreadyProcessedException`. The leased notification-outbox claims (`FOR UPDATE SKIP LOCKED`) keep their own short transactions inside their repositories.
+
+The open-cart rule is also one-to-one per user. `CartConfiguration` defines the partial unique index `IX_Carts_UserId_Open` on `UserId` for non-deleted `Active` or `PendingPayment` carts, the unit of work translates a concurrent unique-index violation to `409 Conflict`, and historical `Paid`/`Abandoned` carts remain unrestricted.
 
 ## Build, Run & Test Commands
 
@@ -1541,11 +1543,11 @@ Quraaa.Application/Features/Authentication/Commands/Register/RegisterCommandHand
 Quraaa.Application/Features/Authentication/Commands/VerifyRegisterOtp/VerifyRegisterOtpCommand.cs
 Quraaa.Application/Features/Authentication/Commands/VerifyRegisterOtp/VerifyRegisterOtpCommandValidator.cs
 Quraaa.Application/Features/Authentication/Commands/VerifyRegisterOtp/VerifyRegisterOtpCommandHandler.cs
-Quraaa.Application/Features/Authentication/Interfaces/IAuthenticationUnitOfWork.cs
+Quraaa.Application/Shared/Persistence/IUnitOfWork.cs
 Quraaa.Application/Features/Otp/Interfaces/IOtpCacheService.cs
 Quraaa.Application/Features/Otp/Interfaces/IFirebaseSmsGateway.cs
 Quraaa.Persistence/Services/IdentityService.cs
-Quraaa.Persistence/Services/AuthenticationUnitOfWork.cs
+Quraaa.Persistence/Services/UnitOfWork.cs
 Quraaa.Persistence/Repositories/UserRepository.cs
 Quraaa.Infrastructure/Services/OtpCacheService.cs
 Quraaa.Domain/User/UserAggregate.cs
@@ -1847,7 +1849,7 @@ HTTP POST /api/auth/reset-password
   -> handler converts Identity failures to ApplicationBusinessException
   -> handler checks the updated hash was returned
   -> UserAggregate.UpdatePasswordHash(updatedHash, userId)
-  -> IUserRepository.SaveChangesAsync()
+  -> IUnitOfWork.SaveChangesAsync()
   -> AppResult success
 ```
 
@@ -1929,7 +1931,7 @@ HTTP POST /api/auth/forgot-password/verify
   -> IdentityService generates a reset token, clears the refresh token/family id, and calls UserManager.ResetPasswordAsync so password recovery and family revocation persist in one Identity update
   -> handler throws ApplicationBusinessException on Identity errors
   -> UserAggregate.UpdatePasswordHash(updatedHash, user.Id)
-  -> IUserRepository.SaveChangesAsync()
+  -> IUnitOfWork.SaveChangesAsync()
   -> AppResult success
 ```
 
@@ -2009,7 +2011,7 @@ HTTP PUT /api/profile/me
   -> IUserRepository.GetUserByIdAsync(userId) returns the user profile or null
   -> handler throws NotFoundException if the user profile is null
   -> UserAggregate.UpdateProfile(...)
-  -> IUserRepository.SaveChangesAsync()
+  -> IUnitOfWork.SaveChangesAsync()
   -> ICategoryRepository.GetByIdsAsync(user.InterestedCategoryIds)
   -> ProfileResponse
 ```
@@ -2737,7 +2739,7 @@ HTTP PUT /api/admin/authors/{id}
   -> AdminAuthorsController.UpdateAuthor(id, command)
   -> UpdateAuthorCommand(...) with { Id = id, ModifiedBy = adminId }
   -> UpdateAuthorCommandHandler
-  -> IAuthorRepository.GetByIdAsync(id) -> AuthorAggregate.UpdateDetails(...) -> IAuthorRepository.SaveChangesAsync()
+  -> IAuthorRepository.GetByIdAsync(id) -> AuthorAggregate.UpdateDetails(...) -> IUnitOfWork.SaveChangesAsync()
   -> AuthorResponse or NotFound
 
 HTTP POST /api/admin/authors/{id}/activation?deactivate=true|false

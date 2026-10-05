@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Library;
@@ -20,6 +21,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RequestLibraryPasswordR
         private readonly ILibraryEmailOtpProtector _otpProtector;
         private readonly ILibraryEmailSender _emailSender;
         private readonly LibraryRegistrationOptions _options;
+        private readonly IUnitOfWork _unitOfWork;
 
         public RequestLibraryPasswordResetCommandHandler(
             ILibraryRepository libraryRepository,
@@ -27,6 +29,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RequestLibraryPasswordR
             ILibraryEmailOtpProtector otpProtector,
             ILibraryEmailSender emailSender,
             LibraryRegistrationOptions options,
+            IUnitOfWork unitOfWork,
             ILogger<RequestLibraryPasswordResetCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
@@ -35,6 +38,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RequestLibraryPasswordR
             _otpProtector = otpProtector;
             _emailSender = emailSender;
             _options = options;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -141,7 +145,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RequestLibraryPasswordR
                         _options.EmailOtpSendWindow);
                 }
 
-                await _resetRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 var deliveryAttemptStamp = challenge.ConcurrencyStamp;
 
@@ -162,7 +166,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.RequestLibraryPasswordR
                     // must never turn an always-200 endpoint into an error.
                     try
                     {
-                        await _resetRepository.SaveChangesAsync(cancellationToken);
+                        await _unitOfWork.SaveChangesAsync(cancellationToken);
                     }
                     catch (Exception exception) when (exception is not OperationCanceledException)
                     {

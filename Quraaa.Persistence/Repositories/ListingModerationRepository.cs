@@ -73,7 +73,4 @@ public class ListingModerationRepository : IListingModerationRepository
 
     public void Remove(IReadOnlyCollection<ListingAggregate> listings) =>
         _context.Listings.RemoveRange(listings);
-
-    public Task SaveChangesAsync(CancellationToken cancellationToken = default) =>
-        _context.SaveChangesAsync(cancellationToken);
 }

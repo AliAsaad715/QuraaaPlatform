@@ -59,7 +59,5 @@ namespace Quraaa.Application.Features.Listings.Interfaces
         Task<HashSet<string>> FilterReferencedDigitalAssetPathsAsync(
             IReadOnlyCollection<string> relativePaths,
             CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

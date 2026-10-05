@@ -67,6 +67,5 @@ namespace Quraaa.Application.Features.Libraries.Interfaces
             int pageSize,
             string? searchTerm,
             CancellationToken cancellationToken = default);
-        Task SaveChangesAsync();
     }
 }

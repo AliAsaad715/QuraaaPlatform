@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Orders.Common;
 using Quraaa.Application.Features.Orders.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -16,11 +17,13 @@ namespace Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocatio
         private readonly IOrderRepository _orderRepository;
         private readonly IUserRepository _userRepository;
         private readonly IImageUrlFormatter _imageUrlFormatter;
+        private readonly IUnitOfWork _unitOfWork;
 
         public UpdateOrderShippingLocationCommandHandler(
             IOrderRepository orderRepository,
             IUserRepository userRepository,
             IImageUrlFormatter imageUrlFormatter,
+            IUnitOfWork unitOfWork,
             ILogger<UpdateOrderShippingLocationCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -28,6 +31,7 @@ namespace Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocatio
             _orderRepository = orderRepository;
             _userRepository = userRepository;
             _imageUrlFormatter = imageUrlFormatter;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<OrderResponse>> Handle(
@@ -67,7 +71,7 @@ namespace Quraaa.Application.Features.Orders.Commands.UpdateOrderShippingLocatio
 
                 order.UpdateShippingLocation(latitude, longitude, request.BuyerUserId);
 
-                await _orderRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 return order.ToResponse(_imageUrlFormatter);
             }, "Order shipping location updated successfully");
         }

@@ -44,7 +44,5 @@ namespace Quraaa.Application.Features.Payouts.Interfaces
             Guid libraryId,
             DateTime nextAttemptAtUtc,
             CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

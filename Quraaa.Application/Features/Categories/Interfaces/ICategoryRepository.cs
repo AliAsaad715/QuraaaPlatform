@@ -8,6 +8,12 @@ namespace Quraaa.Application.Features.Categories.Interfaces
         Task<List<CategoryAggregate>> GetAllAsync(CancellationToken cancellationToken = default);
         Task<CategoryAggregate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
         Task AddAsync(CategoryAggregate category, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Stages the deletion. The unit-of-work save throws
+        /// <see cref="Quraaa.Domain.Shared.Exceptions.ConflictException"/> while books
+        /// still reference the category.
+        /// </summary>
         Task RemoveAsync(CategoryAggregate category, CancellationToken cancellationToken = default);
         Task<bool> ExistsByCodeAsync(string code, CancellationToken cancellationToken = default);
 
@@ -27,7 +33,5 @@ namespace Quraaa.Application.Features.Categories.Interfaces
         /// so checking books also covers every listing under this category.
         /// </summary>
         Task<bool> HasLinkedBooksAsync(Guid categoryId, CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

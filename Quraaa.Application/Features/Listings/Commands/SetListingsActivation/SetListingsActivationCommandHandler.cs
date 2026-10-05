@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.Admin.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Listings.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Marketplace.Enums;
@@ -16,15 +17,18 @@ namespace Quraaa.Application.Features.Listings.Commands.SetListingsActivation
     {
         private readonly IListingModerationRepository _listingModerationRepository;
         private readonly ILibraryRepository _libraryRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
         public SetListingsActivationCommandHandler(
             IListingModerationRepository listingModerationRepository,
             ILibraryRepository libraryRepository,
+            IUnitOfWork unitOfWork,
             ILogger<SetListingsActivationCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _listingModerationRepository = listingModerationRepository;
             _libraryRepository = libraryRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<BulkModerationResult>> Handle(
@@ -77,7 +81,7 @@ namespace Quraaa.Application.Features.Listings.Commands.SetListingsActivation
                     outcomes.Add(new BulkModerationOutcome(id, true));
                 }
 
-                await _listingModerationRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 Logger.LogInformation(
                     "Library {LibraryId} set activation ({Deactivate}) on {SucceededCount} of {RequestedCount} listings.",

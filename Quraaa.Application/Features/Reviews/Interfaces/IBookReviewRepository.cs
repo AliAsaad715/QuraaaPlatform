@@ -13,6 +13,5 @@ namespace Quraaa.Application.Features.Reviews.Interfaces
             int pageSize,
             CancellationToken cancellationToken = default);
         Task AddAsync(BookReviewAggregate review, CancellationToken cancellationToken = default);
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

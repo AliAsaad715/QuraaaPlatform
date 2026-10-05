@@ -80,9 +80,11 @@ namespace Quraaa.Application.Features.Admin.Interfaces
 
         /// <summary>
         /// Creates a new super admin: the sign-in identity, SuperAdmin role,
-        /// and platform profile. The caller must wrap this operation in
-        /// <see cref="Quraaa.Application.Features.Authentication.Interfaces.IAuthenticationUnitOfWork" />
-        /// because Identity writes save immediately.
+        /// and platform profile. Identity writes save immediately, but the profile
+        /// is only staged: the caller saves it through
+        /// <see cref="Quraaa.Application.Shared.Persistence.IUnitOfWork" />, inside
+        /// <see cref="Quraaa.Application.Shared.Persistence.IUnitOfWork.ExecuteInTransactionAsync" />
+        /// so all three succeed or fail together.
         /// </summary>
         Task<AdminUserResponse> CreateSuperAdminAsync(
             string phoneNumber,
@@ -91,7 +93,5 @@ namespace Quraaa.Application.Features.Admin.Interfaces
             string lastName,
             Guid createdBy,
             CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

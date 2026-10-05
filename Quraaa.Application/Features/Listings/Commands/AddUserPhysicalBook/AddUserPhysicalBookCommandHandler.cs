@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Authors.Interfaces;
 using Quraaa.Application.Features.Listings.Commands.AddPhysicalBook;
 using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Shared.Files;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Catalog;
@@ -22,6 +23,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
         private readonly IListingRepository _listingRepository;
         private readonly IBookMetadataService _bookMetadataService;
         private readonly IImageStorageService _imageStorageService;
+        private readonly IUnitOfWork _unitOfWork;
 
         public AddUserPhysicalBookCommandHandler(
             IBookRepository bookRepository,
@@ -29,6 +31,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
             IListingRepository listingRepository,
             IBookMetadataService bookMetadataService,
             IImageStorageService imageStorageService,
+            IUnitOfWork unitOfWork,
             ILogger<AddUserPhysicalBookCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -38,6 +41,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
             _listingRepository = listingRepository;
             _bookMetadataService = bookMetadataService;
             _imageStorageService = imageStorageService;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<AddPhysicalBookResponse>> Handle(
@@ -74,7 +78,7 @@ namespace Quraaa.Application.Features.Listings.Commands.AddUserPhysicalBook
                         customCoverImageUrl: coverImageUrl);
 
                     await _listingRepository.AddAsync(listing, cancellationToken);
-                    await _listingRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                     return new AddPhysicalBookResponse(listing.Id);
                 }

@@ -30,11 +30,11 @@ namespace Quraaa.Application.Features.Listings.Interfaces
             CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Atomically inserts a batch of books.
-        /// Throws <see cref="Quraaa.Domain.Shared.Exceptions.ConflictException"/> on a
-        /// (Title, Author, Language) unique-constraint violation.
+        /// Stages a batch of books for one atomic insert. The unit-of-work save throws
+        /// <see cref="Quraaa.Domain.Shared.Exceptions.ConflictException"/> on a
+        /// (Title, Author, Language) or ISBN unique-constraint violation.
         /// </summary>
-        Task BulkInsertAsync(IReadOnlyList<BookAggregate> books,
+        Task AddRangeAsync(IReadOnlyList<BookAggregate> books,
             CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -45,7 +45,5 @@ namespace Quraaa.Application.Features.Listings.Interfaces
         Task<HashSet<string>> FilterReferencedCanonicalAssetPathsAsync(
             IReadOnlyCollection<string> storedReferences,
             CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

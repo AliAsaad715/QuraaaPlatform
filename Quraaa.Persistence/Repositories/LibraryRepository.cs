@@ -1,12 +1,10 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Quraaa.Application.Features.Catalog.Common;
 using Quraaa.Application.Features.Categories.Common;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Queries.GetLibraryRequests;
 using Quraaa.Application.Features.Listings.Queries.GetLibraryBooks;
-using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Author;
 using Quraaa.Domain.Catalog;
@@ -15,7 +13,6 @@ using Quraaa.Domain.Library;
 using Quraaa.Domain.Library.Enums;
 using Quraaa.Domain.Marketplace;
 using Quraaa.Domain.Marketplace.Enums;
-using Quraaa.Domain.Shared.Exceptions;
 using Quraaa.Persistence.Data;
 
 namespace Quraaa.Persistence.Repositories
@@ -333,27 +330,6 @@ namespace Quraaa.Persistence.Repositories
                     library => library.UserId == userId,
                     cancellationToken);
 
-        public async Task SaveChangesAsync()
-        {
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new ConflictException(
-                    "The library changed concurrently. Reload it and retry the operation.");
-            }
-            catch (DbUpdateException ex) when (IsDuplicateLibraryForUserViolation(ex))
-            {
-                throw new ApplicationBusinessException(LibraryErrorCodes.DuplicateLibraryForUser);
-            }
-            catch (DbUpdateException ex) when (IsDuplicateLibraryEmailViolation(ex))
-            {
-                throw new ApplicationBusinessException(LibraryErrorCodes.DuplicateLibraryEmail);
-            }
-        }
-
         private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 
         private static IQueryable<LibraryBookFlatProjection> ApplySorting(
@@ -368,12 +344,6 @@ namespace Quraaa.Persistence.Repositories
                 _ => sortDescending ? query.OrderByDescending(x => x.Book.Title) : query.OrderBy(x => x.Book.Title),
             };
         }
-
-        private static bool IsDuplicateLibraryForUserViolation(DbUpdateException exception) =>
-            exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_Libraries_UserId" };
-
-        private static bool IsDuplicateLibraryEmailViolation(DbUpdateException exception) =>
-            exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_Libraries_Email" };
 
         private sealed class LibraryBookFlatProjection
         {

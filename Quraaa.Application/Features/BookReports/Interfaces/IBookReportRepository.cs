@@ -72,7 +72,5 @@ namespace Quraaa.Application.Features.BookReports.Interfaces
             CancellationToken cancellationToken = default);
 
         Task AddAsync(BookReportAggregate report, CancellationToken cancellationToken = default);
-
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

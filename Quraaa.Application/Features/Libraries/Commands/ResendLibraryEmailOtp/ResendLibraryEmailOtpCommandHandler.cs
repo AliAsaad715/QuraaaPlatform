@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Features.Libraries.Services;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Library;
@@ -21,6 +22,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ResendLibraryEmailOtp
         private readonly ILibraryEmailOtpProtector _otpProtector;
         private readonly ILibraryEmailSender _emailSender;
         private readonly LibraryRegistrationOptions _options;
+        private readonly IUnitOfWork _unitOfWork;
 
         public ResendLibraryEmailOtpCommandHandler(
             LibraryRegistrationSessionService sessionService,
@@ -29,6 +31,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ResendLibraryEmailOtp
             ILibraryEmailOtpProtector otpProtector,
             ILibraryEmailSender emailSender,
             LibraryRegistrationOptions options,
+            IUnitOfWork unitOfWork,
             ILogger<ResendLibraryEmailOtpCommandHandler> logger,
             IServiceProvider serviceProvider)
             : base(logger, serviceProvider)
@@ -39,6 +42,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ResendLibraryEmailOtp
             _otpProtector = otpProtector;
             _emailSender = emailSender;
             _options = options;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<LibraryEmailOtpResponse>> Handle(
@@ -120,7 +124,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ResendLibraryEmailOtp
                             _options.EmailOtpSendWindow);
                     }
 
-                    await _registrationRepository.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                     var emailDeliveryStatus = await _emailSender.SendVerificationOtpAsync(
                         library.Email,
@@ -163,7 +167,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ResendLibraryEmailOtp
                     return;
                 }
 
-                await _registrationRepository.SaveChangesAsync(CancellationToken.None);
+                await _unitOfWork.SaveChangesAsync(CancellationToken.None);
             }
             catch (Exception exception)
             {

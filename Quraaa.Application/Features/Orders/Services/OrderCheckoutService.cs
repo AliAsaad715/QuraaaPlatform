@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Listings.Interfaces;
 using Quraaa.Application.Features.Payments.Common;
 using Quraaa.Application.Features.Payments.Exceptions;
 using Quraaa.Application.Features.Payments.Interfaces;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Cart;
 using Quraaa.Domain.Marketplace.Enums;
@@ -21,19 +22,22 @@ namespace Quraaa.Application.Features.Orders.Services
         private readonly IListingRepository _listingRepository;
         private readonly IOrderPaymentReconciliationService _paymentReconciliationService;
         private readonly IImageUrlFormatter _imageUrlFormatter;
+        private readonly IUnitOfWork _unitOfWork;
 
         public OrderCheckoutService(
             IPaymentGateway paymentGateway,
             IOrderRepository orderRepository,
             IListingRepository listingRepository,
             IOrderPaymentReconciliationService paymentReconciliationService,
-            IImageUrlFormatter imageUrlFormatter)
+            IImageUrlFormatter imageUrlFormatter,
+            IUnitOfWork unitOfWork)
         {
             _paymentGateway = paymentGateway;
             _orderRepository = orderRepository;
             _listingRepository = listingRepository;
             _paymentReconciliationService = paymentReconciliationService;
             _imageUrlFormatter = imageUrlFormatter;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<OrderCheckoutResponse> EnsureCheckoutSessionAsync(
@@ -103,7 +107,7 @@ namespace Quraaa.Application.Features.Orders.Services
 
             // Commit the inventory reservation, cart lock, order, and stable
             // payment-attempt inputs before making the external Stripe call.
-            await _orderRepository.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             PaymentCheckoutSessionResult checkout;
 
@@ -187,7 +191,7 @@ namespace Quraaa.Application.Features.Orders.Services
                     checkout.ExpiresAt.UtcDateTime);
 
                 cart.AttachCheckoutSession(order.Id, checkout.SessionId);
-                await _orderRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
             catch (ConflictException)
             {
@@ -248,7 +252,7 @@ namespace Quraaa.Application.Features.Orders.Services
             }
 
             cart.ReopenAfterPaymentFailure(order.Id);
-            await _orderRepository.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
         private static PaymentAttempt? GetActiveAttempt(OrderAggregate order)

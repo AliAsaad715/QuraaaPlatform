@@ -4,6 +4,7 @@ using Quraaa.Application.Features.Authentication.Interfaces;
 using Quraaa.Application.Features.Libraries.Common;
 using Quraaa.Application.Features.Libraries.Interfaces;
 using Quraaa.Application.Shared.Exceptions;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -17,17 +18,20 @@ namespace Quraaa.Application.Features.Libraries.Commands.ChangeLibraryPassword
         private readonly ILibraryRepository _libraryRepository;
         private readonly ILibraryPasswordHasher _libraryPasswordHasher;
         private readonly IIdentityService _identityService;
+        private readonly IUnitOfWork _unitOfWork;
 
         public ChangeLibraryPasswordCommandHandler(
             ILibraryRepository libraryRepository,
             ILibraryPasswordHasher libraryPasswordHasher,
             IIdentityService identityService,
+            IUnitOfWork unitOfWork,
             ILogger<ChangeLibraryPasswordCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _libraryRepository = libraryRepository;
             _libraryPasswordHasher = libraryPasswordHasher;
             _identityService = identityService;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult> Handle(
@@ -65,7 +69,7 @@ namespace Quraaa.Application.Features.Libraries.Commands.ChangeLibraryPassword
                     _libraryPasswordHasher.Hash(request.NewPassword),
                     request.UserId);
 
-                await _libraryRepository.SaveChangesAsync();
+                await _unitOfWork.SaveChangesAsync();
 
                 // Mirrors account password changes: replacing the credential
                 // ends every session it could have opened, including the

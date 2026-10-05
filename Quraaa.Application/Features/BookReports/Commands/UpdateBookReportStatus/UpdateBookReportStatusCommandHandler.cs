@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quraaa.Application.Features.BookReports.Common;
 using Quraaa.Application.Features.BookReports.Interfaces;
 using Quraaa.Application.Features.BookReports.Services;
+using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
 using Quraaa.Domain.Shared.Exceptions;
@@ -15,15 +16,18 @@ namespace Quraaa.Application.Features.BookReports.Commands.UpdateBookReportStatu
     {
         private readonly IBookReportRepository _bookReportRepository;
         private readonly BookReportEscalationService _escalationService;
+        private readonly IUnitOfWork _unitOfWork;
 
         public UpdateBookReportStatusCommandHandler(
             IBookReportRepository bookReportRepository,
             BookReportEscalationService escalationService,
+            IUnitOfWork unitOfWork,
             ILogger<UpdateBookReportStatusCommandHandler> logger,
             IServiceProvider serviceProvider) : base(logger, serviceProvider)
         {
             _bookReportRepository = bookReportRepository;
             _escalationService = escalationService;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<AppResult<BookReportResponse>> Handle(
@@ -49,14 +53,14 @@ namespace Quraaa.Application.Features.BookReports.Commands.UpdateBookReportStatu
 
                 // Saved first so the recount below sees this decision, then the
                 // book state is re-derived and committed in a second save.
-                await _bookReportRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 await _escalationService.ReevaluateAsync(
                     report.BookId,
                     request.AdminId,
                     cancellationToken);
 
-                await _bookReportRepository.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 Logger.LogInformation(
                     "Admin {AdminId} moved book report {ReportId} from {PreviousStatus} to {NewStatus}.",
