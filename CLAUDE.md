@@ -79,6 +79,10 @@ Domain error *codes* that must surface as 409 (e.g. `LibraryErrorCodes.Duplicate
 
 **Aggregates reference each other by scalar id only** (`UserId`, `BookId`, `ListingId`, `LibraryId`) — no cross-aggregate navigation properties in the domain. Existing EF configurations do use navigationless `HasOne<TAggregate>()` to create database foreign keys; treat those purely as DB integrity mappings and follow the same convention rather than introducing navigations.
 
+**Domain events** implement `IDomainEvent` (derive from the `DomainEvent` record, which stamps `EventId` and `OccurredAtUtc`). [DomainEventOutboxInterceptor](Quraaa.Persistence/Interceptors/DomainEventOutboxInterceptor.cs) stores every raised event in `OutboxMessages` in the same save, and `DomainEventDispatcherService` hands them after commit to `INotificationHandler<DomainEventNotification<TEvent>>` handlers in Application, so a new event needs only a handler, never a Persistence edit. Events saved together are handled together in one unit of work (that is how a bulk upload becomes one push); handlers stage changes through repositories and the dispatcher commits them. A failed batch is retried, so a handler with an outside effect must be idempotent on `EventId`.
+
+`BookAggregate` writes its own history: the constructor records version 1, and `ApplyDetails` / `RevertTo` record the next version. Never create a `BookVersion` any other way.
+
 Enums are stored as `int` in PostgreSQL but serialized as strings in JSON (`JsonStringEnumConverter`). Roles are `User | LibraryOwner | SuperAdmin` ([Role.cs](Quraaa.Domain/User/Enums/Role.cs)) — `[Authorize(Roles = ...)]` strings must match these; there is no `Admin` or `LibraryAdmin` role.
 
 ### Uniqueness invariants enforced in the database

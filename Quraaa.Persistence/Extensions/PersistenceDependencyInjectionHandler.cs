@@ -9,6 +9,7 @@ using Quraaa.Application.Features.BookReports.Interfaces;
 using Quraaa.Application.Features.Books.Interfaces;
 using Quraaa.Application.Features.Carts.Interfaces;
 using Quraaa.Application.Features.Categories.Interfaces;
+using Quraaa.Application.Features.DomainEvents.Interfaces;
 using Quraaa.Application.Features.FavoriteBooks.Interfaces;
 using Quraaa.Application.Features.Files.Interfaces;
 using Quraaa.Application.Features.Libraries.Interfaces;
@@ -50,13 +51,11 @@ namespace Quraaa.Persistence.Extensions
             var connectionString = configuration.GetConnectionString("DefaultConnection");
 
             services.AddScoped<DomainEventOutboxInterceptor>();
-            services.AddScoped<BookVersionInterceptor>();
 
             services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
                 options.UseNpgsql(connectionString)
                     .AddInterceptors(
-                        serviceProvider.GetRequiredService<DomainEventOutboxInterceptor>(),
-                        serviceProvider.GetRequiredService<BookVersionInterceptor>()));
+                        serviceProvider.GetRequiredService<DomainEventOutboxInterceptor>()));
 
             // Scoped like the DbContext it commits, so every repository in a request
             // stages into the same unit of work.
@@ -95,6 +94,7 @@ namespace Quraaa.Persistence.Extensions
             services.AddScoped<ILibraryApprovalNotificationRepository, LibraryApprovalNotificationRepository>();
             services.AddScoped<IPushDeviceRepository, PushDeviceRepository>();
             services.AddScoped<IListingPushNotificationRepository, ListingPushNotificationRepository>();
+            services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IBookReportRepository, BookReportRepository>();
             services.AddScoped<IBookVersionRepository, BookVersionRepository>();

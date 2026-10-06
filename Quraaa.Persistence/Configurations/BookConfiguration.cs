@@ -16,6 +16,11 @@ namespace Quraaa.Persistence.Configurations
                    .IsRequired()
                    .HasDefaultValue(1);
 
+            // Never loaded with the book: the collection only carries the versions
+            // the aggregate records, so EF can insert them alongside it.
+            builder.Navigation(b => b.RecordedVersions)
+                   .UsePropertyAccessMode(PropertyAccessMode.Field);
+
             builder.Property(b => b.ModerationStatus)
                    .HasConversion<int>()
                    .IsRequired()

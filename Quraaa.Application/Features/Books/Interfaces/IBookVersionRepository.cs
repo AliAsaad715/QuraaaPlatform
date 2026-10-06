@@ -2,6 +2,10 @@ using Quraaa.Domain.Catalog;
 
 namespace Quraaa.Application.Features.Books.Interfaces
 {
+    /// <summary>
+    /// Reads book history. There is no way to add a version here: only
+    /// <see cref="BookAggregate"/> records them, and they are saved with the book.
+    /// </summary>
     public interface IBookVersionRepository
     {
         Task<BookAggregate?> GetBookForUpdateAsync(
@@ -19,10 +23,6 @@ namespace Quraaa.Application.Features.Books.Interfaces
 
         Task<bool> HasAnyVersionAsync(
             Guid bookId,
-            CancellationToken cancellationToken = default);
-
-        Task AddAsync(
-            BookVersion version,
             CancellationToken cancellationToken = default);
     }
 }

@@ -1,14 +1,14 @@
-﻿namespace Quraaa.Domain.Shared.Entities
-{
-    public interface IDomainEvents { }
+﻿using Quraaa.Domain.Shared.Events;
 
+namespace Quraaa.Domain.Shared.Entities
+{
     public abstract class AggregateRoot : AuditableEntity
     {
         // --- Domain Events ---
-        private readonly List<IDomainEvents> _domainEvents = new();
-        public IReadOnlyCollection<IDomainEvents> DomainEvents => _domainEvents;
+        private readonly List<IDomainEvent> _domainEvents = new();
+        public IReadOnlyCollection<IDomainEvent> DomainEvents => _domainEvents;
 
-        protected void AddDomainEvent(IDomainEvents eventItem) => _domainEvents.Add(eventItem);
+        protected void AddDomainEvent(IDomainEvent domainEvent) => _domainEvents.Add(domainEvent);
         public void ClearDomainEvents() => _domainEvents.Clear();
 
         // --- Audit(User Tracking) ---

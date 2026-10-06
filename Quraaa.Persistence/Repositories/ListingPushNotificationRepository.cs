@@ -67,6 +67,30 @@ public sealed class ListingPushNotificationRepository
         return notifications;
     }
 
+    public async Task AddAsync(
+        ListingPushNotification notification,
+        CancellationToken cancellationToken = default)
+    {
+        await _context.ListingPushNotifications.AddAsync(notification, cancellationToken);
+    }
+
+    public ListingPushNotification? FindStagedPublication(Guid libraryId) =>
+        FindStaged(notification =>
+            notification.Type == ListingPushNotificationType.LibraryListingsPublished
+            && notification.LibraryId == libraryId);
+
+    public ListingPushNotification? FindStagedDigitalAssetUpdate(Guid listingId) =>
+        FindStaged(notification =>
+            notification.Type == ListingPushNotificationType.ListingDigitalAssetUpdated
+            && notification.ListingId == listingId);
+
+    private ListingPushNotification? FindStaged(Func<ListingPushNotification, bool> predicate) =>
+        _context.ChangeTracker
+            .Entries<ListingPushNotification>()
+            .Where(entry => entry.State == EntityState.Added)
+            .Select(entry => entry.Entity)
+            .FirstOrDefault(predicate);
+
     private static DateTime NormalizeUtc(DateTime value) =>
         value.Kind switch
         {

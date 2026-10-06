@@ -158,6 +158,7 @@ namespace Quraaa.Infrastructure.Extensions
             services.AddHostedService<BookModerationNotificationDeliveryService>();
             services.AddHostedService<LibraryApprovalNotificationDeliveryService>();
             services.AddHostedService<ListingPushNotificationDeliveryService>();
+            services.AddHostedService<DomainEventDispatcherService>();
 
             return services;
         }

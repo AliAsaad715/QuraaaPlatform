@@ -280,12 +280,6 @@ public static class DemoCatalogSeeder
 
         var missing = books
             .Where(book => !keySet.Contains((book.Id, book.CurrentVersionNumber)))
-            .Select(book => BookVersion.Capture(
-                book,
-                book.CurrentVersionNumber == 1
-                    ? BookVersionReason.Created
-                    : BookVersionReason.Edited,
-                book.LastModifiedBy))
             .ToArray();
 
         if (missing.Length == 0)
@@ -293,7 +287,11 @@ public static class DemoCatalogSeeder
             return;
         }
 
-        await context.BookVersions.AddRangeAsync(missing, cancellationToken);
+        foreach (var book in missing)
+        {
+            book.RecordMissingCurrentVersion();
+        }
+
         await context.SaveChangesAsync(cancellationToken);
     }
 

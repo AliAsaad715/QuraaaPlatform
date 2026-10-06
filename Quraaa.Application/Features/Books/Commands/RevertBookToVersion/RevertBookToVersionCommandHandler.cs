@@ -7,8 +7,6 @@ using Quraaa.Application.Shared.Exceptions;
 using Quraaa.Application.Shared.Persistence;
 using Quraaa.Application.Shared.Results;
 using Quraaa.Application.Shared.Services;
-using Quraaa.Domain.Catalog;
-using Quraaa.Domain.Catalog.Enums;
 using Quraaa.Domain.Shared.Exceptions;
 
 namespace Quraaa.Application.Features.Books.Commands.RevertBookToVersion
@@ -69,25 +67,7 @@ namespace Quraaa.Application.Features.Books.Commands.RevertBookToVersion
 
                 // Copy the old content forward instead of deleting anything: the
                 // revert itself becomes the newest version and stays auditable.
-                book.ApplyDetails(
-                    target.Title,
-                    target.AuthorId,
-                    target.Description,
-                    target.CoverImageUrl,
-                    target.CategoryId,
-                    target.Language,
-                    target.Isbn,
-                    request.AdminId);
-
-                book.RecordModerationNote(request.ModerationNote, request.AdminId);
-
-                await _bookVersionRepository.AddAsync(
-                    BookVersion.Capture(
-                        book,
-                        BookVersionReason.Reverted,
-                        request.AdminId,
-                        restoredFrom),
-                    cancellationToken);
+                book.RevertTo(target, request.ModerationNote, request.AdminId);
 
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 

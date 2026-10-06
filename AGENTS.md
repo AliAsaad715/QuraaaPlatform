@@ -48,7 +48,7 @@ Current implemented business capabilities:
 - Standalone OTP send through `POST /api/otp/send`.
 - Standalone OTP verification through `POST /api/otp/verify`.
 - Authenticated FCM device-token registration/removal through `PUT` and `DELETE /api/notifications/devices`; deprecated `POST /api/notifications/device-token` remains a registration alias backed by the same `PushDevices` store.
-- Library listing publication and digital-asset-update pushes are committed to a durable outbox with the listing change and delivered by a retrying background worker; publications committed together for one library are coalesced into one notification.
+- Library listing publication and digital-asset-update pushes start as domain events committed to the generic `OutboxMessages` table with the listing change. The domain event dispatcher hands them to MediatR handlers that queue `ListingPushNotifications`, and a retrying background worker delivers those; publications committed together for one library are coalesced into one notification.
 - Authenticated push notification dispatch through `POST /api/notifications/send`.
 - Development/test push notification dispatch through `POST /api/notifications/test`.
 
@@ -318,9 +318,12 @@ Quraaa.Persistence/
     ApplicationDbContext.cs
     ApplicationUser.cs
     ConsumedRefreshToken.cs
+    OutboxMessage.cs
     ProcessedPaymentEvent.cs
   Extensions/
     PersistenceDependencyInjectionHandler.cs
+  Interceptors/
+    DomainEventOutboxInterceptor.cs
   Migrations/
   Repositories/
     AdminModerationRepository.cs
@@ -347,6 +350,7 @@ Quraaa.Infrastructure/
     FileAccessService.cs
   Workers/                # Background workers; AddWorkers registers them unless Workers:Enabled is false
     BookModerationNotificationDeliveryService.cs
+    DomainEventDispatcherService.cs
     ExpiredOrderPaymentReconciliationService.cs
     FileRetentionCleanupService.cs
     LibraryApprovalNotificationDeliveryService.cs
@@ -422,6 +426,10 @@ Across aggregate boundaries, domain types expose scalar identity references such
 The user-to-library ownership rule is one-to-one: `LibraryAggregate` stores only scalar `UserId`; `LibraryConfiguration` uses a navigationless one-to-one mapping plus a unique index on `UserId`; the migration enforces the unique index; and application code checks for an existing library before creating another one. Library email is also unique.
 
 Writes go through an explicit unit of work. Repositories only read and stage changes; the command handler or application service commits by calling `IUnitOfWork.SaveChangesAsync` (`Quraaa.Application/Shared/Persistence/IUnitOfWork.cs`, implemented by `Quraaa.Persistence/Services/UnitOfWork.cs` over the request-scoped `ApplicationDbContext`). A handler commits more than once only when a step must be durable before an external call: the checkout reservation before Stripe, the payout lease before a transfer, or the library registration before SMTP. `IUnitOfWork.ExecuteInTransactionAsync` wraps saves that must be atomic with ASP.NET Core Identity writes, which save on their own. `Quraaa.Persistence/Services/SaveChangesExceptionTranslator.cs` is the only place that maps a failed save to an application exception: optimistic-concurrency conflicts become `ConflictException`, and each known unique or foreign-key constraint becomes its documented `ConflictException`, `ApplicationBusinessException` error code, or `PaymentEventAlreadyProcessedException`. The leased notification-outbox claims (`FOR UPDATE SKIP LOCKED`) keep their own short transactions inside their repositories.
+
+Aggregates record domain events (`IDomainEvent` in `Quraaa.Domain/Shared/Events`, usually by deriving from the `DomainEvent` record, which stamps an `EventId` and `OccurredAtUtc`). `Quraaa.Persistence/Interceptors/DomainEventOutboxInterceptor.cs` stores every event raised by tracked aggregates as an `OutboxMessages` row (type name plus `jsonb` payload) in the same save, without knowing any event type; events stored by one save share a `CorrelationId`. `DomainEventDispatcherService` (`Quraaa.Infrastructure/Workers`) sends `DispatchDomainEventsCommand`, which leases the oldest ready save's events (claims are serialized with a PostgreSQL advisory lock, so a save's events are never split) and publishes each one, in order, as `DomainEventNotification<TEvent>` to its `INotificationHandler`s in Application. All handlers of one save run in one unit of work and commit together with the processed marks, so a handler that only stages changes takes effect exactly once; a failure retries the whole save's events with backoff and abandons them after 8 attempts. An event with no handler is simply marked processed. The listing push policy lives in `Features/Notifications/EventHandlers`. A save that stores events wakes the dispatcher immediately; a 5-second scan covers other replicas and retries.
+
+`BookAggregate` records its own history: its constructor records version 1, `ApplyDetails` records an `Edited` version and `RevertTo` a `Reverted` one, all through its `RecordedVersions` collection, which EF inserts with the book. `BookVersion.Capture` is internal to the Domain, so nothing else writes versions.
 
 The open-cart rule is also one-to-one per user. `CartConfiguration` defines the partial unique index `IX_Carts_UserId_Open` on `UserId` for non-deleted `Active` or `PendingPayment` carts, the unit of work translates a concurrent unique-index violation to `409 Conflict`, and historical `Paid`/`Abandoned` carts remain unrestricted.
 
@@ -595,7 +603,7 @@ DbSets:
 - `UsersProfiles` (`UserAggregate`)
 - `UserLocations` (`UserLocation`; named profile locations with one profile-selected default)
 - `PushDevices` (`PushDevice`; user-owned FCM registrations keyed by a unique SHA-256 token hash)
-- `ListingPushNotifications` (`ListingPushNotification`; leased/retried durable outbox for coalesced listing publication and digital-asset-update pushes)
+- `ListingPushNotifications` (`ListingPushNotification`; leased/retried delivery queue for coalesced listing publication and digital-asset-update pushes, filled by the listing domain event handlers)
 - `Libraries` (`LibraryAggregate`)
 - `LibraryApprovalNotifications` (`LibraryApprovalNotification`; per-channel durable approval-delivery outbox)
 - `Books` (`BookAggregate`)
@@ -610,6 +618,7 @@ DbSets:
 - `ConsumedRefreshTokens` (`ConsumedRefreshToken`; hashed, rotated-token history used for family logout and replay detection)
 - `LibraryRegistrationSessions` (`LibraryRegistrationSession`; hashed temporary dashboard credentials bound to the issuing refresh family)
 - `LibraryEmailVerificationChallenges` (`LibraryEmailVerificationChallenge`; durable HMAC-hashed email OTP, cooldown, attempt, and lockout state)
+- `OutboxMessages` (`OutboxMessage`; every domain event, stored with the change that raised it and leased/retried until its handlers have run)
 
 It applies all `IEntityTypeConfiguration` classes from the Persistence assembly and adds a global query filter for active categories only:
 
@@ -652,9 +661,10 @@ Located in `Quraaa.Persistence/Migrations/`:
 25. `20260815102801_ConsolidateUserDeviceTokensIntoPushDevices`
 26. `20260815115240_AddListingPushNotificationOutbox`
 37. `20260816185229_ConsolidateAdminIntoSuperAdmin`
+38. `20261006184705_AddDomainEventOutbox`
 
 The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, and saved-location storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work. `AddComments` adds book comment storage; `AddUserDeviceTokens` adds FCM device-token storage for push notifications. `AddAuthorsTable` creates the standalone `Authors` table (`AuthorAggregate`). `RefactorBookAuthorToForeignKeyAndAddBirthDate` adds `Authors.BirthDate`; adds nullable `Books.AuthorId`; backfills it by creating an `Author` row (via `gen_random_uuid()`, a PostgreSQL 13+ core builtin) for every distinct existing `Books.Author` string and matching books to it by normalized name; adds the `Books`→`Authors` foreign key and an index on `AuthorId`; and only then drops the old free-text `Books.Author` column. Its downgrade re-adds `Author` and best-effort backfills it from the linked `Authors.Name`.
-The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, saved-location, comment, push-device, library-approval-notification, and listing-push-notification storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. `AddPushDevicesAndLibraryApprovalNotifications` stores up to the actively retained device registrations per user using a unique token hash and adds an independently retried email/push outbox created by admin approval. `AddUserDeviceTokens` is retained as applied migration history; `ConsolidateUserDeviceTokensIntoPushDevices` validates and copies its rows into `PushDevices`, retains the ten most recent devices per user, and drops the duplicate table. `AddListingPushNotificationOutbox` adds the leased/retried push outbox populated atomically from listing domain events; publication events in one save are grouped per library so bulk upload creates one push. `ConsolidateAdminIntoSuperAdmin` promotes legacy domain role value `2` to `SuperAdmin` (`4`), merges Identity memberships and claims, removes the obsolete `Admin` role, repairs mismatched privileged profiles, and revokes affected refresh-token families; its downgrade is blocked because the original two-role provenance cannot be recovered. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
+The newer migrations make `Books.CategoryId` nullable; create favorite, purchase, rating, cart, cart-item, order, order-item, payment-attempt, processed-payment-event, consumed-refresh-token, library-registration-session, library-email-challenge, orphan-file, saved-location, comment, push-device, library-approval-notification, and listing-push-notification storage; add library/favorite uniqueness and engagement foreign keys; add `Carts.PendingOrderId`; correlate purchases to orders/items; add the partial unique `IX_Carts_UserId_Open` index; add refresh-token indexes; and add `Libraries.EmailVerifiedAtUtc` plus optimistic concurrency. `AddMultipleUserLocations` validates and moves legacy `UsersProfiles.Latitude`/`Longitude` pairs into `UserLocations`, sets `DefaultLocationId`, seeds the per-profile location concurrency stamp, installs an ownership trigger, then drops the legacy columns. `PreventUserLocationOwnerReassignment` makes each saved location's `UserId` immutable after insertion so a default location cannot be reassigned across profiles. `AddPushDevicesAndLibraryApprovalNotifications` stores up to the actively retained device registrations per user using a unique token hash and adds an independently retried email/push outbox created by admin approval. `AddUserDeviceTokens` is retained as applied migration history; `ConsolidateUserDeviceTokensIntoPushDevices` validates and copies its rows into `PushDevices`, retains the ten most recent devices per user, and drops the duplicate table. `AddListingPushNotificationOutbox` adds the leased/retried push outbox for listing domain events; publication events in one save are grouped per library so bulk upload creates one push. `AddDomainEventOutbox` adds the generic `OutboxMessages` table that now stores those events (and every other domain event) first, with a partial index over unfinished messages and an index on `CorrelationId`; it changes no existing table. `ConsolidateAdminIntoSuperAdmin` promotes legacy domain role value `2` to `SuperAdmin` (`4`), merges Identity memberships and claims, removes the obsolete `Admin` role, repairs mismatched privileged profiles, and revokes affected refresh-token families; its downgrade is blocked because the original two-role provenance cannot be recovered. The `AddMultipleUserLocations` downgrade retains only the default or oldest saved location. `MergeModelSnapshot` is intentionally an empty schema migration used to align the EF snapshot after branch work.
 
 `Program.cs` runs `db.Database.MigrateAsync()` on startup, so the database is migrated automatically when the app starts.
 
@@ -2484,6 +2494,10 @@ Quraaa.Domain/User/Entities/PushDevice.cs
 Quraaa.Persistence/Repositories/PushDeviceRepository.cs
 Quraaa.Infrastructure/Services/FirebaseNotificationService.cs
 Quraaa.Infrastructure/Workers/LibraryApprovalNotificationDeliveryService.cs
+Quraaa.Application/Features/Notifications/EventHandlers/
+Quraaa.Application/Features/DomainEvents/Commands/DispatchDomainEvents/
+Quraaa.Infrastructure/Workers/DomainEventDispatcherService.cs
+Quraaa.Infrastructure/Workers/ListingPushNotificationDeliveryService.cs
 ```
 
 Routes:

@@ -6,6 +6,8 @@ namespace Quraaa.Domain.Catalog
 {
     public class BookAggregate : AggregateRoot
     {
+        private readonly List<BookVersion> _recordedVersions = new();
+
         public string Title { get; private set; } = null!;
         public Guid? AuthorId { get; private set; }
         public string Description { get; private set; } = null!;
@@ -22,10 +24,17 @@ namespace Quraaa.Domain.Catalog
 
         /// <summary>
         /// The version number of the details currently on this row. Every change
-        /// increments it and writes a matching <see cref="BookVersion"/>, so the
+        /// increments it and records a matching <see cref="BookVersion"/>, so the
         /// book always has a restorable history.
         /// </summary>
         public int CurrentVersionNumber { get; private set; }
+
+        /// <summary>
+        /// The versions this instance recorded, plus any loaded alongside it. They
+        /// are saved with the book. This is not the complete history; read that
+        /// through the book version repository.
+        /// </summary>
+        public IReadOnlyCollection<BookVersion> RecordedVersions => _recordedVersions;
 
         /// <summary>Whether reports have taken this book out of the catalog.</summary>
         public BookModerationStatus ModerationStatus { get; private set; }
@@ -64,6 +73,7 @@ namespace Quraaa.Domain.Catalog
             CanonicalWordDocUrl = canonicalWordDocUrl;
             CurrentVersionNumber = 1;
             ModerationStatus = BookModerationStatus.Visible;
+            RecordVersion(BookVersionReason.Created, LastModifiedBy);
         }
 
         public void UpdateDetails(
@@ -87,9 +97,8 @@ namespace Quraaa.Domain.Catalog
         }
 
         /// <summary>
-        /// Replaces the book's details and opens a new version. The caller must
-        /// persist a matching <see cref="BookVersion"/> in the same transaction,
-        /// so the previous state stays restorable.
+        /// Replaces the book's details, opens a new version and records its
+        /// <see cref="BookVersion"/>, so the previous state stays restorable.
         /// </summary>
         /// <returns>The new <see cref="CurrentVersionNumber"/>.</returns>
         public int ApplyDetails(
@@ -102,28 +111,63 @@ namespace Quraaa.Domain.Catalog
             string? isbn,
             Guid modifiedBy)
         {
-            if (string.IsNullOrWhiteSpace(title))
-            {
-                throw new DomainException("A book title is required.");
-            }
+            ReplaceDetails(
+                title,
+                authorId,
+                description,
+                coverImageUrl,
+                categoryId,
+                language,
+                isbn,
+                modifiedBy);
 
-            if (string.IsNullOrWhiteSpace(coverImageUrl))
-            {
-                throw new DomainException("A book cover image is required.");
-            }
-
-            Title = title.Trim();
-            AuthorId = authorId;
-            Description = description?.Trim() ?? string.Empty;
-            CoverImageUrl = coverImageUrl.Trim();
-            CategoryId = categoryId;
-            Language = language;
-            Isbn = string.IsNullOrWhiteSpace(isbn) ? null : isbn.Trim();
-            CurrentVersionNumber++;
-            UpdateAudit(modifiedBy);
+            RecordVersion(BookVersionReason.Edited, modifiedBy);
 
             return CurrentVersionNumber;
         }
+
+        /// <summary>
+        /// Restores the details of an earlier version. The old content is copied
+        /// forward as a new <see cref="BookVersionReason.Reverted"/> version, so
+        /// history is never rewritten and the revert itself stays auditable.
+        /// </summary>
+        public void RevertTo(BookVersion target, string? moderationNote, Guid revertedBy)
+        {
+            ArgumentNullException.ThrowIfNull(target);
+
+            if (target.BookId != Id)
+            {
+                throw new DomainException("The version belongs to a different book.");
+            }
+
+            if (target.VersionNumber >= CurrentVersionNumber)
+            {
+                throw new DomainException("Only an earlier version can be restored.");
+            }
+
+            ReplaceDetails(
+                target.Title,
+                target.AuthorId,
+                target.Description,
+                target.CoverImageUrl,
+                target.CategoryId,
+                target.Language,
+                target.Isbn,
+                revertedBy);
+
+            RecordModerationNote(moderationNote, revertedBy);
+            RecordVersion(BookVersionReason.Reverted, revertedBy, target.VersionNumber);
+        }
+
+        /// <summary>
+        /// Records the snapshot of the current details when the stored history has
+        /// no row for <see cref="CurrentVersionNumber"/>, as for a catalog row that
+        /// predates version history. The caller checks the stored history first.
+        /// </summary>
+        public void RecordMissingCurrentVersion() =>
+            RecordVersion(
+                CurrentVersionNumber == 1 ? BookVersionReason.Created : BookVersionReason.Edited,
+                LastModifiedBy);
 
         /// <summary>
         /// Marks the book as reported but still listable. Idempotent, and never
@@ -189,6 +233,47 @@ namespace Quraaa.Domain.Catalog
             ModerationNote = Truncate(moderationNote);
             UpdateAudit(restoredBy);
         }
+
+        private void ReplaceDetails(
+            string title,
+            Guid? authorId,
+            string description,
+            string coverImageUrl,
+            Guid? categoryId,
+            Language language,
+            string? isbn,
+            Guid modifiedBy)
+        {
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                throw new DomainException("A book title is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(coverImageUrl))
+            {
+                throw new DomainException("A book cover image is required.");
+            }
+
+            Title = title.Trim();
+            AuthorId = authorId;
+            Description = description?.Trim() ?? string.Empty;
+            CoverImageUrl = coverImageUrl.Trim();
+            CategoryId = categoryId;
+            Language = language;
+            Isbn = string.IsNullOrWhiteSpace(isbn) ? null : isbn.Trim();
+            CurrentVersionNumber++;
+            UpdateAudit(modifiedBy);
+        }
+
+        private void RecordVersion(
+            BookVersionReason reason,
+            Guid? changedByUserId,
+            int? revertedFromVersionNumber = null) =>
+            _recordedVersions.Add(BookVersion.Capture(
+                this,
+                reason,
+                changedByUserId,
+                revertedFromVersionNumber));
 
         private static string? Truncate(string? value)
         {

@@ -58,12 +58,5 @@ namespace Quraaa.Persistence.Repositories
                 .AsNoTracking()
                 .AnyAsync(version => version.BookId == bookId, cancellationToken);
         }
-
-        public async Task AddAsync(
-            BookVersion version,
-            CancellationToken cancellationToken = default)
-        {
-            await _context.BookVersions.AddAsync(version, cancellationToken);
-        }
     }
 }

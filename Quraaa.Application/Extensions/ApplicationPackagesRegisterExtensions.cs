@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Quraaa.Application.Features.Orders.Services;
 using Quraaa.Application.Features.Libraries.Services;
 using Quraaa.Application.Features.BookReports.Services;
+using Quraaa.Application.Features.DomainEvents.Interfaces;
+using Quraaa.Application.Features.DomainEvents.Services;
 using Quraaa.Application.Features.Payouts.Interfaces;
 using Quraaa.Application.Features.Payouts.Services;
 using Quraaa.Application.Shared.Services;
@@ -34,6 +36,7 @@ namespace Quraaa.Application.Extensions
                 OrderPaymentReconciliationService>();
             services.AddScoped<BookReportEscalationService>();
             services.AddSingleton<ISellerPayoutDispatchSignal, SellerPayoutDispatchSignal>();
+            services.AddSingleton<IDomainEventDispatchSignal, DomainEventDispatchSignal>();
             services.AddScoped<LibraryStripeOnboardingService>();
             return services;
         }

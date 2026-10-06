@@ -60,8 +60,10 @@ namespace Quraaa.Persistence.Configurations
             builder.HasIndex(version => new { version.BookId, version.VersionNumber })
                 .IsUnique();
 
+            // Versions are the book's own history: BookAggregate records them, and
+            // they are inserted through its RecordedVersions collection.
             builder.HasOne<BookAggregate>()
-                .WithMany()
+                .WithMany(book => book.RecordedVersions)
                 .HasForeignKey(version => version.BookId)
                 .OnDelete(DeleteBehavior.Cascade);
         }

@@ -89,6 +89,39 @@ public sealed class ListingPushNotification : AggregateRoot
             1,
             utcNow);
 
+    /// <summary>
+    /// Counts one more listing the library published in the same save, so its
+    /// buyers get one push for the whole batch instead of one per listing.
+    /// Only a publication that no delivery attempt has touched can grow.
+    /// </summary>
+    public void IncludePublication(Guid bookId, Guid listingId)
+    {
+        if (Type != ListingPushNotificationType.LibraryListingsPublished)
+        {
+            throw new DomainException("Only a publication notification can include more listings.");
+        }
+
+        if (State != NotificationDeliveryState.Pending || AttemptCount > 0 || LeaseUntilUtc is not null)
+        {
+            throw new DomainException("The listing notification is already being delivered.");
+        }
+
+        if (bookId == Guid.Empty || listingId == Guid.Empty)
+        {
+            throw new DomainException("Listing notification identifiers are required.");
+        }
+
+        if (ItemCount == 1 && ListingId == listingId)
+        {
+            return;
+        }
+
+        ItemCount++;
+        BookId = null;
+        ListingId = null;
+        RenewConcurrencyStamp();
+    }
+
     public bool IsReady(DateTime utcNow)
     {
         var normalizedNow = NormalizeUtc(utcNow);

@@ -94,10 +94,11 @@ namespace Quraaa.Domain.Catalog
         }
 
         /// <summary>
-        /// Captures the book's current details as the next version. The caller
-        /// has already applied the change to the book.
+        /// Captures the book's current details as the next version. Only
+        /// <see cref="BookAggregate"/> records versions, right after it applies
+        /// the change.
         /// </summary>
-        public static BookVersion Capture(
+        internal static BookVersion Capture(
             BookAggregate book,
             BookVersionReason reason,
             Guid? changedByUserId,
